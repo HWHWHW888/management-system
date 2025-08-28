@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { authenticateUser, requirePermission, requireAdmin } from '../middleware/auth';
+import { authMiddleware, requireAdmin } from './auth.js';
 const router = Router();
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -11,7 +11,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
  * GET /customers
  * All roles can view customers
  */
-router.get('/', authenticateUser, requirePermission('customers:read'), async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
     try {
         const { data: customers, error } = await supabase
             .from('customers')
@@ -50,7 +50,7 @@ router.get('/', authenticateUser, requirePermission('customers:read'), async (re
  * GET /customers/:id
  * All roles can view specific customer
  */
-router.get('/:id', authenticateUser, requirePermission('customers:read'), async (req, res) => {
+router.get('/:id', authMiddleware, async (req, res) => {
     try {
         const customerId = req.params.id;
         const { data: customer, error } = await supabase
@@ -110,7 +110,7 @@ router.get('/:id', authenticateUser, requirePermission('customers:read'), async 
  * POST /customers
  * Only admin can create new customers
  */
-router.post('/', authenticateUser, requireAdmin, async (req, res) => {
+router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { name, email, phone, vip_level, total_spent, status } = req.body;
         // Validate required fields
@@ -166,7 +166,7 @@ router.post('/', authenticateUser, requireAdmin, async (req, res) => {
  * PUT /customers/:id
  * Only admin can update customers
  */
-router.put('/:id', authenticateUser, requireAdmin, async (req, res) => {
+router.put('/:id', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const customerId = req.params.id;
         const updateData = req.body;
@@ -225,7 +225,7 @@ router.put('/:id', authenticateUser, requireAdmin, async (req, res) => {
  * DELETE /customers/:id
  * Only admin can delete customers
  */
-router.delete('/:id', authenticateUser, requireAdmin, async (req, res) => {
+router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const customerId = req.params.id;
         // Check if customer exists
@@ -281,7 +281,7 @@ router.delete('/:id', authenticateUser, requireAdmin, async (req, res) => {
  * GET /customers/:id/transactions
  * Get all transactions for a specific customer
  */
-router.get('/:id/transactions', authenticateUser, requirePermission('customers:read'), async (req, res) => {
+router.get('/:id/transactions', authMiddleware, async (req, res) => {
     try {
         const customerId = req.params.id;
         const userRole = req.user.role;
@@ -335,7 +335,7 @@ router.get('/:id/transactions', authenticateUser, requirePermission('customers:r
  * GET /customers/vip/:level
  * Get customers by VIP level
  */
-router.get('/vip/:level', authenticateUser, requirePermission('customers:read'), async (req, res) => {
+router.get('/vip/:level', authMiddleware, async (req, res) => {
     try {
         const vipLevel = req.params.level;
         const { data: customers, error } = await supabase

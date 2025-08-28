@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { authMiddleware, requireAdmin } from '../auth';
+import { authMiddleware, requireAdmin } from './auth.js';
 const router = Router();
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);

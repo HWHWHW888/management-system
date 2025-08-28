@@ -1,5 +1,19 @@
-const jwt = require('jsonwebtoken');
+import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+// Polyfill for Node.js compatibility
+if (!globalThis.fetch) {
+  const { default: fetch, Headers, Request, Response } = await import('node-fetch');
+  globalThis.fetch = fetch;
+  globalThis.Headers = Headers;
+  globalThis.Request = Request;
+  globalThis.Response = Response;
+}
+
 // Initialize Supabase client with service role key for admin operations
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 // =====================================================

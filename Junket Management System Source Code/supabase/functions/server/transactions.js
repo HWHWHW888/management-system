@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { authenticateUser, requirePermission, requireAdmin, canAccessTransaction } from '../middleware/auth';
+import { authMiddleware, requireAdmin, canAccessTransaction } from './auth.js';
 const router = Router();
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -11,7 +11,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
  * GET /transactions
  * Admin see all, staff see only transactions linked to their trips
  */
-router.get('/', authenticateUser, requirePermission('transactions:read'), async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
@@ -58,7 +58,7 @@ router.get('/', authenticateUser, requirePermission('transactions:read'), async 
  * GET /transactions/:id
  * Admin see all, staff see only transactions linked to their trips
  */
-router.get('/:id', authenticateUser, requirePermission('transactions:read'), canAccessTransaction, async (req, res) => {
+router.get('/:id', authMiddleware, canAccessTransaction, async (req, res) => {
     try {
         const transactionId = req.params.id;
         const { data: transaction, error } = await supabase
@@ -102,7 +102,7 @@ router.get('/:id', authenticateUser, requirePermission('transactions:read'), can
  * POST /transactions
  * Staff & admin allowed (staff only for their trips)
  */
-router.post('/', authenticateUser, requirePermission('transactions:write'), async (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
     try {
         const { customer_id, trip_id, amount, transaction_type, status } = req.body;
         const userRole = req.user.role;
@@ -193,7 +193,7 @@ router.post('/', authenticateUser, requirePermission('transactions:write'), asyn
  * PUT /transactions/:id
  * Staff & admin allowed (staff only for their trips)
  */
-router.put('/:id', authenticateUser, requirePermission('transactions:update'), canAccessTransaction, async (req, res) => {
+router.put('/:id', authMiddleware, canAccessTransaction, async (req, res) => {
     try {
         const transactionId = req.params.id;
         const updateData = req.body;
@@ -254,7 +254,7 @@ router.put('/:id', authenticateUser, requirePermission('transactions:update'), c
  * DELETE /transactions/:id
  * Only admin allowed
  */
-router.delete('/:id', authenticateUser, requireAdmin, async (req, res) => {
+router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const transactionId = req.params.id;
         // Check if transaction exists
@@ -292,7 +292,7 @@ router.delete('/:id', authenticateUser, requireAdmin, async (req, res) => {
  * GET /transactions/trip/:tripId
  * Get all transactions for a specific trip
  */
-router.get('/trip/:tripId', authenticateUser, requirePermission('transactions:read'), async (req, res) => {
+router.get('/trip/:tripId', authMiddleware, async (req, res) => {
     try {
         const tripId = req.params.tripId;
         const userRole = req.user.role;
@@ -356,7 +356,7 @@ router.get('/trip/:tripId', authenticateUser, requirePermission('transactions:re
  * GET /transactions/customer/:customerId
  * Get all transactions for a specific customer
  */
-router.get('/customer/:customerId', authenticateUser, requirePermission('transactions:read'), async (req, res) => {
+router.get('/customer/:customerId', authMiddleware, async (req, res) => {
     try {
         const customerId = req.params.customerId;
         const userRole = req.user.role;
@@ -411,7 +411,7 @@ router.get('/customer/:customerId', authenticateUser, requirePermission('transac
  * POST /transactions/bulk
  * Create multiple transactions at once (admin only)
  */
-router.post('/bulk', authenticateUser, requireAdmin, async (req, res) => {
+router.post('/bulk', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { transactions } = req.body;
         if (!Array.isArray(transactions) || transactions.length === 0) {

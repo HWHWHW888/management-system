@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { authMiddleware, requireAdmin, canAccessTrip } from '../middleware/auth';
+import { authMiddleware, requireAdmin, canAccessTrip } from './auth.js';
 const router = Router();
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -12,7 +12,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
  * Staff can only see their assigned trips
  * Admin can see all trips
  */
-router.get('/my-schedule', authenticateUser, async (req, res) => {
+router.get('/my-schedule', authMiddleware, async (req, res) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
@@ -114,7 +114,7 @@ router.get('/', authMiddleware, async (req, res) => {
  * Admin can see any trip
  * Staff can only see their assigned trips
  */
-router.get('/:id', authenticateUser, requirePermission('trips:read'), canAccessTrip, async (req, res) => {
+router.get('/:id', authMiddleware, canAccessTrip, async (req, res) => {
     try {
         const tripId = req.params.id;
         const { data: trip, error } = await supabase
@@ -166,7 +166,7 @@ router.get('/:id', authenticateUser, requirePermission('trips:read'), canAccessT
  * POST /trips
  * Only admin can create new trips
  */
-router.post('/', authenticateUser, requireAdmin, async (req, res) => {
+router.post('/', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const { trip_name, destination, start_date, end_date, total_budget, staff_id } = req.body;
         // Validate required fields
@@ -213,7 +213,7 @@ router.post('/', authenticateUser, requireAdmin, async (req, res) => {
  * Admin can update any trip
  * Staff can only update their assigned trips (for check-in/check-out)
  */
-router.put('/:id', authenticateUser, requirePermission('trips:update'), canAccessTrip, async (req, res) => {
+router.put('/:id', authMiddleware, canAccessTrip, async (req, res) => {
     try {
         const tripId = req.params.id;
         const userRole = req.user.role;
@@ -268,7 +268,7 @@ router.put('/:id', authenticateUser, requirePermission('trips:update'), canAcces
  * DELETE /trips/:id
  * Only admin can delete trips
  */
-router.delete('/:id', authenticateUser, requireAdmin, async (req, res) => {
+router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
     try {
         const tripId = req.params.id;
         // Check if trip has related data
@@ -315,7 +315,7 @@ router.delete('/:id', authenticateUser, requireAdmin, async (req, res) => {
  * POST /trips/:id/check-in
  * Staff can check-in to their assigned trips
  */
-router.post('/:id/check-in', authenticateUser, requirePermission('trips:update'), canAccessTrip, async (req, res) => {
+router.post('/:id/check-in', authMiddleware, canAccessTrip, async (req, res) => {
     try {
         const tripId = req.params.id;
         const { check_in_time, notes } = req.body;
@@ -353,7 +353,7 @@ router.post('/:id/check-in', authenticateUser, requirePermission('trips:update')
  * POST /trips/:id/check-out
  * Staff can check-out from their assigned trips
  */
-router.post('/:id/check-out', authenticateUser, requirePermission('trips:update'), canAccessTrip, async (req, res) => {
+router.post('/:id/check-out', authMiddleware, canAccessTrip, async (req, res) => {
     try {
         const tripId = req.params.id;
         const { check_out_time, notes } = req.body;
