@@ -6,13 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
 import { Badge } from './ui/badge';
+import { Alert, AlertDescription } from './ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { User, Agent, Customer, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { db } from '../utils/supabase/supabaseClients';
-import { Plus, Edit, Mail, Phone, Users, Paperclip, ChevronDown, ChevronUp, UserCheck, Database, Save, Eye } from 'lucide-react';
+import { apiClient } from '../utils/api/apiClient';
+import { Plus, Edit, Mail, Phone, Users, Paperclip, ChevronDown, ChevronUp, UserCheck, Database, Save, Eye, CheckCircle, RefreshCw } from 'lucide-react';
 
 interface AgentManagementProps extends WithErrorHandlerProps {
   user: User;
@@ -49,16 +51,12 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
         db.get('customers', [])
       ]);
 
-      // Process agents with backward compatibility
-      const processedAgents = agentsData.map((agent: Agent) => {
-        const { commissionRate, sharePercentage, ...cleanAgent } = agent as any;
-        return {
-          ...cleanAgent,
-          isCustomer: true, // All agents are customers by default
-          customerId: cleanAgent.customerId || undefined,
-          attachments: cleanAgent.attachments || []
-        };
-      });
+      // Process agents - all agents are automatically customers
+      const processedAgents = agentsData.map((agent: Agent) => ({
+        ...agent,
+        isCustomer: true, // All agents are customers by default
+        attachments: agent.attachments || []
+      }));
 
       // Process customers with backward compatibility
       const processedCustomers = customersData.map((customer: Customer) => ({
@@ -70,7 +68,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
       setAgents(processedAgents);
       setCustomers(processedCustomers);
       
-      console.log(`✅ Loaded ${processedAgents.length} agents, ${processedCustomers.length} customers from Supabase`);
+      console.log(`✅ Loaded ${processedAgents.length} agents (all auto-customers), ${processedCustomers.length} customers from backend API`);
       
     } catch (error) {
       console.error('❌ Error loading agent data:', error);
@@ -80,88 +78,49 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
     }
   };
 
-  const saveAgentsToSupabase = async (updatedAgents: Agent[]) => {
-    try {
-      setSaving(true);
-      clearError();
-      
-      console.log('💾 Saving agents to Supabase...');
-      await db.save('agents', updatedAgents);
-      
-      setAgents(updatedAgents);
-      console.log('✅ Successfully saved agents to Supabase');
-      
-    } catch (error) {
-      console.error('❌ Error saving agents:', error);
-      showError(`Failed to save agent data: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
-      throw error;
-    } finally {
-      setSaving(false);
-    }
-  };
+  // Note: Direct agent saving removed - now using backend API endpoints
 
-  const saveCustomersToSupabase = async (updatedCustomers: Customer[]) => {
-    try {
-      clearError();
-      
-      console.log('💾 Saving customers to Supabase...');
-      await db.save('customers', updatedCustomers);
-      
-      setCustomers(updatedCustomers);
-      console.log('✅ Successfully saved customers to Supabase');
-      
-    } catch (error) {
-      console.error('❌ Error saving customers:', error);
-      showError(`Failed to save customer data: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
-      throw error;
-    }
-  };
+  // Note: Customer saving handled automatically when agents are created/updated
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
-      let updatedAgents: Agent[];
-
       if (editingAgent) {
-        // Update existing agent
-        updatedAgents = agents.map(agent => {
-          if (agent.id === editingAgent.id) {
-            const updatedAgent = { ...agent, ...formData, isCustomer: true };
-            
-            // If agent doesn't have a customer record yet, create one
-            if (!agent.customerId) {
-              createCustomerFromAgent(updatedAgent);
-            } else {
-              // Update existing customer record
-              updateCustomerFromAgent(updatedAgent);
-            }
-            
-            return updatedAgent;
-          }
-          return agent;
-        });
-      } else {
-        // Add new agent
-        const newAgent: Agent = {
-          id: `agent_${Date.now()}`,
+        // Update existing agent - only send required fields to backend
+        const updateData = {
           name: formData.name,
           email: formData.email,
-          phone: formData.phone,
-          isCustomer: true,
-          createdAt: new Date().toISOString().split('T')[0],
-          isActive: true,
-          attachments: []
+          phone: formData.phone || null,
+          status: 'active'
         };
         
-        // Always create customer record for new agents
-        await createCustomerFromAgent(newAgent);
+        const response = await apiClient.updateAgent(editingAgent.id, updateData);
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to update agent');
+        }
         
-        updatedAgents = [...agents, newAgent];
+        // Refresh data to get updated agent
+        await loadAllData();
+      } else {
+        // Add new agent - only send required fields to backend
+        const agentData = {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone || null,
+          commission_rate: 0,
+          status: 'active'
+        };
+        
+        // Create agent via API (backend will auto-create customer)
+        const response = await apiClient.createAgent(agentData);
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to create agent');
+        }
+        
+        // Refresh data to get the new agent and auto-created customer
+        await loadAllData();
       }
-
-      // Save immediately to Supabase
-      await saveAgentsToSupabase(updatedAgents);
 
       // Reset form and close dialog
       setFormData({ name: '', email: '', phone: '' });
@@ -169,8 +128,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
       setIsDialogOpen(false);
       
     } catch (error) {
-      // Error already handled in save functions
-      // Don't close dialog if save failed
+      showError(`Failed to save agent: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     }
   };
 
@@ -184,90 +142,31 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
     setIsDialogOpen(true);
   };
 
-  const createCustomerFromAgent = async (agent: Agent) => {
-    const customerId = `customer_${Date.now()}`;
-    const newCustomer: Customer = {
-      id: customerId,
-      name: agent.name,
-      email: agent.email,
-      phone: agent.phone,
-      agentId: agent.id, // Self-referential for agent-customers
-      agentName: agent.name,
-      createdAt: new Date().toISOString().split('T')[0],
-      totalRolling: 0,
-      totalWinLoss: 0,
-      totalBuyIn: 0,
-      totalBuyOut: 0,
-      isActive: true,
-      attachments: [],
-      rollingPercentage: 1.4,
-      isAgent: true,
-      sourceAgentId: agent.id
-    };
-    
-    try {
-      // Update agent with customer ID
-      const updatedAgents = agents.map(a => 
-        a.id === agent.id ? { ...a, customerId } : a
-      );
-      
-      // Save both updates immediately
-      await Promise.all([
-        saveAgentsToSupabase(updatedAgents),
-        saveCustomersToSupabase([...customers, newCustomer])
-      ]);
-      
-    } catch (error) {
-      // Error already handled in save functions
-      throw error;
-    }
-  };
-
-  const updateCustomerFromAgent = async (agent: Agent) => {
-    if (!agent.customerId) return;
-    
-    try {
-      const updatedCustomers = customers.map(customer => {
-        if (customer.id === agent.customerId) {
-          return {
-            ...customer,
-            name: agent.name,
-            email: agent.email,
-            phone: agent.phone,
-            agentName: agent.name
-          };
-        }
-        return customer;
-      });
-      
-      await saveCustomersToSupabase(updatedCustomers);
-      
-    } catch (error) {
-      // Error already handled in save functions
-      throw error;
-    }
-  };
-
-  const removeCustomerFromAgent = async (customerId: string) => {
-    try {
-      const updatedCustomers = customers.filter(c => c.id !== customerId);
-      await saveCustomersToSupabase(updatedCustomers);
-    } catch (error) {
-      // Error already handled in save functions
-    }
-  };
+  // Note: Agent-to-customer creation is now handled automatically by the backend
+  // when an agent is created, so no manual customer creation is needed
 
   const toggleAgentStatus = async (agentId: string) => {
     try {
-      const updatedAgents = agents.map(agent =>
-        agent.id === agentId
-          ? { ...agent, isActive: !agent.isActive }
-          : agent
-      );
+      // Update agent status via API
+      const agent = agents.find(a => a.id === agentId);
+      if (!agent) return;
       
-      await saveAgentsToSupabase(updatedAgents);
+      const updateData = {
+        name: agent.name,
+        email: agent.email,
+        phone: agent.phone,
+        status: agent.isActive ? 'inactive' : 'active'
+      };
+      
+      const response = await apiClient.updateAgent(agentId, updateData);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update agent status');
+      }
+      
+      // Refresh data
+      await loadAllData();
     } catch (error) {
-      // Error already handled in save functions
+      showError(`Failed to update agent status: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     }
   };
 
@@ -282,17 +181,8 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
   };
 
   const updateAgentAttachments = async (agentId: string, attachments: FileAttachment[]) => {
-    try {
-      const updatedAgents = agents.map(agent =>
-        agent.id === agentId
-          ? { ...agent, attachments }
-          : agent
-      );
-      
-      await saveAgentsToSupabase(updatedAgents);
-    } catch (error) {
-      // Error already handled in save functions
-    }
+    // Note: Attachment management would need to be implemented via API
+    console.log('Attachment update requested for agent:', agentId, attachments);
   };
 
   const isAdmin = user.role === 'admin';

@@ -12,7 +12,7 @@ import { Button } from './components/ui/button';
 import { Alert, AlertDescription } from './components/ui/alert';
 import { LogOut, Users, UserCheck, BarChart3, MapPin, ShieldCheck, Clock, Database, Settings, AlertTriangle, CheckCircle, Wifi, RefreshCw, Bug, Shield } from 'lucide-react';
 import { User } from './types';
-import { db } from './utils/supabase/supabaseClients';
+import { db } from './utils/api/databaseWrapper';
 import { Badge } from './components/ui/badge';
 
 function App() {
@@ -83,6 +83,13 @@ function App() {
           setCurrentUser(user);
           console.log('👤 Restored user session:', user.username);
           
+          // Restore token to API client if available
+          if (user.token) {
+            const { apiClient } = await import('./utils/api/apiClient');
+            apiClient.setToken(user.token);
+            console.log('🔑 Token restored to API client');
+          }
+          
           // Set default tab based on user role
           if (user.role === 'staff') {
             setActiveTab('checkinout');
@@ -115,7 +122,24 @@ function App() {
       }
 
       setCurrentUser(user);
-      localStorage.setItem('casinoUser', JSON.stringify(user));
+      
+      // Preserve token if it exists in localStorage (set by databaseWrapper.login)
+      const existingUser = localStorage.getItem('casinoUser');
+      if (existingUser) {
+        try {
+          const parsedUser = JSON.parse(existingUser);
+          if (parsedUser.token) {
+            const userWithToken = { ...user, token: parsedUser.token };
+            localStorage.setItem('casinoUser', JSON.stringify(userWithToken));
+          } else {
+            localStorage.setItem('casinoUser', JSON.stringify(user));
+          }
+        } catch (error) {
+          localStorage.setItem('casinoUser', JSON.stringify(user));
+        }
+      } else {
+        localStorage.setItem('casinoUser', JSON.stringify(user));
+      }
       
       // Set default tab based on user role
       if (user.role === 'staff') {
@@ -132,9 +156,19 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setCurrentUser(null);
     localStorage.removeItem('casinoUser');
+    
+    // Clear token from API client
+    try {
+      const { apiClient } = await import('./utils/api/apiClient');
+      apiClient.setToken('');
+      console.log('🔑 Token cleared from API client');
+    } catch (error) {
+      console.warn('Failed to clear token from API client:', error);
+    }
+    
     setActiveTab('dashboard');
     setErrorMessage('');
     console.log('👤 User logged out');

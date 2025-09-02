@@ -6,6 +6,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Import route modules
+import authRouter from './auth.js';
+import usersRouter from './users.js';
 import agentsRouter from './agents.js';
 import customersRouter from './customers.js';
 import tripsRouter from './trips.js';
@@ -14,7 +16,7 @@ import reportsRouter from './reports.js';
 
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
@@ -31,6 +33,8 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
 app.use('/api/agents', agentsRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/trips', tripsRouter);

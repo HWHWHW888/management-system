@@ -15,6 +15,7 @@ import { User, Agent, Customer, FileAttachment, Trip, TripCustomer, RollingRecor
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { db } from '../utils/supabase/supabaseClients';
+import { apiClient } from '../utils/api/apiClient';
 import { 
   Plus, Edit, Mail, Phone, DollarSign, TrendingUp, TrendingDown, Paperclip, Calendar, MapPin, Target, 
   ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, Database, Save, RefreshCw, Activity, 
@@ -59,7 +60,9 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     name: '',
     email: '',
     phone: '',
-    agentId: ''
+    agentId: '',
+    vip_level: 'standard',
+    status: 'active'
   });
 
   // Extended customer details form data
@@ -257,46 +260,47 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         return;
       }
 
-      let updatedCustomers: Customer[];
-
       if (editingCustomer) {
-        // Update existing customer
-        updatedCustomers = customers.map(customer =>
-          customer.id === editingCustomer.id
-            ? { 
-                ...customer, 
-                ...formData,
-                agentName: selectedAgent.name
-              }
-            : customer
-        );
-      } else {
-        // Add new customer
-        const newCustomer: Customer = {
-          id: `cust_${Date.now()}`,
-          ...formData,
-          agentName: selectedAgent.name,
-          createdAt: new Date().toISOString().split('T')[0],
-          totalRolling: 0,
-          totalWinLoss: 0,
-          totalBuyIn: 0,
-          totalBuyOut: 0,
-          isActive: true,
-          attachments: [],
-          isAgent: false,
-          rollingPercentage: 1.4,
-          creditLimit: 0,
-          availableCredit: 0,
-          // Extended fields removed - not in Customer type
+        // Update existing customer - only send allowed fields to backend
+        const updateData = {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone || null,
+          vip_level: formData.vip_level || 'standard',
+          status: formData.status || 'active'
         };
-        updatedCustomers = [...customers, newCustomer];
+        
+        const response = await apiClient.updateCustomer(editingCustomer.id, updateData);
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to update customer');
+        }
+        
+        // Refresh data to get updated customer
+        await loadRealTimeData();
+      } else {
+        // Add new customer - only send required fields to backend
+        const customerData = {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone || null,
+          vip_level: formData.vip_level || 'standard',
+          status: formData.status || 'active'
+        };
+        
+        // Create customer via API
+        const response = await apiClient.createCustomer(customerData);
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to create customer');
+        }
+        
+        // Refresh data to get the new customer
+        await loadRealTimeData();
       }
 
-      // Save immediately to Supabase
-      await saveCustomersToSupabase(updatedCustomers);
+      // Data already saved via API, just update local state
 
       // Reset form and close dialog
-      setFormData({ name: '', email: '', phone: '', agentId: '' });
+      setFormData({ name: '', email: '', phone: '', agentId: '', vip_level: 'standard', status: 'active' });
       setEditingCustomer(null);
       setIsDialogOpen(false);
       
@@ -336,7 +340,9 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       name: customer.name,
       email: customer.email,
       phone: customer.phone,
-      agentId: customer.agentId
+      agentId: customer.agentId,
+      vip_level: (customer as any).vip_level || 'standard',
+      status: (customer as any).status || 'active'
     });
     setIsDialogOpen(true);
   };
@@ -387,7 +393,9 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       name: '', 
       email: '', 
       phone: '', 
-      agentId: user.role === 'agent' && user.agentId ? user.agentId : '' 
+      agentId: user.role === 'agent' && user.agentId ? user.agentId : '',
+      vip_level: 'standard',
+      status: 'active'
     });
     setIsDialogOpen(true);
   };

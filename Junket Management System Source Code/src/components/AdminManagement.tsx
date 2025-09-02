@@ -323,7 +323,7 @@ function AdminManagementComponent({ user, showError, clearError }: AdminManageme
         <Shield className="w-4 h-4 text-blue-600" />
         <AlertDescription className="text-blue-800">
           <strong>Admin Login Management:</strong> This section controls the login credentials for admin access. 
-          The system starts with <code className="bg-blue-100 px-1 rounded text-blue-900">admin / admin@8888</code> as the default credentials. 
+          The system starts with <code className="bg-blue-100 px-1 rounded text-blue-900">admin / admin123</code> as the default credentials. 
           You can Create, Read, Update, and Delete admin accounts here. All changes are stored in Supabase.
           <Button
             onClick={loadAdminData}
@@ -360,7 +360,7 @@ function AdminManagementComponent({ user, showError, clearError }: AdminManageme
             Create, Read, Update, and Delete admin login credentials stored in Supabase
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Default admin credentials: admin / admin@8888 (can be modified)
+            Default admin credentials: admin / admin123 (can be modified)
           </p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -485,7 +485,7 @@ function AdminManagementComponent({ user, showError, clearError }: AdminManageme
               <Shield className="w-12 h-12 mx-auto text-gray-400 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No Admin Accounts Found</h3>
               <p className="text-gray-500 mb-4">
-                The default admin account (admin/admin@8888) should be present. Try refreshing the data.
+                The default admin account (admin/admin123) should be present. Try refreshing the data.
               </p>
               <Button onClick={loadAdminData} disabled={loading}>
                 <RefreshCw className="w-4 h-4 mr-2" />
@@ -497,7 +497,7 @@ function AdminManagementComponent({ user, showError, clearError }: AdminManageme
           admins.map((admin) => {
             const isExpanded = expandedAdmin === admin.id;
             const isCurrentUser = admin.username === user.username;
-            const isDefaultAdmin = admin.username === 'admin' && admin.password === 'admin@8888';
+            const isDefaultAdmin = admin.username === 'admin' && admin.password === 'admin123';
             
             return (
               <Collapsible key={admin.id} open={isExpanded} onOpenChange={() => toggleAdminExpansion(admin.id)}>

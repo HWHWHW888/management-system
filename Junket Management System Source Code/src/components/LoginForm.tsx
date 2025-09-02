@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { User } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
+import { databaseWrapper } from '../utils/api/databaseWrapper';
 import { Database, Shield, Info, AlertTriangle, CheckCircle, Key, Users, RefreshCw, Bug } from 'lucide-react';
 
 interface LoginFormProps {
@@ -41,11 +42,31 @@ export function LoginForm({ onLogin }: LoginFormProps) {
 
       console.log('✅ Database health check passed, attempting login...');
       
-      const user = await db.login(username, password);
+      const user = await databaseWrapper.login(username, password);
       console.log('✅ Login successful for user:', user);
       onLogin(user);
     } catch (error: any) {
       console.error('❌ Login error:', error);
+      
+      // If login fails and it's admin credentials, try to initialize admin account
+      if (username === 'admin' && password === 'admin123' && error.message?.includes('Invalid')) {
+        console.log('🔧 Login failed for admin, attempting to initialize admin account...');
+        try {
+          await db.initializeSampleDataIfNeeded();
+          console.log('✅ Admin account initialized, retrying login...');
+          
+          // Retry login after initialization
+          const retryUser = await databaseWrapper.login(username, password);
+          console.log('✅ Retry login successful for user:', retryUser);
+          onLogin(retryUser);
+          return; // Exit early if retry succeeds
+        } catch (initError: any) {
+          console.error('❌ Failed to initialize admin account:', initError);
+          setError(`Login failed. Admin initialization error: ${initError.message}`);
+          return;
+        }
+      }
+      
       setError(error.message || 'Login failed');
       
       // If login fails, run a connection test for debugging
@@ -66,7 +87,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     switch (role) {
       case 'admin':
         setUsername('admin');
-        setPassword('admin@8888');
+        setPassword('admin123');
         break;
       case 'agent':
         setUsername('agent1');
@@ -107,7 +128,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       console.log('🔧 Manually initializing admin account...');
       await db.initializeSampleDataIfNeeded();
       setError('');
-      alert('Admin account initialized successfully! Try logging in with admin/admin@8888');
+      alert('Admin account initialized successfully! Try logging in with admin/admin123');
     } catch (error: any) {
       setError(`Initialization failed: ${error.message}`);
       console.error('❌ Admin initialization error:', error);
@@ -162,7 +183,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                     {error.includes('Invalid credentials') && (
                       <div className="mt-2 text-xs">
                         Make sure you're using the correct credentials:
-                        <br />• Admin: <code className="bg-red-100 px-1 rounded">admin / admin@8888</code>
+                        <br />• Admin: <code className="bg-red-100 px-1 rounded">admin / admin123</code>
                         <br />• Agent: <code className="bg-red-100 px-1 rounded">agent1 / agent123</code>
                         <br />• Staff: <code className="bg-red-100 px-1 rounded">staff1 / staff123</code>
                       </div>
@@ -233,7 +254,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                     <div className="text-xs text-yellow-600 space-y-1">
                       <div className="flex justify-between">
                         <span>Admin:</span>
-                        <code className="bg-yellow-100 px-1 rounded">admin / admin@8888</code>
+                        <code className="bg-yellow-100 px-1 rounded">admin / admin123</code>
                       </div>
                       <div className="flex justify-between">
                         <span>Agent:</span>
@@ -317,7 +338,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                     <p className="text-sm font-medium text-green-800">Fresh Start System</p>
                     <p className="text-xs text-green-700 mt-1">
                       The system starts with clean data. Only admin credentials are preset: 
-                      <code className="bg-green-100 px-1 rounded ml-1">admin / admin@8888</code>
+                      <code className="bg-green-100 px-1 rounded ml-1">admin / admin123</code>
                     </p>
                   </div>
                 </div>
