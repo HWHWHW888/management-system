@@ -61,13 +61,33 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     email: '',
     phone: '',
     agentId: '',
-    vip_level: 'standard',
+    vip_level: 'silver',
     status: 'active'
   });
 
-  // Extended customer details form data
+  // Extended customer details form data (only non-basic fields)
   const [detailFormData, setDetailFormData] = useState({
-    creditLimit: 0
+    // Identity & Personal
+    passportNumber: '',
+    idNumber: '',
+    nationality: '',
+    dateOfBirth: '',
+    address: '',
+    occupation: '',
+    
+    // Preferences & Lifestyle
+    hobby: '',
+    gamingPreferences: '',
+    emergencyContact: '',
+    emergencyPhone: '',
+    
+    // Additional Details
+    maritalStatus: '',
+    educationLevel: '',
+    incomeRange: '',
+    preferredLanguage: 'English',
+    notes: '',
+    specialRequirements: ''
   });
 
   // Load real-time data from Supabase
@@ -86,6 +106,37 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         db.get('rollingRecords', []),
         db.get('buyInOutRecords', [])
       ]);
+
+      // Load customer details for all customers
+      const customerDetailsPromises = customersData.map(async (customer: Customer) => {
+        try {
+          const detailsResponse = await apiClient.getCustomerDetails(customer.id);
+          return {
+            customerId: customer.id,
+            details: detailsResponse.success ? detailsResponse.data : null
+          };
+        } catch (error) {
+          console.log(`No details found for customer ${customer.id}`);
+          return {
+            customerId: customer.id,
+            details: null
+          };
+        }
+      });
+
+      const customerDetailsResults = await Promise.all(customerDetailsPromises);
+      const customerDetailsMap = new Map();
+      customerDetailsResults.forEach(result => {
+        if (result.details) {
+          customerDetailsMap.set(result.customerId, result.details);
+        }
+      });
+      
+      console.log('🔍 Customer details loaded:', customerDetailsResults.length, 'customers');
+      console.log('🔍 Customer details map size:', customerDetailsMap.size);
+      if (customerDetailsMap.size > 0) {
+        console.log('🔍 Sample customer details:', Array.from(customerDetailsMap.entries())[0]);
+      }
 
       // Process customers with backward compatibility and real-time rolling calculations
       const processedCustomers = customersData.map((customer: Customer) => {
@@ -107,6 +158,14 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           .filter((record: any) => record.transactionType === 'buy-out')
           .reduce((sum: number, record: any) => sum + record.amount, 0);
 
+        // Get customer details from the map
+        const customerDetails = customerDetailsMap.get(customer.id);
+        
+        // Debug log for each customer
+        if (customerDetails) {
+          console.log(`🔍 Customer ${customer.name} has details:`, customerDetails);
+        }
+
         return {
           ...customer,
           // Only include properties that exist in the Customer type
@@ -115,8 +174,11 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           totalWinLoss: realTimeWinLoss,
           totalBuyIn: realTimeBuyIn,
           totalBuyOut: realTimeBuyOut,
+          // Customer details merged into customer object
+          details: customerDetails,
+          // Get attachments from customer details instead of customer table
+          attachments: customerDetails?.attachments || [],
           // Backward compatibility
-          attachments: customer.attachments || [],
           isAgent: customer.isAgent || false,
           sourceAgentId: customer.sourceAgentId || undefined,
           rollingPercentage: customer.rollingPercentage || 1.4,
@@ -266,7 +328,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
-          vip_level: formData.vip_level || 'standard',
+          vip_level: formData.vip_level || 'Silver',
           status: formData.status || 'active'
         };
         
@@ -283,14 +345,15 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
-          vip_level: formData.vip_level || 'standard',
+          agent_id: formData.agentId,
+          vip_level: formData.vip_level || 'Silver',
           status: formData.status || 'active'
         };
         
         // Create customer via API
         const response = await apiClient.createCustomer(customerData);
         if (!response.success) {
-          throw new Error(response.error || 'Failed to create customer');
+          throw new Error(response.error || 'Failed to create customer 1');
         }
         
         // Refresh data to get the new customer
@@ -300,7 +363,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       // Data already saved via API, just update local state
 
       // Reset form and close dialog
-      setFormData({ name: '', email: '', phone: '', agentId: '', vip_level: 'standard', status: 'active' });
+      setFormData({ name: '', email: '', phone: '', agentId: '', vip_level: 'Silver', status: 'active' });
       setEditingCustomer(null);
       setIsDialogOpen(false);
       
@@ -315,22 +378,89 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     if (!selectedCustomer) return;
 
     try {
-      const updatedCustomers = customers.map(customer =>
-        customer.id === selectedCustomer.id
-          ? { 
-              ...customer, 
-              ...detailFormData,
-              availableCredit: detailFormData.creditLimit - (customer.totalRolling || 0)
-            }
-          : customer
-      );
+      // Prepare customer details data
+      const detailsData = {
+        // Identity & Personal fields
+        passport_number: detailFormData.passportNumber || null,
+        id_number: detailFormData.idNumber || null,
+        nationality: detailFormData.nationality || null,
+        date_of_birth: detailFormData.dateOfBirth || null,
+        address: detailFormData.address || null,
+        occupation: detailFormData.occupation || null,
+        
+        // Preferences & Lifestyle fields
+        hobby: detailFormData.hobby || null,
+        gaming_preferences: detailFormData.gamingPreferences || null,
+        emergency_contact: detailFormData.emergencyContact || null,
+        emergency_phone: detailFormData.emergencyPhone || null,
+        
+        // Additional Details
+        marital_status: detailFormData.maritalStatus || null,
+        education_level: detailFormData.educationLevel || null,
+        income_range: detailFormData.incomeRange || null,
+        preferred_language: detailFormData.preferredLanguage || 'English',
+        notes: detailFormData.notes || null,
+        special_requirements: detailFormData.specialRequirements || null
+      };
+      
+      // 🔍 Frontend Debug: Log data being sent to backend
+      console.log('🔍 Frontend - updateData being sent:', detailsData);
+      console.log('🔍 Frontend - Customer ID:', selectedCustomer.id);
+      console.log('🔍 Frontend - Form data:', detailFormData);
+      
+      // Use PUT endpoint which handles both create and update
+      const response = await apiClient.updateCustomerDetails(selectedCustomer.id, detailsData);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update customer details');
+      }
+      
+      console.log('✅ Customer details saved successfully');
+      
+      // Refresh data to get updated customer
+      await loadRealTimeData();
+      
+      // 重新加载当前客户的详情数据以显示最新信息
+      if (selectedCustomer) {
+        const updatedDetailsResponse = await apiClient.getCustomerDetails(selectedCustomer.id);
+        if (updatedDetailsResponse.success && updatedDetailsResponse.data) {
+          console.log('✅ Loaded updated customer details:', updatedDetailsResponse.data);
+          // 更新表单数据以显示最新保存的信息
+          const details = updatedDetailsResponse.data as any;
+          setDetailFormData({
+            passportNumber: details.passport_number || '',
+            idNumber: details.id_number || '',
+            nationality: details.nationality || '',
+            dateOfBirth: details.date_of_birth || '',
+            address: details.address || '',
+            occupation: details.occupation || '',
+            hobby: details.hobby || '',
+            gamingPreferences: details.gaming_preferences || '',
+            emergencyContact: details.emergency_contact || '',
+            emergencyPhone: details.emergency_phone || '',
+            maritalStatus: details.marital_status || '',
+            educationLevel: details.education_level || '',
+            incomeRange: details.income_range || '',
+            preferredLanguage: details.preferred_language || 'English',
+            notes: details.notes || '',
+            specialRequirements: details.special_requirements || ''
+          });
 
-      await saveCustomersToSupabase(updatedCustomers);
+          // 同步更新 selectedCustomer 对象以确保基本信息显示最新数据
+          const updatedCustomer = customers.find(c => c.id === selectedCustomer.id);
+          if (updatedCustomer) {
+            setSelectedCustomer({
+              ...updatedCustomer
+            });
+          }
+        }
+      }
+      
       setIsDetailDialogOpen(false);
       setSelectedCustomer(null);
       
     } catch (error) {
-      // Error already handled in saveCustomersToSupabase
+      console.error('Error updating customer details:', error);
+      showError(`Failed to update customer details: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     }
   };
 
@@ -341,17 +471,95 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       email: customer.email,
       phone: customer.phone,
       agentId: customer.agentId,
-      vip_level: (customer as any).vip_level || 'standard',
+      vip_level: (customer as any).vip_level || 'Silver',
       status: (customer as any).status || 'active'
     });
     setIsDialogOpen(true);
   };
 
-  const handleEditDetails = (customer: Customer) => {
+  const handleEditDetails = async (customer: Customer) => {
     setSelectedCustomer(customer);
-    setDetailFormData({
-      creditLimit: customer.creditLimit || 0
-    });
+    
+    try {
+      // Load existing customer details from API
+      const response = await apiClient.getCustomerDetails(customer.id);
+      
+      if (response.success && response.data) {
+        // Use existing details from API
+        const details = response.data as any; // Type assertion to fix TypeScript errors
+        setDetailFormData({
+          // Identity & Personal
+          passportNumber: details.passport_number || '',
+          idNumber: details.id_number || '',
+          nationality: details.nationality || '',
+          dateOfBirth: details.date_of_birth || '',
+          address: details.address || '',
+          occupation: details.occupation || '',
+          
+          // Preferences & Lifestyle
+          hobby: details.hobby || '',
+          gamingPreferences: details.gaming_preferences || '',
+          emergencyContact: details.emergency_contact || '',
+          emergencyPhone: details.emergency_phone || '',
+          
+          // Additional Details
+          maritalStatus: details.marital_status || '',
+          educationLevel: details.education_level || '',
+          incomeRange: details.income_range || '',
+          preferredLanguage: details.preferred_language || 'English',
+          notes: details.notes || '',
+          specialRequirements: details.special_requirements || ''
+        });
+      } else {
+        // No existing details, use empty form
+        setDetailFormData({
+          // Identity & Personal
+          passportNumber: '',
+          idNumber: '',
+          nationality: '',
+          dateOfBirth: '',
+          address: '',
+          occupation: '',
+          
+          // Preferences & Lifestyle
+          hobby: '',
+          gamingPreferences: '',
+          emergencyContact: '',
+          emergencyPhone: '',
+          
+          // Additional Details
+          maritalStatus: '',
+          educationLevel: '',
+          incomeRange: '',
+          preferredLanguage: 'English',
+          notes: '',
+          specialRequirements: ''
+        });
+      }
+    } catch (error) {
+      console.error('Error loading customer details:', error);
+      showError('Failed to load customer details');
+      // Use empty form as fallback
+      setDetailFormData({
+        passportNumber: '',
+        idNumber: '',
+        nationality: '',
+        dateOfBirth: '',
+        address: '',
+        occupation: '',
+        hobby: '',
+        gamingPreferences: '',
+        emergencyContact: '',
+        emergencyPhone: '',
+        maritalStatus: '',
+        educationLevel: '',
+        incomeRange: '',
+        preferredLanguage: 'English',
+        notes: '',
+        specialRequirements: ''
+      });
+    }
+    
     setIsDetailDialogOpen(true);
   };
 
@@ -375,15 +583,74 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
 
   const updateCustomerAttachments = async (customerId: string, attachments: FileAttachment[]) => {
     try {
+      console.log('🔍 Frontend - Updating customer attachments:', customerId, attachments.length);
+      
+      // Update local state immediately for UI responsiveness
       const updatedCustomers = customers.map(customer =>
         customer.id === customerId
           ? { ...customer, attachments }
           : customer
       );
+      setCustomers(updatedCustomers);
+
+      // Save to backend via API
+      const response = await apiClient.uploadCustomerAttachments(customerId, attachments);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to upload attachments');
+      }
+
+      console.log('✅ Customer attachments updated successfully');
       
-      await saveCustomersToSupabase(updatedCustomers);
+      // Refresh data to ensure consistency
+      await loadRealTimeData();
     } catch (error) {
-      // Error already handled in saveCustomersToSupabase
+      console.error('❌ Error updating customer attachments:', error);
+      showError(`Failed to update attachments: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+      
+      // Revert local state on error
+      await loadRealTimeData();
+    }
+  };
+
+  const handleFileUpload = async (customerId: string, newAttachments: FileAttachment[]) => {
+    try {
+      console.log('🔍 Frontend - Uploading new files:', customerId, newAttachments.length);
+      
+      // Get current customer
+      const customer = customers.find(c => c.id === customerId);
+      if (!customer) {
+        throw new Error('Customer not found');
+      }
+
+      // Merge with existing attachments
+      const existingAttachments = customer.attachments || [];
+      const allAttachments = [...existingAttachments, ...newAttachments];
+
+      // Update via the existing function
+      await updateCustomerAttachments(customerId, allAttachments);
+    } catch (error) {
+      console.error('❌ Error uploading files:', error);
+      showError(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+    }
+  };
+
+  const handleDeleteAttachment = async (customerId: string, attachmentId: string) => {
+    try {
+      console.log('🔍 Frontend - Deleting attachment:', customerId, attachmentId);
+      
+      // Delete via API
+      const response = await apiClient.deleteCustomerAttachment(customerId, attachmentId);
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to delete attachment');
+      }
+
+      console.log('✅ Attachment deleted successfully');
+      
+      // Refresh data to get updated attachments
+      await loadRealTimeData();
+    } catch (error) {
+      console.error('❌ Error deleting attachment:', error);
+      showError(`Failed to delete attachment: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     }
   };
 
@@ -394,7 +661,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       email: '', 
       phone: '', 
       agentId: user.role === 'agent' && user.agentId ? user.agentId : '',
-      vip_level: 'standard',
+      vip_level: 'Silver',
       status: 'active'
     });
     setIsDialogOpen(true);
@@ -405,7 +672,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     if (user.role === 'agent' && user.agentId) {
       return agents.filter(agent => agent.id === user.agentId);
     }
-    return agents.filter(agent => agent.isActive);
+    return agents.filter(agent => agent.status === 'active');
   };
 
   const availableAgents = getAvailableAgents();
@@ -727,9 +994,37 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                         <span className="text-sm">{customer.email}</span>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Phone className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-500">Phone:</span>
                         <span className="text-sm">{customer.phone}</span>
                       </div>
+                      {/* 客户详情摘要 - 添加调试信息 */}
+                      {(() => {
+                        const details = (customer as any).details;
+                        console.log(`🔍 UI Render - Customer ${customer.name} details:`, details);
+                        
+                        if (!details) {
+                          return (
+                            <div className="flex items-center space-x-2">
+                              <span className="text-sm text-gray-400">No details available</span>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-sm text-gray-500">Nationality:</span>
+                              <span className="text-sm">{details.nationality || 'Not provided'}</span>
+                            </div>
+                            {details.passport_number && (
+                              <div className="flex items-center space-x-2">
+                                <span className="text-sm text-gray-500">Passport:</span>
+                                <span className="text-sm">{details.passport_number}</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                       <div className="flex items-center space-x-2">
                         <DollarSign className="w-4 h-4 text-blue-600" />
                         <span className="text-sm font-medium">Rolling: ${(customer.totalRolling || 0).toLocaleString()}</span>
@@ -879,27 +1174,27 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                               </h4>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Passport Number</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.passport_number || 'Not provided'}</p>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">ID Number</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.id_number || 'Not provided'}</p>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Nationality</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.nationality || 'Not provided'}</p>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Date of Birth</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.date_of_birth || 'Not provided'}</p>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Address</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.address || 'Not provided'}</p>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Occupation</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.occupation || 'Not provided'}</p>
                               </div>
                             </div>
 
@@ -911,11 +1206,11 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                               </h4>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Hobby</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.hobby || 'Not provided'}</p>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Gaming Preferences</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.gaming_preferences || 'Not provided'}</p>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Credit Limit</Label>
@@ -927,11 +1222,11 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Emergency Contact</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.emergency_contact || 'Not provided'}</p>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Emergency Phone</Label>
-                                <p>Not provided</p>
+                                <p>{(customer as any).details?.emergency_phone || 'Not provided'}</p>
                               </div>
                             </div>
                           </div>
@@ -1186,7 +1481,9 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             <FileUpload
                               attachments={customer.attachments || []}
                               onAttachmentsChange={(attachments) => updateCustomerAttachments(customer.id, attachments)}
+                              onUpload={(newAttachments) => handleFileUpload(customer.id, newAttachments)}
                               disabled={isStaff}
+                              currentUser={user.username || user.email || 'Unknown User'}
                             />
                           )}
                           
@@ -1234,23 +1531,231 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           <DialogHeader>
             <DialogTitle>Edit Customer Details</DialogTitle>
             <DialogDescription>
-              Update customer credit limit and financial details
+              Update comprehensive customer information
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleDetailSubmit} className="space-y-6">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="creditLimit">Credit Limit (HKD)</Label>
-                <Input
-                  id="creditLimit"
-                  type="number"
-                  value={detailFormData.creditLimit}
-                  onChange={(e) => setDetailFormData({...detailFormData, creditLimit: parseFloat(e.target.value) || 0})}
-                  placeholder="0"
-                  disabled={saving}
-                />
-              </div>
-            </div>
+            <Tabs defaultValue="identity" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="identity">Identity & Personal</TabsTrigger>
+                <TabsTrigger value="preferences">Preferences & Lifestyle</TabsTrigger>
+                <TabsTrigger value="additional">Additional Details</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="identity" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="passportNumber">Passport Number</Label>
+                    <Input
+                      id="passportNumber"
+                      value={detailFormData.passportNumber}
+                      onChange={(e) => setDetailFormData({...detailFormData, passportNumber: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="idNumber">ID Number</Label>
+                    <Input
+                      id="idNumber"
+                      value={detailFormData.idNumber}
+                      onChange={(e) => setDetailFormData({...detailFormData, idNumber: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="nationality">Nationality</Label>
+                    <Input
+                      id="nationality"
+                      value={detailFormData.nationality}
+                      onChange={(e) => setDetailFormData({...detailFormData, nationality: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                    <Input
+                      id="dateOfBirth"
+                      type="date"
+                      value={detailFormData.dateOfBirth}
+                      onChange={(e) => setDetailFormData({...detailFormData, dateOfBirth: e.target.value})}
+                      disabled={saving}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label htmlFor="address">Address</Label>
+                    <Textarea
+                      id="address"
+                      value={detailFormData.address}
+                      onChange={(e) => setDetailFormData({...detailFormData, address: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                      rows={3}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="occupation">Occupation</Label>
+                    <Input
+                      id="occupation"
+                      value={detailFormData.occupation}
+                      onChange={(e) => setDetailFormData({...detailFormData, occupation: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="preferences" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="hobby">Hobby</Label>
+                    <Input
+                      id="hobby"
+                      value={detailFormData.hobby}
+                      onChange={(e) => setDetailFormData({...detailFormData, hobby: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="gamingPreferences">Gaming Preferences</Label>
+                    <Input
+                      id="gamingPreferences"
+                      value={detailFormData.gamingPreferences}
+                      onChange={(e) => setDetailFormData({...detailFormData, gamingPreferences: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="emergencyContact">Emergency Contact</Label>
+                    <Input
+                      id="emergencyContact"
+                      value={detailFormData.emergencyContact}
+                      onChange={(e) => setDetailFormData({...detailFormData, emergencyContact: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="emergencyPhone">Emergency Phone</Label>
+                    <Input
+                      id="emergencyPhone"
+                      value={detailFormData.emergencyPhone}
+                      onChange={(e) => setDetailFormData({...detailFormData, emergencyPhone: e.target.value})}
+                      placeholder="Not provided"
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="additional" className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="maritalStatus">Marital Status</Label>
+                    <Select 
+                      value={detailFormData.maritalStatus} 
+                      onValueChange={(value) => setDetailFormData({...detailFormData, maritalStatus: value})}
+                      disabled={saving}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single">Single</SelectItem>
+                        <SelectItem value="married">Married</SelectItem>
+                        <SelectItem value="divorced">Divorced</SelectItem>
+                        <SelectItem value="widowed">Widowed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="educationLevel">Education Level</Label>
+                    <Select 
+                      value={detailFormData.educationLevel} 
+                      onValueChange={(value) => setDetailFormData({...detailFormData, educationLevel: value})}
+                      disabled={saving}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select education" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="high_school">High School</SelectItem>
+                        <SelectItem value="bachelor">Bachelor's Degree</SelectItem>
+                        <SelectItem value="master">Master's Degree</SelectItem>
+                        <SelectItem value="doctorate">Doctorate</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="incomeRange">Income Range</Label>
+                    <Select 
+                      value={detailFormData.incomeRange} 
+                      onValueChange={(value) => setDetailFormData({...detailFormData, incomeRange: value})}
+                      disabled={saving}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select range" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="under_50k">Under $50,000</SelectItem>
+                        <SelectItem value="50k_100k">$50,000 - $100,000</SelectItem>
+                        <SelectItem value="100k_250k">$100,000 - $250,000</SelectItem>
+                        <SelectItem value="250k_500k">$250,000 - $500,000</SelectItem>
+                        <SelectItem value="over_500k">Over $500,000</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="preferredLanguage">Preferred Language</Label>
+                    <Select 
+                      value={detailFormData.preferredLanguage} 
+                      onValueChange={(value) => setDetailFormData({...detailFormData, preferredLanguage: value})}
+                      disabled={saving}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="English">English</SelectItem>
+                        <SelectItem value="Chinese">Chinese</SelectItem>
+                        <SelectItem value="Cantonese">Cantonese</SelectItem>
+                        <SelectItem value="Mandarin">Mandarin</SelectItem>
+                        <SelectItem value="Japanese">Japanese</SelectItem>
+                        <SelectItem value="Korean">Korean</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
+                    <Label htmlFor="notes">Notes</Label>
+                    <Textarea
+                      id="notes"
+                      value={detailFormData.notes}
+                      onChange={(e) => setDetailFormData({...detailFormData, notes: e.target.value})}
+                      placeholder="Additional notes about the customer..."
+                      disabled={saving}
+                      rows={3}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label htmlFor="specialRequirements">Special Requirements</Label>
+                    <Textarea
+                      id="specialRequirements"
+                      value={detailFormData.specialRequirements}
+                      onChange={(e) => setDetailFormData({...detailFormData, specialRequirements: e.target.value})}
+                      placeholder="Any special requirements or accommodations..."
+                      disabled={saving}
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
 
             <div className="flex justify-end space-x-2">
               <Button type="button" variant="outline" onClick={() => setIsDetailDialogOpen(false)} disabled={saving}>

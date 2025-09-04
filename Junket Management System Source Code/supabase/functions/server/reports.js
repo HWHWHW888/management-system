@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
-import { authMiddleware } from './auth.js';
+import { authenticateToken } from './auth.js';
 const router = Router();
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -12,7 +12,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
  * Generate comprehensive reports for dashboard
  * Query params: period, agentId, view
  */
-router.get('/', authMiddleware, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const { period = 'last_30_days', agentId, view = 'overview' } = req.query;
         const userId = req.user.id;
@@ -52,7 +52,7 @@ router.get('/', authMiddleware, async (req, res) => {
  * GET /reports/quick-stats
  * Get quick overview statistics
  */
-router.get('/quick-stats', authMiddleware, async (req, res) => {
+router.get('/quick-stats', authenticateToken, async (req, res) => {
     try {
         const { period = 'last_7_days' } = req.query;
         const { startDate, endDate } = calculateDateRange(period);
@@ -77,7 +77,7 @@ router.get('/quick-stats', authMiddleware, async (req, res) => {
  * GET /reports/agent/:agentId
  * Get detailed report for specific agent
  */
-router.get('/agent/:agentId', authMiddleware, async (req, res) => {
+router.get('/agent/:agentId', authenticateToken, async (req, res) => {
     try {
         const agentId = req.params.agentId;
         const { period = 'last_30_days' } = req.query;

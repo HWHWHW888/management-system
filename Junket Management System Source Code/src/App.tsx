@@ -121,25 +121,17 @@ function App() {
         throw new Error('Database is not available. Please try again later.');
       }
 
+      console.log('🔍 App.handleLogin received user:', user);
+      console.log('🔍 App.handleLogin user role:', user?.role);
+      console.log('🔍 App.handleLogin user token:', user?.token ? 'Present' : 'Missing');
+      
+      // Use the user object directly from databaseWrapper.login (already has token and role)
       setCurrentUser(user);
       
-      // Preserve token if it exists in localStorage (set by databaseWrapper.login)
-      const existingUser = localStorage.getItem('casinoUser');
-      if (existingUser) {
-        try {
-          const parsedUser = JSON.parse(existingUser);
-          if (parsedUser.token) {
-            const userWithToken = { ...user, token: parsedUser.token };
-            localStorage.setItem('casinoUser', JSON.stringify(userWithToken));
-          } else {
-            localStorage.setItem('casinoUser', JSON.stringify(user));
-          }
-        } catch (error) {
-          localStorage.setItem('casinoUser', JSON.stringify(user));
-        }
-      } else {
-        localStorage.setItem('casinoUser', JSON.stringify(user));
-      }
+      // The user object is already saved to localStorage by databaseWrapper.login
+      // Just verify it's there
+      const savedUser = localStorage.getItem('casinoUser');
+      console.log('🔍 App.handleLogin localStorage user:', savedUser);
       
       // Set default tab based on user role
       if (user.role === 'staff') {
@@ -288,13 +280,13 @@ function App() {
     );
   }
 
-  const isAdmin = currentUser.role === 'admin';
-  const isAgent = currentUser.role === 'agent';
-  const isStaff = currentUser.role === 'staff';
+  const isAdmin = currentUser?.role === 'admin';
+  const isAgent = currentUser?.role === 'agent';
+  const isStaff = currentUser?.role === 'staff';
 
   // Helper function to get display role
   const getDisplayRole = () => {
-    return currentUser.role.toUpperCase();
+    return currentUser?.role?.toUpperCase() ;
   };
 
   return (
@@ -563,7 +555,7 @@ function App() {
         </div>
 
         {/* Content */}
-        {activeTab === 'dashboard' && (isAdmin || isAgent) && <Dashboard user={currentUser} />}
+        {activeTab === 'dashboard' && <Dashboard user={currentUser} />}
         {activeTab === 'customers' && (isAdmin || isAgent || isStaff) && <CustomerManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'agents' && (isAdmin || isStaff) && <AgentManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'staff' && isAdmin && <StaffManagement user={currentUser} showError={() => {}} clearError={() => {}} />}

@@ -298,7 +298,7 @@ export function Reports({ user }: ReportsProps) {
 
     // Agent metrics
     const totalAgents = agents.length;
-    const activeAgents = agents.filter(a => a.isActive).length;
+    const activeAgents = agents.filter(a => a.status === 'active').length;
 
     // Trip metrics
     const totalTrips = filteredTrips.length;

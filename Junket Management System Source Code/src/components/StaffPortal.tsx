@@ -13,7 +13,7 @@ import { ImageWithFallback } from './figma/ImageWithFallback';
 import { StaffRollingRecorder } from './StaffRollingRecorder';
 import { StaffRollingHistory } from './StaffRollingHistory';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { db } from '../utils/supabase/supabaseClients';
+import { db } from '../utils/api/databaseWrapper';
 
 
 interface StaffPortalProps extends WithErrorHandlerProps {

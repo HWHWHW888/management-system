@@ -12,7 +12,7 @@ import { Textarea } from './ui/textarea';
 import { User, Staff, StaffShift, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { db } from '../utils/supabase/supabaseClients';
+import { apiClient } from '../utils/api/apiClient';
 import { Plus, Edit, Mail, Phone, Shield, Clock, CheckCircle, ChevronDown, ChevronUp, LogIn, LogOut, Paperclip, Calendar, Key, UserPlus, Eye, EyeOff, Database, Save } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
@@ -20,29 +20,33 @@ interface StaffManagementProps extends WithErrorHandlerProps {
   user: User;
 }
 
-interface StaffAccount {
+interface StaffWithUser {
   id: string;
-  username: string;
-  password: string;
-  role: 'staff';
-  staffId: string;
-  isActive: boolean;
-  createdAt: string;
-  lastLogin?: string;
+  name: string;
+  email: string;
+  phone: string;
+  position: string;
+  status: 'active' | 'inactive';
+  attachments: FileAttachment[];
+  created_at: string;
+  updated_at: string;
+  username?: string;
+  user_id?: string;
+  user_status?: string;
+  current_shift?: StaffShift[];
 }
 
 function StaffManagementComponent({ user, showError, clearError }: StaffManagementProps) {
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [staffAccounts, setStaffAccounts] = useState<StaffAccount[]>([]);
+  const [staff, setStaff] = useState<StaffWithUser[]>([]);
   const [shifts, setShifts] = useState<StaffShift[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
   const [isCheckInDialogOpen, setIsCheckInDialogOpen] = useState(false);
   const [isCheckOutDialogOpen, setIsCheckOutDialogOpen] = useState(false);
-  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
-  const [managingLoginStaff, setManagingLoginStaff] = useState<Staff | null>(null);
-  const [checkingInStaff, setCheckingInStaff] = useState<Staff | null>(null);
-  const [checkingOutStaff, setCheckingOutStaff] = useState<Staff | null>(null);
+  const [editingStaff, setEditingStaff] = useState<StaffWithUser | null>(null);
+  const [managingLoginStaff, setManagingLoginStaff] = useState<StaffWithUser | null>(null);
+  const [checkingInStaff, setCheckingInStaff] = useState<StaffWithUser | null>(null);
+  const [checkingOutStaff, setCheckingOutStaff] = useState<StaffWithUser | null>(null);
   const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
   const [checkInPhoto, setCheckInPhoto] = useState<File | null>(null);
   const [checkOutPhoto, setCheckOutPhoto] = useState<File | null>(null);
@@ -55,7 +59,9 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
     name: '',
     email: '',
     phone: '',
-    position: ''
+    position: '',
+    username: '',
+    password: ''
   });
   const [loginFormData, setLoginFormData] = useState({
     username: '',
@@ -72,33 +78,34 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
       setLoading(true);
       clearError();
       
-      console.log('🔄 Loading staff data from Supabase...');
+      console.log('🔄 Loading staff data from API...');
       
-      // Load all required data from Supabase
-      const [staffData, staffAccountsData, shiftsData, usersData] = await Promise.all([
-        db.get('staff', []),
-        db.get('staff', []),
-        db.get('staff_shifts', []),
-        db.get('users', [])
-      ]);
+      // Load staff data from new API
+      const staffResponse = await apiClient.getStaffs();
+      
+      if (!staffResponse.success) {
+        throw new Error(staffResponse.error || 'Failed to load staff data');
+      }
 
-      // Process staff with backward compatibility
-      const processedStaff = staffData.map((member: Staff) => {
-        const { isAgent, agentId, permissions, ...cleanMember } = member as any;
-        return {
-          ...cleanMember,
-          attachments: cleanMember.attachments || []
-        };
-      });
+      const processedStaff = staffResponse.data?.map((member: any) => ({
+        id: member.id,
+        name: member.name,
+        email: member.email,
+        phone: member.phone,
+        position: member.position,
+        status: member.status,
+        attachments: member.attachments || [],
+        created_at: member.created_at,
+        updated_at: member.updated_at,
+        username: member.username,
+        user_id: member.user_id,
+        user_status: member.user_status,
+        current_shift: member.current_shift || []
+      })) || [];
 
       setStaff(processedStaff);
-      setStaffAccounts(staffAccountsData);
-      setShifts(shiftsData);
       
-      console.log(`✅ Loaded ${processedStaff.length} staff, ${staffAccountsData.length} accounts, ${shiftsData.length} shifts from Supabase`);
-      
-      // Ensure all staff have corresponding user accounts
-      await syncStaffWithUsers(staffAccountsData, usersData);
+      console.log(`✅ Loaded ${processedStaff.length} staff members from API`);
       
     } catch (error) {
       console.error('❌ Error loading staff data:', error);
@@ -109,143 +116,65 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
     }
   };
 
-  const syncStaffWithUsers = async (staffAccountsData: StaffAccount[], usersData: any[]) => {
-    try {
-      const defaultUsers = [
-        { id: 'admin-1', username: 'admin', password: 'admin123', role: 'admin' },
-        { id: 'agent-1', username: 'agent1', password: 'agent123', role: 'agent', agentId: 'agent-1' }
-      ];
-      
-      const otherUsers = usersData.filter((u: any) => u.role !== 'staff');
-      const staffUsers = staffAccountsData.map(account => ({
-        id: account.id,
-        username: account.username,
-        password: account.password,
-        role: account.role,
-        staffId: account.staffId
-      }));
-      
-      const newUsers = [...defaultUsers.filter(u => !otherUsers.find((o: any) => o.id === u.id)), ...otherUsers, ...staffUsers];
-      await db.save('users', newUsers);
-      
-      console.log('✅ Synchronized staff accounts with users');
-    } catch (error) {
-      console.error('❌ Error syncing staff with users:', error);
-      // Don't throw here as it's not critical for the main functionality
-    }
-  };
+  // Remove syncStaffWithUsers as it's no longer needed with new API architecture
 
-  const saveStaffToSupabase = async (updatedStaff: Staff[]) => {
-    try {
-      setSaving(true);
-      clearError();
-      
-      console.log('💾 Saving staff to Supabase...');
-      await db.save('staff', updatedStaff);
-      
-      setStaff(updatedStaff);
-      console.log('✅ Successfully saved staff to Supabase');
-      
-    } catch (error) {
-      console.error('❌ Error saving staff:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      showError(`Failed to save staff data: ${errorMessage}`);
-      throw error;
-    } finally {
-      setSaving(false);
-    }
-  };
+  // Remove saveStaffToSupabase as we now use individual API calls
 
-  const saveStaffAccountsToSupabase = async (updatedAccounts: StaffAccount[]) => {
-    try {
-      clearError();
-      
-      console.log('💾 Saving staff accounts to Supabase...');
-      await Promise.all([
-        db.save('staffAccounts', updatedAccounts),
-        syncStaffAccountsWithUsers(updatedAccounts)
-      ]);
-      
-      setStaffAccounts(updatedAccounts);
-      console.log('✅ Successfully saved staff accounts to Supabase');
-      
-    } catch (error) {
-      console.error('❌ Error saving staff accounts:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      showError(`Failed to save staff account data: ${errorMessage}`);
-      throw error;
-    }
-  };
+  // Remove saveStaffAccountsToSupabase as accounts are now managed via API
 
-  const syncStaffAccountsWithUsers = async (updatedAccounts: StaffAccount[]) => {
-    try {
-      const allUsers = await db.get('users', []);
-      const otherUsers = allUsers.filter((u: any) => u.role !== 'staff');
-      const staffUsers = updatedAccounts.map(account => ({
-        id: account.id,
-        username: account.username,
-        password: account.password,
-        role: account.role,
-        staffId: account.staffId
-      }));
-      
-      const newUsers = [...otherUsers, ...staffUsers];
-      await db.save('users', newUsers);
-    } catch (error) {
-      console.error('❌ Error syncing staff accounts with users:', error);
-      throw error;
-    }
-  };
+  // Remove syncStaffAccountsWithUsers as it's handled by the backend API
 
-  const saveShiftsToSupabase = async (updatedShifts: StaffShift[]) => {
-    try {
-      clearError();
-      
-      console.log('💾 Saving shifts to Supabase...');
-      await db.save('shifts', updatedShifts);
-      
-      setShifts(updatedShifts);
-      console.log('✅ Successfully saved shifts to Supabase');
-      
-    } catch (error) {
-      console.error('❌ Error saving shifts:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      showError(`Failed to save shift data: ${errorMessage}`);
-      throw error;
-    }
-  };
+  // Remove saveShiftsToSupabase as shifts are managed via API
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
-      let updatedStaff: Staff[];
+      setSaving(true);
+      clearError();
 
       if (editingStaff) {
         // Update existing staff
-        updatedStaff = staff.map(member =>
-          member.id === editingStaff.id
-            ? { ...member, ...formData }
-            : member
-        );
-      } else {
-        // Add new staff
-        const newStaffId = `staff-${Date.now()}`;
-        const newStaff: Staff = {
-          id: newStaffId,
-          ...formData,
-          createdAt: new Date().toISOString().split('T')[0],
-          isActive: true,
-          attachments: []
+        const updateData = {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          position: formData.position
         };
-        updatedStaff = [...staff, newStaff];
+        
+        const response = await apiClient.updateStaff(editingStaff.id, updateData);
+        
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to update staff member');
+        }
+      } else {
+        // Create new staff with login credentials
+        const staffData = {
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          position: formData.position,
+          username: formData.username,
+          password: formData.password
+        };
+        
+        const response = await apiClient.createStaff(staffData);
+        
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to create staff member');
+        }
       }
 
-      await saveStaffToSupabase(updatedStaff);
+      // Reload data to get updated information
+      await loadAllData();
       resetForm();
       
     } catch (error) {
-      // Error already handled in save function
+      console.error('❌ Error saving staff:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      showError(`Failed to save staff: ${errorMessage}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -259,51 +188,32 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
       return;
     }
 
-    // Check if username already exists (excluding current account if editing)
-    const existingAccount = staffAccounts.find(
-      account => account.username === loginFormData.username && 
-      account.staffId !== managingLoginStaff.id
-    );
-
-    if (existingAccount) {
-      showError('Username already exists! Please choose a different username.');
-      return;
-    }
-
     try {
-      const existingAccountIndex = staffAccounts.findIndex(
-        account => account.staffId === managingLoginStaff.id
-      );
-
-      let updatedAccounts: StaffAccount[];
-
-      if (existingAccountIndex >= 0) {
-        // Update existing account
-        updatedAccounts = [...staffAccounts];
-        updatedAccounts[existingAccountIndex] = {
-          ...updatedAccounts[existingAccountIndex],
-          username: loginFormData.username,
-          password: loginFormData.password
-        };
-      } else {
-        // Create new account
-        const newAccount: StaffAccount = {
-          id: `account-${Date.now()}`,
-          username: loginFormData.username,
-          password: loginFormData.password,
-          role: 'staff',
-          staffId: managingLoginStaff.id,
-          isActive: true,
-          createdAt: new Date().toISOString().split('T')[0]
-        };
-        updatedAccounts = [...staffAccounts, newAccount];
+      setSaving(true);
+      clearError();
+      
+      // Update staff with new login credentials
+      const updateData = {
+        username: loginFormData.username,
+        password: loginFormData.password
+      };
+      
+      const response = await apiClient.updateStaff(managingLoginStaff.id, updateData);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update login credentials');
       }
 
-      await saveStaffAccountsToSupabase(updatedAccounts);
+      // Reload data to get updated information
+      await loadAllData();
       resetLoginForm();
       
     } catch (error) {
-      // Error already handled in save function
+      console.error('❌ Error updating login credentials:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      showError(`Failed to update login credentials: ${errorMessage}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -312,7 +222,9 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
       name: '',
       email: '',
       phone: '',
-      position: ''
+      position: '',
+      username: '',
+      password: ''
     });
     setEditingStaff(null);
     setIsDialogOpen(false);
@@ -329,43 +241,50 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
     setShowPassword(false);
   };
 
-  const handleEdit = (staffMember: Staff) => {
+  const handleEdit = (staffMember: StaffWithUser) => {
     setEditingStaff(staffMember);
     setFormData({
       name: staffMember.name,
       email: staffMember.email,
       phone: staffMember.phone,
-      position: staffMember.position
+      position: staffMember.position,
+      username: staffMember.username || '',
+      password: ''
     });
     setIsDialogOpen(true);
   };
 
-  const handleManageLogin = (staffMember: Staff) => {
+  const handleManageLogin = (staffMember: StaffWithUser) => {
     setManagingLoginStaff(staffMember);
-    const existingAccount = staffAccounts.find(account => account.staffId === staffMember.id);
     
-    if (existingAccount) {
-      setLoginFormData({
-        username: existingAccount.username,
-        password: existingAccount.password,
-        confirmPassword: existingAccount.password
-      });
-    } else {
-      setLoginFormData({
-        username: '',
-        password: '',
-        confirmPassword: ''
-      });
-    }
+    setLoginFormData({
+      username: staffMember.username || '',
+      password: '',
+      confirmPassword: ''
+    });
     setIsLoginDialogOpen(true);
   };
 
-  const deleteStaffAccount = async (staffId: string) => {
+  const deleteStaff = async (staffId: string) => {
     try {
-      const updatedAccounts = staffAccounts.filter(account => account.staffId !== staffId);
-      await saveStaffAccountsToSupabase(updatedAccounts);
+      setSaving(true);
+      clearError();
+      
+      const response = await apiClient.deleteStaff(staffId);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to delete staff member');
+      }
+      
+      // Reload data to get updated information
+      await loadAllData();
+      
     } catch (error) {
-      // Error already handled in save function
+      console.error('❌ Error deleting staff:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      showError(`Failed to delete staff: ${errorMessage}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -375,36 +294,39 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
 
   const toggleStaffStatus = async (staffId: string) => {
     try {
-      const updatedStaff = staff.map(member =>
-        member.id === staffId
-          ? { ...member, isActive: !member.isActive }
-          : member
-      );
-
-      const updatedAccounts = staffAccounts.map(account =>
-        account.staffId === staffId
-          ? { ...account, isActive: !account.isActive }
-          : account
-      );
-
-      await Promise.all([
-        saveStaffToSupabase(updatedStaff),
-        saveStaffAccountsToSupabase(updatedAccounts)
-      ]);
+      setSaving(true);
+      clearError();
+      
+      const staffMember = staff.find(s => s.id === staffId);
+      if (!staffMember) return;
+      
+      const newStatus = staffMember.status === 'active' ? 'inactive' : 'active';
+      const response = await apiClient.updateStaff(staffId, { status: newStatus });
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update staff status');
+      }
+      
+      // Reload data to get updated information
+      await loadAllData();
       
     } catch (error) {
-      // Error already handled in save functions
+      console.error('❌ Error updating staff status:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      showError(`Failed to update staff status: ${errorMessage}`);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const openCheckInDialog = (staffMember: Staff) => {
+  const openCheckInDialog = (staffMember: StaffWithUser) => {
     setCheckingInStaff(staffMember);
     setCheckInPhoto(null);
     setCheckInNotes('');
     setIsCheckInDialogOpen(true);
   };
 
-  const openCheckOutDialog = (staffMember: Staff) => {
+  const openCheckOutDialog = (staffMember: StaffWithUser) => {
     setCheckingOutStaff(staffMember);
     setCheckOutPhoto(null);
     setCheckOutNotes('');
@@ -415,40 +337,25 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
     if (!checkingInStaff || !checkInPhoto) return;
 
     try {
+      setSaving(true);
+      clearError();
+      
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
-          const photoAttachment: FileAttachment = {
-            id: `photo_${Date.now()}`,
-            name: checkInPhoto!.name,
-            size: checkInPhoto!.size,
-            type: checkInPhoto!.type,
-            data: e.target?.result as string,
-            uploadedAt: new Date().toISOString(),
-            uploadedBy: user.username
-          };
-
-          const newShift: StaffShift = {
-            id: `shift_${Date.now()}`,
-            staffId: checkingInStaff.id,
-            checkInTime: new Date().toISOString(),
-            checkInPhoto: photoAttachment,
-            shiftDate: new Date().toISOString().split('T')[0],
-            status: 'checked-in',
+          const checkInData = {
+            check_in_photo: e.target?.result as string,
             notes: checkInNotes
           };
-
-          const updatedShifts = [...shifts, newShift];
-          const updatedStaff = staff.map(member =>
-            member.id === checkingInStaff.id
-              ? { ...member, currentShift: newShift }
-              : member
-          );
-
-          await Promise.all([
-            saveShiftsToSupabase(updatedShifts),
-            saveStaffToSupabase(updatedStaff)
-          ]);
+          
+          const response = await apiClient.staffCheckIn(checkingInStaff.id, checkInData);
+          
+          if (!response.success) {
+            throw new Error(response.error || 'Failed to check in staff member');
+          }
+          
+          // Reload data to get updated information
+          await loadAllData();
 
           setIsCheckInDialogOpen(false);
           setCheckingInStaff(null);
@@ -459,6 +366,8 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
           console.error('❌ Error processing check-in:', error);
           const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
           showError(`Failed to process check-in: ${errorMessage}`);
+        } finally {
+          setSaving(false);
         }
       };
       reader.readAsDataURL(checkInPhoto);
@@ -466,48 +375,33 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
       console.error('❌ Error during check-in:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       showError(`Check-in failed: ${errorMessage}`);
+      setSaving(false);
     }
   };
 
   const handleCheckOut = async () => {
-    if (!checkingOutStaff || !checkOutPhoto || !checkingOutStaff.currentShift) return;
+    if (!checkingOutStaff || !checkOutPhoto) return;
 
     try {
+      setSaving(true);
+      clearError();
+      
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
-          const photoAttachment: FileAttachment = {
-            id: `photo_${Date.now()}`,
-            name: checkOutPhoto!.name,
-            size: checkOutPhoto!.size,
-            type: checkOutPhoto!.type,
-            data: e.target?.result as string,
-            uploadedAt: new Date().toISOString(),
-            uploadedBy: user.username
+          const checkOutData = {
+            check_out_photo: e.target?.result as string,
+            notes: checkOutNotes
           };
-
-          const updatedShift: StaffShift = {
-            ...checkingOutStaff.currentShift!,
-            checkOutTime: new Date().toISOString(),
-            checkOutPhoto: photoAttachment,
-            status: 'checked-out',
-            notes: checkingOutStaff.currentShift!.notes + (checkOutNotes ? `\nCheck-out: ${checkOutNotes}` : '')
-          };
-
-          const updatedShifts = shifts.map(shift =>
-            shift.id === updatedShift.id ? updatedShift : shift
-          );
-
-          const updatedStaff = staff.map(member =>
-            member.id === checkingOutStaff.id
-              ? { ...member, currentShift: undefined }
-              : member
-          );
-
-          await Promise.all([
-            saveShiftsToSupabase(updatedShifts),
-            saveStaffToSupabase(updatedStaff)
-          ]);
+          
+          const response = await apiClient.staffCheckOut(checkingOutStaff.id, checkOutData);
+          
+          if (!response.success) {
+            throw new Error(response.error || 'Failed to check out staff member');
+          }
+          
+          // Reload data to get updated information
+          await loadAllData();
 
           setIsCheckOutDialogOpen(false);
           setCheckingOutStaff(null);
@@ -518,6 +412,8 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
           console.error('❌ Error processing check-out:', error);
           const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
           showError(`Failed to process check-out: ${errorMessage}`);
+        } finally {
+          setSaving(false);
         }
       };
       reader.readAsDataURL(checkOutPhoto);
@@ -525,35 +421,57 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
       console.error('❌ Error during check-out:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       showError(`Check-out failed: ${errorMessage}`);
+      setSaving(false);
     }
   };
 
-  const getStaffShifts = (staffId: string) => {
-    return shifts
-      .filter(shift => shift.staffId === staffId)
-      .sort((a, b) => new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime());
+  const getStaffShifts = async (staffId: string) => {
+    try {
+      const response = await apiClient.getStaffShifts(staffId);
+      if (response.success) {
+        return response.data || [];
+      }
+      return [];
+    } catch (error) {
+      console.error('❌ Error fetching staff shifts:', error);
+      return [];
+    }
   };
 
-  const isStaffCheckedIn = (staffMember: Staff) => {
-    return staffMember.currentShift && staffMember.currentShift.status === 'checked-in';
+  const isStaffCheckedIn = (staffMember: StaffWithUser) => {
+    return staffMember.current_shift && staffMember.current_shift.length > 0 && staffMember.current_shift[0].status === 'checked-in';
   };
 
   const updateStaffAttachments = async (staffId: string, attachments: FileAttachment[]) => {
     try {
-      const updatedStaff = staff.map(member =>
-        member.id === staffId
-          ? { ...member, attachments }
-          : member
-      );
+      setSaving(true);
+      clearError();
       
-      await saveStaffToSupabase(updatedStaff);
+      const response = await apiClient.updateStaff(staffId, { attachments });
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to update staff attachments');
+      }
+      
+      // Reload data to get updated information
+      await loadAllData();
+      
     } catch (error) {
-      // Error already handled in save function
+      console.error('❌ Error updating staff attachments:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      showError(`Failed to update staff attachments: ${errorMessage}`);
+    } finally {
+      setSaving(false);
     }
   };
 
   const getStaffAccount = (staffId: string) => {
-    return staffAccounts.find(account => account.staffId === staffId);
+    const staffMember = staff.find(s => s.id === staffId);
+    return staffMember ? {
+      username: staffMember.username,
+      user_id: staffMember.user_id,
+      user_status: staffMember.user_status
+    } : null;
   };
 
   const generatePassword = () => {
@@ -976,8 +894,8 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                         <div className="flex-1">
                           <CardTitle className="flex items-center space-x-2">
                             <span>{staffMember.name}</span>
-                            <Badge variant={staffMember.isActive ? "default" : "secondary"}>
-                              {staffMember.isActive ? 'Active' : 'Inactive'}
+                            <Badge variant={staffMember.status === 'active' ? "default" : "secondary"}>
+                              {staffMember.status === 'active' ? 'Active' : 'Inactive'}
                             </Badge>
                             
                             {isCheckedIn && (
@@ -1002,7 +920,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                             )}
                           </CardTitle>
                           <CardDescription>
-                            {staffMember.position} • Member since {staffMember.createdAt}
+                            {staffMember.position} • Member since {staffMember.created_at}
                           </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -1051,7 +969,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                         </Button>
                       )}
 
-                      {staffMember.isActive ? (
+                      {staffMember.status === 'active' ? (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="destructive" size="sm" disabled={saving}>
@@ -1098,7 +1016,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                           </TabsTrigger>
                           <TabsTrigger value="shifts" className="flex items-center space-x-2">
                             <Clock className="w-4 h-4" />
-                            <span>Shifts ({staffShifts.length})</span>
+                            <span>Shifts ({staffMember.current_shift?.length || 0})</span>
                           </TabsTrigger>
                           <TabsTrigger value="login" className="flex items-center space-x-2">
                             <Key className="w-4 h-4" />
@@ -1134,20 +1052,20 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Status</Label>
-                                <Badge variant={staffMember.isActive ? "default" : "secondary"}>
-                                  {staffMember.isActive ? 'Active' : 'Inactive'}
+                                <Badge variant={staffMember.status === 'active' ? "default" : "secondary"}>
+                                  {staffMember.status === 'active' ? 'Active' : 'Inactive'}
                                 </Badge>
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Member Since</Label>
-                                <p>{staffMember.createdAt}</p>
+                                <p>{staffMember.created_at}</p>
                               </div>
                             </div>
                           </div>
                         </TabsContent>
 
                         <TabsContent value="shifts" className="space-y-4 mt-6">
-                          {staffShifts.length === 0 ? (
+                          {staffMember.current_shift && staffMember.current_shift.length === 0 ? (
                             <Card>
                               <CardContent className="text-center py-12">
                                 <Clock className="w-12 h-12 mx-auto text-gray-400 mb-4" />
@@ -1156,41 +1074,19 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                               </CardContent>
                             </Card>
                           ) : (
-                            <div className="space-y-4">
-                              {staffShifts.slice(0, 5).map((shift) => (
+                            <div className="space-y-2 max-h-32 overflow-y-auto">
+                              {staffMember.current_shift?.slice(0, 3).map((shift: any, index: number) => (
                                 <Card key={shift.id}>
                                   <CardContent className="p-4">
                                     <div className="flex justify-between items-start mb-4">
                                       <div>
                                         <p className="font-medium">{shift.shiftDate}</p>
-                                        <Badge 
-                                          variant={shift.status === 'checked-in' ? 'default' : 'secondary'}
-                                          className={shift.status === 'checked-in' ? 'bg-green-600' : ''}
-                                        >
-                                          {shift.status === 'checked-in' ? 'Currently Checked In' : 'Completed Shift'}
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      <div>
-                                        <Label className="text-sm font-medium text-gray-500">Check In</Label>
-                                        <p className="text-sm">{new Date(shift.checkInTime).toLocaleString()}</p>
-                                        {shift.checkInPhoto && (
-                                          <div className="mt-2">
-                                            <ImageWithFallback
-                                              src={shift.checkInPhoto.data}
-                                              alt="Check-in photo"
-                                              className="w-20 h-20 object-cover rounded border"
-                                            />
-                                          </div>
-                                        )}
                                       </div>
                                       
                                       {shift.checkOutTime && (
                                         <div>
                                           <Label className="text-sm font-medium text-gray-500">Check Out</Label>
-                                          <p className="text-sm">{new Date(shift.checkOutTime).toLocaleString()}</p>
+                                          <p className="text-xs text-gray-500 mt-1">Joined {new Date(staffMember.created_at).toLocaleDateString()}</p>
                                           {shift.checkOutPhoto && (
                                             <div className="mt-2">
                                               <ImageWithFallback
@@ -1203,20 +1099,13 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                                         </div>
                                       )}
                                     </div>
-                                    
-                                    {shift.notes && (
-                                      <div className="mt-4">
-                                        <Label className="text-sm font-medium text-gray-500">Notes</Label>
-                                        <p className="text-sm bg-gray-50 p-2 rounded mt-1">{shift.notes}</p>
-                                      </div>
-                                    )}
                                   </CardContent>
                                 </Card>
                               ))}
                               
-                              {staffShifts.length > 5 && (
+                              {staffMember.current_shift && staffMember.current_shift.length > 0 && (
                                 <p className="text-sm text-gray-500 text-center">
-                                  Showing recent 5 shifts out of {staffShifts.length} total shifts.
+                                  Showing recent shifts.
                                 </p>
                               )}
                             </div>
@@ -1232,8 +1121,8 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                                     <Label className="text-sm font-medium text-gray-500">Username</Label>
                                     <p className="font-medium">{account.username}</p>
                                   </div>
-                                  <Badge variant={account.isActive ? "default" : "secondary"}>
-                                    {account.isActive ? 'Active' : 'Inactive'}
+                                  <Badge variant={account.user_status === 'active' ? "default" : "secondary"}>
+                                    {account.user_status === 'active' ? 'Active' : 'Inactive'}
                                   </Badge>
                                 </div>
                                 
@@ -1245,15 +1134,13 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                                   
                                   <div>
                                     <Label className="text-sm font-medium text-gray-500">Account Created</Label>
-                                    <p className="text-sm">{account.createdAt}</p>
+                                    <p className="text-sm">{staffMember.created_at}</p>
                                   </div>
                                   
-                                  {account.lastLogin && (
-                                    <div>
-                                      <Label className="text-sm font-medium text-gray-500">Last Login</Label>
-                                      <p className="text-sm">{new Date(account.lastLogin).toLocaleString()}</p>
-                                    </div>
-                                  )}
+                                  <div>
+                                    <Label className="text-sm font-medium text-gray-500">User ID</Label>
+                                    <p className="text-sm font-mono">{account.user_id}</p>
+                                  </div>
                                 </div>
 
                                 <div className="flex space-x-2 mt-4">
@@ -1277,7 +1164,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                                       <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                                         <AlertDialogAction
-                                          onClick={() => deleteStaffAccount(staffMember.id)}
+                                          onClick={() => deleteStaff(staffMember.id)}
                                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                           disabled={saving}
                                         >

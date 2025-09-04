@@ -48,7 +48,7 @@ export function verifyToken(token) {
  * Extract and verify JWT token from request headers
  * Attaches user data to req.user
  */
-export async function authMiddleware(req, res, next) {
+export async function authenticateToken(req, res, next) {
     try {
         // Get token from Authorization header
         const authHeader = req.headers.authorization;
@@ -82,12 +82,17 @@ export async function authMiddleware(req, res, next) {
                 email: 'admin@casino.com'
             };
         } else {
-            // Try database query for other users
+            // Look up user in users table
             const { data: dbUser, error: dbError } = await supabase
                 .from('users')
-                .select('id, email, role, username')
+                .select(`
+                    id, email, role, username, staff_id, agent_id,
+                    staff:staff_id(id, name, email, position, status),
+                    agent:agent_id(id, name, email)
+                `)
                 .eq('id', decoded.id)
                 .single();
+            
             user = dbUser;
             error = dbError;
         }
@@ -123,6 +128,7 @@ export async function authMiddleware(req, res, next) {
  */
 export function requireRole(...roles) {
     return (req, res, next) => {
+        console.log('🔐 requireRole check:', { userRole: req.user?.role, requiredRoles: roles });
         if (!req.user) {
             res.status(401).json({
                 success: false,
@@ -469,23 +475,26 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, email, password } = req.body;
         
-        if (!username || !password) {
+        // Accept either username or email
+        const loginIdentifier = username || email;
+        
+        if (!loginIdentifier || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Username and password are required'
+                message: 'Username/email and password are required'
             });
         }
 
         // Use hardcoded admin credentials as fallback for RLS issues
-        console.log('🔍 Login attempt for username:', username);
+        console.log('🔍 Login attempt for identifier:', loginIdentifier);
         
         let user = null;
         let error = null;
         
         // Hardcoded admin login as temporary solution for RLS issues
-        if (username === 'admin' && password === 'admin123') {
+        if ((loginIdentifier === 'admin' || loginIdentifier === 'admin@casino.com') && password === 'admin123') {
             user = {
                 id: '80709c8d-8bca-4e4b-817f-c6219d8af871',
                 username: 'admin',
@@ -495,17 +504,46 @@ router.post('/login', async (req, res) => {
             };
             console.log('✅ Using hardcoded admin credentials');
         } else {
-            // Try direct query for other users
+            // Try direct query for users table first
             try {
                 const { data: directUser, error: directError } = await supabase
                     .from('users')
                     .select('*')
-                    .eq('username', username)
+                    .or(`username.eq.${loginIdentifier},email.eq.${loginIdentifier}`)
                     .eq('password', password)
                     .single();
                 
-                user = directUser;
-                error = directError;
+                if (directUser && !directError) {
+                    user = directUser;
+                    error = directError;
+                } else {
+                    // If not found in users table, try staff table
+                    const { data: staffUser, error: staffError } = await supabase
+                        .from('staff')
+                        .select('id, username, email, name, position, status')
+                        .or(`username.eq.${loginIdentifier},email.eq.${loginIdentifier}`)
+                        .eq('password', password)
+                        .eq('status', 'active')
+                        .single();
+                    
+                    if (staffUser && !staffError) {
+                        // Convert staff to user format
+                        user = {
+                            id: staffUser.id,
+                            username: staffUser.username,
+                            email: staffUser.email,
+                            role: 'staff',
+                            name: staffUser.name,
+                            position: staffUser.position,
+                            staffId: staffUser.id
+                        };
+                        error = null;
+                        console.log('✅ Found staff user:', staffUser.username);
+                    } else {
+                        user = directUser;
+                        error = directError || staffError;
+                    }
+                }
             } catch (e) {
                 error = e;
             }
@@ -537,7 +575,7 @@ router.post('/login', async (req, res) => {
                     email: user.email,
                     role: user.role
                 },
-                token
+                token: token
             }
         });
 

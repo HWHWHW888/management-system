@@ -43,32 +43,31 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
       setLoading(true);
       clearError();
       
-      console.log('🔄 Loading agent data from Supabase...');
+      console.log('🔄 Loading agent data from backend API...');
       
-      // Load all required data from Supabase
-      const [agentsData, customersData] = await Promise.all([
-        db.get('agents', []),
-        db.get('customers', [])
-      ]);
+      // Load agents from backend API
+      const agentsResponse = await apiClient.getAgents();
+      if (!agentsResponse.success) {
+        throw new Error(agentsResponse.error || 'Failed to fetch agents');
+      }
 
       // Process agents - all agents are automatically customers
-      const processedAgents = agentsData.map((agent: Agent) => ({
+      const agentsData = Array.isArray(agentsResponse.data) ? agentsResponse.data : [];
+      const processedAgents = agentsData.map((agent: any) => ({
         ...agent,
         isCustomer: true, // All agents are customers by default
-        attachments: agent.attachments || []
+        attachments: agent.attachments || [],
+        createdAt: new Date(agent.created_at).toLocaleDateString()
       }));
 
-      // Process customers with backward compatibility
-      const processedCustomers = customersData.map((customer: Customer) => ({
-        ...customer,
-        isAgent: customer.isAgent || false,
-        sourceAgentId: customer.sourceAgentId || undefined
-      }));
+      // For now, skip customers loading since table may not exist
+      // TODO: Re-enable when customers table is created
+      const processedCustomers: any[] = [];
 
       setAgents(processedAgents);
       setCustomers(processedCustomers);
       
-      console.log(`✅ Loaded ${processedAgents.length} agents (all auto-customers), ${processedCustomers.length} customers from backend API`);
+      console.log(`✅ Loaded ${processedAgents.length} agents, ${processedCustomers.length} customers from backend API`);
       
     } catch (error) {
       console.error('❌ Error loading agent data:', error);
@@ -112,13 +111,13 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
           status: 'active'
         };
         
-        // Create agent via API (backend will auto-create customer)
-        const response = await apiClient.createAgent(agentData);
-        if (!response.success) {
-          throw new Error(response.error || 'Failed to create agent');
+        // Create agent via API (backend automatically creates corresponding customer with agent_id)
+        const agentResponse = await apiClient.createAgent(agentData);
+        if (!agentResponse.success) {
+          throw new Error(agentResponse.error || 'Failed to create agent');
         }
         
-        // Refresh data to get the new agent and auto-created customer
+        // Refresh data to get the new agent and customer
         await loadAllData();
       }
 
@@ -155,7 +154,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
         name: agent.name,
         email: agent.email,
         phone: agent.phone,
-        status: agent.isActive ? 'inactive' : 'active'
+        status: agent.status ? 'inactive' : 'active'
       };
       
       const response = await apiClient.updateAgent(agentId, updateData);
@@ -363,8 +362,8 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                         <div className="flex-1">
                           <CardTitle className="flex items-center space-x-2">
                             <span>{agent.name}</span>
-                            <Badge variant={agent.isActive ? "default" : "secondary"}>
-                              {agent.isActive ? 'Active' : 'Inactive'}
+                            <Badge variant={agent.status ? "default" : "default"}>
+                              {agent.status ? 'Active' : 'Inactive'}
                             </Badge>
 
                             {agent.attachments && agent.attachments.length > 0 && (
@@ -414,7 +413,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                           <Edit className="w-4 h-4 mr-2" />
                           Edit
                         </Button>
-                        {agent.isActive ? (
+                        {agent.status ? (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button variant="destructive" size="sm" disabled={saving}>
@@ -486,8 +485,8 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                             <div className="space-y-4">
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Status</Label>
-                                <Badge variant={agent.isActive ? "default" : "secondary"}>
-                                  {agent.isActive ? 'Active' : 'Inactive'}
+                                <Badge variant={agent.status ? "default" : "default"}>
+                                  {agent.status ? 'Active' : 'Inactive'}
                                 </Badge>
                               </div>
                               <div>

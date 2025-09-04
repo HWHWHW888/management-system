@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { User } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
-import { databaseWrapper } from '../utils/api/databaseWrapper';
+import { db as databaseWrapper } from '../utils/api/databaseWrapper';
 import { Database, Shield, Info, AlertTriangle, CheckCircle, Key, Users, RefreshCw, Bug } from 'lucide-react';
 
 interface LoginFormProps {
@@ -44,6 +44,9 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       
       const user = await databaseWrapper.login(username, password);
       console.log('✅ Login successful for user:', user);
+      console.log('🔍 User object structure:', JSON.stringify(user, null, 2));
+      console.log('🔍 User role:', user?.role);
+      console.log('🔍 User token:', user?.token ? 'Present' : 'Missing');
       onLogin(user);
     } catch (error: any) {
       console.error('❌ Login error:', error);

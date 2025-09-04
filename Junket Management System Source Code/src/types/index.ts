@@ -2,6 +2,8 @@ export interface User {
   id: string;
   username: string;
   role: 'admin' | 'agent' | 'staff';
+  email?: string;
+  token?: string;
   agentId?: string;
   staffId?: string;
 }
@@ -22,10 +24,11 @@ export interface Agent {
   email: string;
   phone: string;
   createdAt: string;
-  isActive: boolean;
+  status: 'active' | 'inactive';
   isCustomer: boolean; // Agent can become a customer
   customerId?: string; // If agent is also a customer
-  attachments: FileAttachment[]; // Passport, photo, and other documents
+  commissionRate?: number;
+  attachments?: FileAttachment[]; // Passport, photo, and other documents
 }
 
 export interface Staff {
@@ -34,8 +37,10 @@ export interface Staff {
   email: string;
   phone: string;
   position: string;
+  username: string;
+  password?: string;
+  status: 'active' | 'inactive';
   createdAt: string;
-  isActive: boolean;
   currentShift?: StaffShift;
   attachments: FileAttachment[]; // Passport, photo, and other documents
 }
