@@ -5,7 +5,7 @@ import { CustomerManagement } from './components/CustomerManagement';
 import { AgentManagement } from './components/AgentManagement';
 import { StaffManagement } from './components/StaffManagement';
 import { StaffPortal } from './components/StaffPortal';
-import { ProjectManagement } from './components/ProjectManagement';
+import ProjectManagement from './components/ProjectManagement';
 import { Reports } from './components/Reports';
 import { DataManagement } from './components/DataManagement';
 import { Button } from './components/ui/button';
@@ -560,7 +560,7 @@ function App() {
         {activeTab === 'agents' && (isAdmin || isStaff) && <AgentManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'staff' && isAdmin && <StaffManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'checkinout' && isStaff && <StaffPortal user={currentUser} showError={() => {}} clearError={() => {}} />}
-        {activeTab === 'projects' && (isAdmin || isAgent) && <ProjectManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
+        {activeTab === 'projects' && (isAdmin || isAgent) && <ProjectManagement />}
         {activeTab === 'data' && isAdmin && <DataManagement user={currentUser} />}
         {activeTab === 'reports' && <Reports user={currentUser} />}
       </div>

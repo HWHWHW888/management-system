@@ -167,10 +167,19 @@ export interface TripCustomer {
 }
 
 export interface TripAgent {
+  id?: string; // Trip agent record ID from database
   agentId: string;
+  agent_id?: string; // Alternative field name from backend
   agentName: string;
-  sharePercentage: number; // This agent's individual share percentage of the house final profit
-  calculatedShare: number; // Calculated amount this agent receives
+  agent?: {
+    id: string;
+    name: string;
+    email: string;
+    commission_rate: number;
+  }; // Nested agent object from backend
+  sharePercentage?: number; // This agent's individual share percentage of the house final profit
+  calculatedShare?: number; // Calculated amount this agent receives
+  created_at?: string; // Creation timestamp
 }
 
 export interface TripExpense {
@@ -221,6 +230,11 @@ export interface Trip {
   activeCustomersCount?: number;
   recentActivityCount?: number;
   totalExpenses?: number;
+  // Backend API fields (snake_case from trips.js)
+  total_win?: number; // From backend API
+  total_loss?: number; // From backend API
+  net_profit?: number; // From backend API
+  total_budget?: number; // From backend API
   // Legacy fields for backward compatibility
   agentId?: string;
   agentName?: string;

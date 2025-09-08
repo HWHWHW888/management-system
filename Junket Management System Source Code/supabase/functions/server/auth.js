@@ -182,7 +182,7 @@ export async function canAccessTrip(req, res, next) {
         return;
     }
     // Staff can only access their assigned trips
-    const tripId = req.params.tripId || req.body.trip_id;
+    const tripId = req.params.id || req.params.tripId || req.body.trip_id;
     if (!tripId) {
         res.status(400).json({
             success: false,

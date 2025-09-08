@@ -412,6 +412,29 @@ class ApiClient {
     const queryString = params ? new URLSearchParams(params).toString() : '';
     return this.request(`/staffs/${id}/rolling-records${queryString ? `?${queryString}` : ''}`);
   }
+
+  // Generic HTTP methods for flexible API calls
+  async get<T = any>(endpoint: string, customToken?: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET' }, customToken);
+  }
+
+  async post<T = any>(endpoint: string, data?: any, customToken?: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    }, customToken);
+  }
+
+  async put<T = any>(endpoint: string, data?: any, customToken?: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    }, customToken);
+  }
+
+  async delete<T = any>(endpoint: string, customToken?: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'DELETE' }, customToken);
+  }
 }
 
 // Export singleton instance

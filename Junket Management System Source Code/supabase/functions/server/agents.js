@@ -41,6 +41,8 @@ router.get('/', authenticateToken, async (req, res) => {
           phone,
           commission_rate,
           status,
+          total_commission,
+          total_trips,
           created_at,
           updated_at
         `)
@@ -82,6 +84,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
           phone,
           commission_rate,
           status,
+          total_commission,
+          total_trips,
           created_at,
           updated_at,
           trips:trip_agents(
