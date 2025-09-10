@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateToken, requireAdmin, canAccessTrip } from './auth.js';
+import crypto from 'crypto';
 const router = Router();
 // Initialize Supabase client
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -33,27 +34,24 @@ async function calculateCustomerTripStats(tripId, customerId) {
       // If rolling_records table doesn't exist, continue without it
     }
 
-    let total_win = 0;
-    let total_loss = 0;
     let total_buy_in = 0;
     let total_cash_out = 0;
     let rolling_amount = 0;
 
-    // Process transactions
+    // Process transactions - only handle database-allowed types
     transactions?.forEach(transaction => {
       const amount = parseFloat(transaction.amount) || 0;
       switch (transaction.transaction_type) {
-        case 'win':
-          total_win += amount;
-          break;
-        case 'loss':
-          total_loss += amount;
-          break;
         case 'buy-in':
           total_buy_in += amount;
           break;
         case 'cash-out':
           total_cash_out += amount;
+          break;
+        // Note: 'win' and 'loss' types are not supported by database constraints
+        // Win/loss calculations should be derived from buy-in/cash-out differences
+        default:
+          console.warn(`Unsupported transaction type: ${transaction.transaction_type}`);
           break;
       }
     });
@@ -64,8 +62,13 @@ async function calculateCustomerTripStats(tripId, customerId) {
       rolling_amount += rollingAmt;
     });
 
-    // Calculate net result: (cash-out + wins) - (buy-in + losses)
-    const net_result = (total_cash_out + total_win) - (total_buy_in + total_loss);
+    // Calculate net result: cash-out - buy-in (customer perspective)
+    // Positive = customer won money, Negative = customer lost money
+    const net_result = total_cash_out - total_buy_in;
+
+    // Calculate win/loss based on net result for backward compatibility
+    const total_win = net_result > 0 ? net_result : 0;
+    const total_loss = net_result < 0 ? Math.abs(net_result) : 0;
 
     return {
       total_win,
@@ -353,19 +356,33 @@ async function updateTripSharing(tripId, tripStats) {
     // Check if there are any customers - if not, set sharing values to 0 but preserve expenses
     const hasCustomers = customerStats && customerStats.length > 0;
     
-    // Get total rolling amount from rolling_records table
+    // Get total rolling amount from trip_rolling table
     const { data: tripRollingRecords, error: rollingError } = await supabase
-      .from('rolling_records')
+      .from('trip_rolling')
       .select('rolling_amount')
       .eq('trip_id', tripId);
 
     if (rollingError) {
       console.error('Error fetching trip rolling records:', rollingError);
+      // Try the rolling_records table as fallback
+      const { data: legacyRollingRecords, error: legacyError } = await supabase
+        .from('rolling_records')
+        .select('rolling_amount')
+        .eq('trip_id', tripId);
+        
+      if (legacyError) {
+        console.error('Error fetching legacy rolling records:', legacyError);
+      } else if (legacyRollingRecords && legacyRollingRecords.length > 0) {
+        console.log('Found rolling data in legacy rolling_records table:', legacyRollingRecords.length, 'records');
+        tripRollingRecords = legacyRollingRecords;
+      }
     }
 
-    // Calculate total rolling from rolling_records table
+    // Calculate total rolling from trip_rolling table
     const totalRollingFromTable = tripRollingRecords?.reduce((sum, record) => 
       sum + (parseFloat(record.rolling_amount) || 0), 0) || 0;
+      
+    console.log('📊 Total rolling amount from trip_rolling table:', totalRollingFromTable);
     
     // Calculate Rolling Commission based on customer rolling amounts at 1.4%
     const totalRolling = hasCustomers ? 
@@ -505,9 +522,10 @@ async function updateTripSharing(tripId, tripStats) {
     const agentBreakdown = Object.values(agentBreakdownMap);
     const totalAgentCommission = agentBreakdown.reduce((sum, agent) => sum + agent.share_amount, 0);
     
-    // Calculate from company perspective: house_winloss - agent_commission + rolling_commission - expenses
+    // Calculate from company perspective: house_winloss - agent_commission - rolling_commission - expenses
     const houseWinLoss = -(tripStats.net_profit || 0); // Convert customer loss to house win (company perspective)
-    const companyShare = houseWinLoss - totalAgentCommission + totalRollingCommission - totalExpenses;
+    // Rolling commission is a cost to the company, so it should be subtracted
+    const companyShare = houseWinLoss - totalAgentCommission - totalRollingCommission - totalExpenses;
     
     // Calculate total amount for percentage calculation
     const totalAmount = Math.abs(totalAgentCommission) + Math.abs(companyShare);
@@ -529,8 +547,8 @@ async function updateTripSharing(tripId, tripStats) {
     console.log('- Total expenses:', totalExpenses);
     console.log('- Net result = house_winloss - rolling_commission - expenses');
     console.log(`- Net result = ${houseWinLoss} - ${totalRollingCommission} - ${totalExpenses} = ${netResult}`);
-    console.log('- Company share = house_winloss - agent_commission + rolling_commission - expenses');
-    console.log(`- Company share = ${houseWinLoss} - ${totalAgentCommission} + ${totalRollingCommission} - ${totalExpenses} = ${companyShare}`);
+    console.log('- Company share = house_winloss - agent_commission - rolling_commission - expenses');
+    console.log(`- Company share = ${houseWinLoss} - ${totalAgentCommission} - ${totalRollingCommission} - ${totalExpenses} = ${companyShare}`);
     console.log('- Total amount for percentage:', totalAmount);
     console.log('- Agent percentage:', agentSharePercentage + '%');
     console.log('- Company percentage:', companySharePercentage + '%');
@@ -2339,60 +2357,210 @@ router.get('/:id/transactions', authenticateToken, canAccessTrip, async (req, re
 router.post('/:id/transactions', authenticateToken, canAccessTrip, async (req, res) => {
   try {
     const tripId = req.params.id;
-    const { customer_id, agent_id, amount, transaction_type, notes } = req.body;
+    const { 
+      customer_id, 
+      agent_id, 
+      amount, 
+      transaction_type, 
+      notes, 
+      status = 'completed',
+      recorded_by_staff_id 
+    } = req.body;
     
-    if (!amount || !transaction_type) {
+    console.log('🔄 Transaction request received:', {
+      tripId,
+      body: req.body,
+      user: req.user?.id
+    });
+    
+    // Validate required fields
+    if (!customer_id || !amount || !transaction_type) {
+      console.log('❌ Missing required fields:', { customer_id, amount, transaction_type });
       return res.status(400).json({
-        error: 'Amount and transaction type are required'
+        error: 'Missing required fields',
+        required: ['customer_id', 'amount', 'transaction_type']
       });
     }
+
+    // Validate transaction type - must match database constraint
+    const validTypes = ['buy-in', 'cash-out'];
+    if (!validTypes.includes(transaction_type)) {
+      return res.status(400).json({
+        error: 'Invalid transaction type',
+        allowed: validTypes,
+        note: 'Database only supports buy-in and cash-out transaction types'
+      });
+    }
+
+    // Verify customer exists and is part of the trip
+    const { data: tripCustomer, error: customerError } = await supabase
+      .from('trip_customers')
+      .select('customer_id')
+      .eq('trip_id', tripId)
+      .eq('customer_id', customer_id)
+      .single();
+
+    if (customerError || !tripCustomer) {
+      console.log('❌ Customer not found in trip:', { customer_id, tripId, customerError });
+      return res.status(400).json({
+        error: 'Customer not found in this trip'
+      });
+    }
+
+    console.log('✅ Customer verified in trip');
+
+    // Get customer's agent if not provided, but validate it exists
+    let finalAgentId = agent_id;
+    if (!finalAgentId) {
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('agent_id')
+        .eq('id', customer_id)
+        .single();
+      
+      if (customer?.agent_id) {
+        // Verify agent exists before using it
+        const { data: agent, error: agentError } = await supabase
+          .from('agents')
+          .select('id')
+          .eq('id', customer.agent_id)
+          .single();
+        
+        if (agent && !agentError) {
+          finalAgentId = customer.agent_id;
+        } else {
+          console.warn(`Customer ${customer_id} has invalid agent_id: ${customer.agent_id}`);
+          finalAgentId = null; // Leave null if agent doesn't exist
+        }
+      }
+    } else {
+      // If agent_id provided, verify it exists
+      const { data: agent, error: agentError } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('id', agent_id)
+        .single();
+      
+      if (agentError || !agent) {
+        console.warn(`Provided agent_id ${agent_id} does not exist`);
+        finalAgentId = null; // Leave null if agent doesn't exist
+      }
+    }
+
+    // Handle recorded_by_staff_id - only set if user is staff or if explicitly provided
+    let recordedByStaffId = recorded_by_staff_id;
+    if (!recordedByStaffId && req.user.role === 'staff') {
+      recordedByStaffId = req.user.id; // Only if user is staff
+    }
+    // If user is admin or no valid staff ID, leave it null (allowed by schema)
+
+    const transactionData = {
+      id: crypto.randomUUID(),
+      trip_id: tripId,
+      customer_id,
+      agent_id: finalAgentId,
+      amount: parseFloat(amount),
+      transaction_type,
+      status: status || 'completed',
+      notes: notes || null,
+      recorded_by_staff_id: recordedByStaffId, // Can be null
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log('🔄 Inserting transaction:', transactionData);
 
     const { data: transaction, error } = await supabase
       .from('transactions')
-      .insert({
-        trip_id: tripId,
-        customer_id,
-        agent_id,
-        amount,
-        transaction_type,
-        notes,
-        status: 'completed',
-        recorded_by_staff_id: req.user.staff?.id
-      })
-      .select(`
-        id,
-        amount,
-        transaction_type,
-        status,
-        created_at,
-        customer:customers(id, name, email),
-        agent:agents(id, name, email)
-      `)
+      .insert(transactionData)
+      .select('*')
       .single();
 
     if (error) {
+      console.error('❌ Database error inserting transaction:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        hint: error.hint,
+        details: error.details
+      });
+      
+      // Handle specific constraint violations
+      if (error.code === '23503') { // Foreign key violation
+        if (error.message.includes('customer_id')) {
+          return res.status(400).json({
+            error: 'Invalid customer ID - customer not found',
+            details: error.message
+          });
+        } else if (error.message.includes('agent_id')) {
+          return res.status(400).json({
+            error: 'Invalid agent ID - agent not found',
+            details: error.message
+          });
+        } else if (error.message.includes('staff_id')) {
+          return res.status(400).json({
+            error: 'Invalid staff ID - staff not found',
+            details: error.message
+          });
+        } else if (error.message.includes('trip_id')) {
+          return res.status(400).json({
+            error: 'Invalid trip ID - trip not found',
+            details: error.message
+          });
+        }
+      } else if (error.code === '23514') { // Check constraint violation
+        if (error.message.includes('transaction_type')) {
+          return res.status(400).json({
+            error: 'Invalid transaction type - must be buy-in or cash-out',
+            details: error.message
+          });
+        } else if (error.message.includes('status')) {
+          return res.status(400).json({
+            error: 'Invalid status - must be pending, completed, or cancelled',
+            details: error.message
+          });
+        }
+      }
+      
       return res.status(500).json({
         error: 'Failed to add transaction',
-        details: error.message
+        details: error.message,
+        code: error.code
       });
     }
 
-    // Update trip statistics after adding transaction
-    const updatedStats = await updateTripStats(tripId);
+    console.log('✅ Transaction created successfully:', transaction);
+
+    // Update customer trip stats automatically
+    try {
+      await updateCustomerTripStats(tripId, customer_id);
+      console.log('✅ Customer trip stats updated');
+    } catch (statsError) {
+      console.error('⚠️ Failed to update customer trip stats:', statsError);
+    }
+
+    // Update trip statistics and sharing
+    try {
+      const updatedStats = await updateTripStats(tripId);
+      await updateTripSharing(tripId, updatedStats);
+      console.log('✅ Trip stats and sharing updated');
+    } catch (statsError) {
+      console.error('⚠️ Failed to update trip stats:', statsError);
+      // Don't fail the request if stats update fails
+    }
 
     res.status(201).json({
       success: true,
       message: 'Transaction added successfully',
-      data: {
-        ...transaction,
-        trip_stats: updatedStats
-      }
+      data: transaction
     });
 
   } catch (error) {
+    console.error('❌ Unexpected error in transaction endpoint:', error);
     res.status(500).json({
       error: 'Internal server error',
-      details: error.message
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -2825,110 +2993,6 @@ router.post('/:id/recalculate-stats', authenticateToken, canAccessTrip, async (r
   }
 });
 
-/**
- * POST /trips/:id/transactions
- * Admin function to add transaction to a trip
- */
-router.post('/:id/transactions', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const tripId = req.params.id;
-    const { 
-      customer_id, 
-      agent_id, 
-      amount, 
-      transaction_type, 
-      status = 'completed', 
-      notes,
-      recorded_by_staff_id 
-    } = req.body;
-
-    // Validate required fields
-    if (!customer_id || !amount || !transaction_type) {
-      return res.status(400).json({
-        error: 'Missing required fields',
-        required: ['customer_id', 'amount', 'transaction_type']
-      });
-    }
-
-    // Validate transaction type
-    if (!['buy-in', 'cash-out'].includes(transaction_type)) {
-      return res.status(400).json({
-        error: 'Invalid transaction type',
-        allowed: ['buy-in', 'cash-out']
-      });
-    }
-
-    // Verify customer is in the trip
-    const { data: tripCustomer, error: customerError } = await supabase
-      .from('trip_customers')
-      .select('id')
-      .eq('trip_id', tripId)
-      .eq('customer_id', customer_id)
-      .single();
-
-    if (customerError || !tripCustomer) {
-      return res.status(400).json({
-        error: 'Customer not found in this trip'
-      });
-    }
-
-    // Get customer's agent if not provided
-    let finalAgentId = agent_id;
-    if (!finalAgentId) {
-      const { data: customer } = await supabase
-        .from('customers')
-        .select('agent_id')
-        .eq('id', customer_id)
-        .single();
-      
-      finalAgentId = customer?.agent_id;
-    }
-
-    // Create transaction
-    const { data: transaction, error: transactionError } = await supabase
-      .from('transactions')
-      .insert({
-        id: crypto.randomUUID(),
-        trip_id: tripId,
-        customer_id: customer_id,
-        agent_id: finalAgentId,
-        amount: parseFloat(amount),
-        transaction_type: transaction_type,
-        status: status || 'completed',
-        notes: notes,
-        recorded_by_staff_id: recorded_by_staff_id || req.user.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (transactionError) {
-      return res.status(500).json({
-        error: 'Failed to create transaction',
-        details: transactionError.message
-      });
-    }
-
-    // Update customer trip stats automatically
-    await updateCustomerTripStats(tripId, customer_id);
-
-    // Update trip statistics
-    await updateTripStats(tripId);
-
-    res.status(201).json({
-      success: true,
-      message: 'Transaction added successfully',
-      data: transaction
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      error: 'Internal server error',
-      details: error.message
-    });
-  }
-});
 
 /**
  * POST /trips/:id/rolling-records

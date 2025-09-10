@@ -236,6 +236,7 @@ export interface Trip {
   name: string;
   description?: string;
   date: string;
+  budget?: number;
   agents: TripAgent[]; // Multiple agents with individual sharing percentages
   customers: TripCustomer[];
   expenses: TripExpense[]; // Trip expenses
@@ -245,7 +246,7 @@ export interface Trip {
   totalBuyOut: number; // Total buy-out amount in HKD (read-only, calculated from trip-specific staff records)
   calculatedTotalRolling: number; // Total commission in HKD (calculated from trip-specific rolling)
   sharing: TripSharing; // Sharing calculation between agents and company (trip-specific)
-  status: 'planned' | 'ongoing' | 'completed';
+  status: 'active' | 'in-progress' | 'completed' | 'cancelled';
   createdAt: string;
   attachments: FileAttachment[];
   // Real-time metadata

@@ -133,6 +133,16 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
       setSaving(true);
       clearError();
 
+      // Validate required fields
+      if (!formData.name || !formData.email || !formData.phone || !formData.position) {
+        throw new Error('Name, email, phone, position are required');
+      }
+
+      // For new staff, also validate username and password
+      if (!editingStaff && (!formData.username || !formData.password)) {
+        throw new Error('Username and password are required for new staff');
+      }
+
       if (editingStaff) {
         // Update existing staff
         const updateData = {
@@ -142,6 +152,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
           position: formData.position
         };
         
+        console.log('Updating staff with data:', updateData);
         const response = await apiClient.updateStaff(editingStaff.id, updateData);
         
         if (!response.success) {
@@ -158,6 +169,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
           password: formData.password
         };
         
+        console.log('Creating new staff with data:', { ...staffData, password: '***' });
         const response = await apiClient.createStaff(staffData);
         
         if (!response.success) {
@@ -563,7 +575,9 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="name" className="flex items-center">
+                    Name <span className="text-red-500 ml-1">*</span>
+                  </Label>
                   <Input
                     id="name"
                     value={formData.name}
@@ -571,11 +585,15 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                     placeholder="Staff member name"
                     required
                     disabled={saving}
+                    className={!formData.name ? "border-red-300" : ""}
                   />
+                  {!formData.name && <p className="text-xs text-red-500 mt-1">Name is required</p>}
                 </div>
                 
                 <div>
-                  <Label htmlFor="position">Position</Label>
+                  <Label htmlFor="position" className="flex items-center">
+                    Position <span className="text-red-500 ml-1">*</span>
+                  </Label>
                   <Input
                     id="position"
                     value={formData.position}
@@ -583,13 +601,17 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                     placeholder="Floor Manager, Cashier, etc."
                     required
                     disabled={saving}
+                    className={!formData.position ? "border-red-300" : ""}
                   />
+                  {!formData.position && <p className="text-xs text-red-500 mt-1">Position is required</p>}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email" className="flex items-center">
+                    Email <span className="text-red-500 ml-1">*</span>
+                  </Label>
                   <Input
                     id="email"
                     type="email"
@@ -598,11 +620,15 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                     placeholder="staff@casino.com"
                     required
                     disabled={saving}
+                    className={!formData.email ? "border-red-300" : ""}
                   />
+                  {!formData.email && <p className="text-xs text-red-500 mt-1">Email is required</p>}
                 </div>
                 
                 <div>
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone" className="flex items-center">
+                    Phone <span className="text-red-500 ml-1">*</span>
+                  </Label>
                   <Input
                     id="phone"
                     value={formData.phone}
@@ -610,13 +636,56 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                     placeholder="+1234567890"
                     required
                     disabled={saving}
+                    className={!formData.phone ? "border-red-300" : ""}
                   />
+                  {!formData.phone && <p className="text-xs text-red-500 mt-1">Phone is required</p>}
                 </div>
               </div>
 
+              {!editingStaff && (
+                <div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <Label htmlFor="username" className="flex items-center">
+                        Username <span className="text-red-500 ml-1">*</span>
+                      </Label>
+                      <Input
+                        id="username"
+                        value={formData.username}
+                        onChange={(e) => setFormData({...formData, username: e.target.value})}
+                        placeholder="Login username"
+                        required
+                        disabled={saving}
+                        className={!formData.username ? "border-red-300" : ""}
+                      />
+                      {!formData.username && <p className="text-xs text-red-500 mt-1">Username is required</p>}
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="password" className="flex items-center">
+                        Password <span className="text-red-500 ml-1">*</span>
+                      </Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({...formData, password: e.target.value})}
+                        placeholder="Login password"
+                        required
+                        disabled={saving}
+                        className={!formData.password ? "border-red-300" : ""}
+                      />
+                      {!formData.password && <p className="text-xs text-red-500 mt-1">Password is required</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-xs text-blue-700">
-                  <strong>Note:</strong> After creating a staff member, you'll need to set up their login credentials separately using the "Manage Login" button.
+                  <strong>Note:</strong> {editingStaff ? 
+                    "You can update login credentials separately using the 'Manage Login' button." : 
+                    "All fields marked with * are required. Username and password are needed for staff login."}
                 </p>
               </div>
 

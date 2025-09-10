@@ -31,7 +31,7 @@ interface CustomerTripHistory {
   tripId: string;
   tripName: string;
   tripDate: string;
-  tripStatus: 'planned' | 'ongoing' | 'completed';
+  tripStatus: 'active' | 'in-progress' | 'completed' | 'cancelled';
   agentName: string;
   customerData: TripCustomer;
 }

@@ -303,7 +303,7 @@ export function Reports({ user }: ReportsProps) {
     // Trip metrics
     const totalTrips = filteredTrips.length;
     const completedTrips = filteredTrips.filter(t => t.status === 'completed').length;
-    const ongoingTrips = filteredTrips.filter(t => t.status === 'ongoing').length;
+    const ongoingTrips = filteredTrips.filter(t => t.status === 'in-progress').length;
 
     // Performance ratios
     const profitMargin = customerTotalRolling > 0 ? ((houseFinalProfit / customerTotalRolling) * 100) : 0;
