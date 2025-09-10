@@ -1,16 +1,121 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Alert, AlertDescription } from './ui/alert';
-import { User, Agent, Customer, Trip, RollingRecord, BuyInOutRecord } from '../types';
 import { 
   Users, UserCheck, TrendingUp, TrendingDown, DollarSign, Receipt, Trophy, Target, 
   MapPin, PieChart, Percent, Building, Calendar, UserPlus, Activity, Database, 
-  RefreshCw, CheckCircle, AlertTriangle, Clock, Wifi, ArrowUpCircle, ArrowDownCircle,
-  Coffee, Zap, BarChart3, TrendingUp as TrendingUpIcon, Gamepad2
+  RefreshCw, CheckCircle, AlertTriangle, Clock, Wifi, WifiOff, ArrowUpCircle, ArrowDownCircle,
+  Coffee, Zap, BarChart3, Gamepad2
 } from 'lucide-react';
 import { db } from '../utils/supabase/supabaseClients';
+import { apiClient } from '../utils/api/apiClient';
+
+// Type definitions
+interface User {
+  id: string;
+  role: string;
+  agentId?: string;
+}
+
+interface Agent {
+  id: string;
+  status: string;
+}
+
+interface Customer {
+  id: string;
+  customerId?: string;
+  customer_id?: string;
+  name?: string;
+  agentName?: string;
+  isActive: boolean;
+  agentId?: string;
+  totalRolling?: number;
+  totalWinLoss?: number;
+  totalBuyIn?: number;
+  totalBuyOut?: number;
+  attachments?: any[];
+  isAgent?: boolean;
+  rollingPercentage?: number;
+  creditLimit?: number;
+  availableCredit?: number;
+}
+
+interface Trip {
+  id: string;
+  status: string;
+  agentId?: string;
+  agents?: any[];
+  customers?: any[];
+  expenses?: any[];
+  totalRolling?: number;
+  totalWinLoss?: number;
+  totalBuyIn?: number;
+  totalBuyOut?: number;
+  calculatedTotalRolling?: number;
+  attachments?: any[];
+  // Trip details
+  trip_name?: string;
+  name?: string;
+  destination?: string;
+  start_date?: string;
+  end_date?: string;
+  sharing?: {
+    // Support both camelCase (fallback) and snake_case (API response) formats
+    totalWinLoss?: number;
+    total_win_loss?: number;
+    totalExpenses?: number;
+    total_expenses?: number;
+    netResult?: number;
+    net_result?: number;
+    companyShare?: number;
+    company_share?: number;
+    agentShare?: number;
+    total_agent_share?: number;
+    totalRollingCommission?: number;
+    total_rolling_commission?: number;
+    totalBuyIn?: number;
+    total_buy_in?: number;
+    totalBuyOut?: number;
+    total_buy_out?: number;
+    netCashFlow?: number;
+    net_cash_flow?: number;
+    totalAgentShare?: number;
+    agentSharePercentage?: number;
+    agent_share_percentage?: number;
+    companySharePercentage?: number;
+    company_share_percentage?: number;
+    agentBreakdown?: any[];
+    agent_breakdown?: any[];
+  };
+}
+
+interface RollingRecord {
+  id: string;
+  customerId?: string;
+  customer_id?: string;
+  tripId?: string;
+  trip_id?: string;
+  recordedAt: string;
+  rollingAmount?: number;
+  rolling_amount?: number;
+  winLoss?: number;
+  win_loss?: number;
+}
+
+interface BuyInOutRecord {
+  id: string;
+  customerId?: string;
+  customer_id?: string;
+  tripId?: string;
+  trip_id?: string;
+  timestamp: string;
+  transactionType?: string;
+  transaction_type?: string;
+  amount: number;
+}
 
 interface DashboardProps {
   user: User;
@@ -50,98 +155,69 @@ export function Dashboard({ user }: DashboardProps) {
     return value;
   };
 
-  // Real-time data loading from Supabase
+  // Real-time data loading from Supabase with API integration
   const loadRealTimeData = useCallback(async () => {
     try {
       setRefreshing(true);
       setErrorMessage('');
       
-      console.log('🔄 Loading real-time dashboard data from Supabase...');
+      console.log('🔄 Loading real-time dashboard data from API...');
       
-      // Load all required data from Supabase in parallel
-      const [agentsData, customersData, tripsData, rollingData, buyInOutData] = await Promise.all([
+      // Load all required data from API in parallel
+      const [agentsData, customersData, transactionsData, tripsApiResponse] = await Promise.all([
         db.get('agents', []),
         db.get('customers', []),
-        db.get('trips', []),
-        db.get('rolling_records', []),
-        db.get('buy_in_out_records', [])
+        db.get('transactions', []),
+        apiClient.getTripsWithSharing()
       ]);
 
-      // Process customers with real-time rolling calculations
-      const processedCustomers = customersData.map((customer: Customer) => {
-        // Calculate real-time totals from rolling records
-        const customerRollingRecords = rollingData.filter((record: any) => record.customerId === customer.id);
-        const customerBuyInOutRecords = buyInOutData.filter((record: any) => record.customerId === customer.id);
-        
-        const realTimeRolling = customerRollingRecords.reduce((sum: number, record: any) => sum + (record.rollingAmount || 0), 0);
-        const realTimeWinLoss = customerRollingRecords.reduce((sum: number, record: any) => sum + (record.winLoss || 0), 0);
-        const realTimeBuyIn = customerBuyInOutRecords
-          .filter((record: any) => record.transactionType === 'buy-in')
-          .reduce((sum: number, record: any) => sum + record.amount, 0);
-        const realTimeBuyOut = customerBuyInOutRecords
-          .filter((record: any) => record.transactionType === 'buy-out')
-          .reduce((sum: number, record: any) => sum + record.amount, 0);
+      const tripsData = tripsApiResponse.data || [];
 
+      console.log('📊 Dashboard data loaded:', {
+        agents: Array.isArray(agentsData) ? agentsData.length : 0,
+        customers: Array.isArray(customersData) ? customersData.length : 0,
+        trips: Array.isArray(tripsData) ? tripsData.length : 0,
+        transactions: Array.isArray(transactionsData) ? transactionsData.length : 0
+      });
+
+      // Debug: Log sample data
+      if (Array.isArray(customersData) && customersData.length > 0) {
+        console.log('🔍 Sample customer data:', customersData[0]);
+      }
+      if (Array.isArray(tripsData) && tripsData.length > 0) {
+        console.log('🔍 Sample trip data with sharing:', tripsData[0]);
+      }
+      if (Array.isArray(transactionsData) && transactionsData.length > 0) {
+        console.log('🔍 Sample transaction data:', transactionsData[0]);
+      }
+
+      // Process customers - use database totals directly
+      const processedCustomers = (Array.isArray(customersData) ? customersData : []).map((customer: any) => {
         return {
           ...customer,
-          // Real-time financial calculations
-          totalRolling: realTimeRolling,
-          totalWinLoss: realTimeWinLoss,
-          totalBuyIn: realTimeBuyIn,
-          totalBuyOut: realTimeBuyOut,
-          // Ensure backward compatibility
+          id: customer.id,
+          name: customer.name,
+          agentName: customer.agent_name,
+          isActive: customer.status === 'active',
+          totalRolling: parseFloat(customer.total_rolling) || 0,
+          totalWinLoss: parseFloat(customer.total_win_loss) || 0,
+          totalBuyIn: parseFloat(customer.total_buy_in) || 0,
+          totalBuyOut: parseFloat(customer.total_buy_out) || 0,
           attachments: customer.attachments || [],
-          isAgent: customer.isAgent || false,
-          rollingPercentage: customer.rollingPercentage || 1.4,
-          creditLimit: customer.creditLimit || 0,
-          availableCredit: customer.availableCredit || 0
+          isAgent: customer.is_agent || false,
+          rollingPercentage: parseFloat(customer.rolling_percentage) || 1.4,
+          creditLimit: parseFloat(customer.credit_limit) || 0,
+          availableCredit: parseFloat(customer.available_credit) || 0
         };
       });
 
-      // Process trips with real-time calculations
-      const processedTrips = tripsData.map((trip: Trip) => {
-        // Calculate trip totals from rolling records for this trip's customers
-        const tripCustomerIds = trip.customers?.map(c => c.customerId) || [];
-        const tripRollingRecords = rollingData.filter((record: any) => 
-          tripCustomerIds.includes(record.customerId)
-        );
-        const tripBuyInOutRecords = buyInOutData.filter((record: any) => 
-          tripCustomerIds.includes(record.customerId)
-        );
-
-        const tripTotalRolling = tripRollingRecords.reduce((sum: number, record: any) => sum + (record.rollingAmount || 0), 0);
-        const tripTotalWinLoss = tripRollingRecords.reduce((sum: number, record: any) => sum + (record.winLoss || 0), 0);
-        const tripTotalBuyIn = tripBuyInOutRecords
-          .filter((record: any) => record.transactionType === 'buy-in')
-          .reduce((sum: number, record: any) => sum + record.amount, 0);
-        const tripTotalBuyOut = tripBuyInOutRecords
-          .filter((record: any) => record.transactionType === 'buy-out')
-          .reduce((sum: number, record: any) => sum + record.amount, 0);
-
-        const calculatedTotalRolling = tripTotalRolling * 0.014; // Default 1.4% commission
-
+      // Process trips - preserve sharing data from API directly
+      const processedTrips = (Array.isArray(tripsData) ? tripsData : []).map((trip: any) => {
+        console.log('🔍 Processing trip:', trip.trip_name, 'sharing data:', trip.sharing);
         return {
           ...trip,
-          totalRolling: tripTotalRolling,
-          totalWinLoss: tripTotalWinLoss,
-          totalBuyIn: tripTotalBuyIn,
-          totalBuyOut: tripTotalBuyOut,
-          calculatedTotalRolling,
-          attachments: trip.attachments || [],
-          sharing: trip.sharing || {
-            totalWinLoss: tripTotalWinLoss,
-            totalExpenses: 0,
-            totalRollingCommission: calculatedTotalRolling,
-            totalBuyIn: tripTotalBuyIn,
-            totalBuyOut: tripTotalBuyOut,
-            netCashFlow: tripTotalBuyOut - tripTotalBuyIn,
-            netResult: 0,
-            totalAgentShare: 0,
-            companyShare: 0,
-            agentSharePercentage: 0,
-            companySharePercentage: 100,
-            agentBreakdown: []
-          }
+          attachments: trip.attachments || []
+          // Don't override sharing - keep original API data
         };
       });
 
@@ -149,12 +225,12 @@ export function Dashboard({ user }: DashboardProps) {
       setAgents(agentsData);
       setCustomers(processedCustomers);
       setTrips(processedTrips);
-      setRollingRecords(rollingData);
-      setBuyInOutRecords(buyInOutData);
+      setRollingRecords([]); // No longer extracting from trips
+      setBuyInOutRecords(transactionsData || []);
       setLastSyncTime(new Date());
       setConnectionStatus('connected');
       
-      console.log(`✅ Real-time dashboard data loaded: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips, ${rollingData.length} rolling records`);
+      console.log(`✅ Real-time dashboard data loaded: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips with sharing data`);
       
     } catch (error) {
       console.error('❌ Error loading real-time dashboard data:', error);
@@ -241,10 +317,44 @@ export function Dashboard({ user }: DashboardProps) {
     const ongoingTrips = filteredTrips.filter(t => t.status === 'ongoing').length;
     const plannedTrips = filteredTrips.filter(t => t.status === 'planned').length;
 
-    // House performance calculations
-    const houseGrossWin = -customerTotalWinLoss; // Customer loss = House win
+    // Calculate metrics from trip_sharing table data (all trips, no filtering)
+    console.log('🔍 Debug trips data for calculations:', trips.length);
+    trips.forEach((trip, index) => {
+      console.log(`Trip ${index + 1} (${trip.trip_name}):`, {
+        hasSharing: !!trip.sharing,
+        sharingKeys: trip.sharing ? Object.keys(trip.sharing) : 'no sharing',
+        sharingData: trip.sharing
+      });
+    });
+    
+    const tripSharingGrossProfit = trips.reduce((sum, trip) => {
+      const value = Math.abs(safeNumber(trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss));
+      console.log(`Trip ${trip.trip_name}: total_win_loss = ${trip.sharing?.total_win_loss}, contributing ${value} to gross profit`);
+      return sum + value;
+    }, 0);
+    
+    const tripSharingExpenses = trips.reduce((sum, trip) => {
+      const value = Math.abs(safeNumber(trip.sharing?.total_expenses || trip.sharing?.totalExpenses));
+      console.log(`Trip ${trip.trip_name}: total_expenses = ${trip.sharing?.total_expenses}, contributing ${value} to expenses`);
+      return sum + value;
+    }, 0);
+    
+    const tripSharingNetProfit = trips.reduce((sum, trip) => {
+      const value = safeNumber(trip.sharing?.company_share || trip.sharing?.companyShare);
+      console.log(`Trip ${trip.trip_name}: company_share = ${trip.sharing?.company_share}, contributing ${value} to net profit`);
+      return sum + value;
+    }, 0);
+    
+    console.log('📊 Final calculations:', {
+      tripSharingGrossProfit,
+      tripSharingExpenses, 
+      tripSharingNetProfit
+    });
+
+    // House performance calculations (using trip_sharing data)
+    const houseGrossWin = tripSharingGrossProfit;
     const houseNetWin = houseGrossWin - totalRollingCommission;
-    const houseFinalProfit = houseNetWin - totalExpenses;
+    const houseFinalProfit = tripSharingNetProfit;
 
     // Performance ratios
     const profitMargin = customerTotalRolling > 0 ? ((houseFinalProfit / customerTotalRolling) * 100) : 0;
@@ -265,7 +375,7 @@ export function Dashboard({ user }: DashboardProps) {
       tripTotalRolling,
       tripTotalWinLoss,
       totalRollingCommission,
-      totalExpenses,
+      totalExpenses: tripSharingExpenses,
       
       // Customer metrics
       totalCustomers,
@@ -305,13 +415,57 @@ export function Dashboard({ user }: DashboardProps) {
 
   const metrics = calculateMetrics();
 
-  const getWinLossIndicator = (winLoss: number) => {
+  // Filter active trips with real-time data enrichment
+  const activeTrips = filteredTrips.filter(trip => 
+    trip.status && ['active', 'in-progress', 'ongoing'].includes(trip.status.toLowerCase())
+  ).map(trip => {
+    // Enrich trip data with real-time calculations
+    const tripTransactions = buyInOutRecords.filter(t => t.trip_id === trip.id);
+    const tripCustomers = filteredCustomers.filter(c => 
+      trip.customers?.some(tc => tc.customerId === c.id || tc.customer_id === c.id)
+    );
+    
+    // Calculate real-time totals from transactions
+    const buyInTotal = tripTransactions
+      .filter(t => t.transaction_type === 'buy-in')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    const buyOutTotal = tripTransactions
+      .filter(t => t.transaction_type === 'cash-out')
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    // Get rolling data from rolling records
+    const tripRollingRecords = rollingRecords.filter(r => r.trip_id === trip.id);
+    const totalRollingFromRecords = tripRollingRecords
+      .reduce((sum, r) => sum + (r.rolling_amount || 0), 0);
+    const totalWinLossFromRecords = tripRollingRecords
+      .reduce((sum, r) => sum + (r.win_loss || 0), 0);
+    
+    return {
+      ...trip,
+      customers: tripCustomers,
+      totalBuyIn: Math.max(trip.totalBuyIn || 0, buyInTotal),
+      totalBuyOut: Math.max(trip.totalBuyOut || 0, buyOutTotal),
+      totalRolling: Math.max(trip.totalRolling || 0, totalRollingFromRecords),
+      totalWinLoss: totalWinLossFromRecords !== 0 ? totalWinLossFromRecords : (trip.totalWinLoss || 0),
+      // Update sharing data with real-time values
+      sharing: {
+        ...trip.sharing,
+        totalBuyIn: Math.max(trip.sharing?.totalBuyIn || 0, buyInTotal),
+        totalBuyOut: Math.max(trip.sharing?.totalBuyOut || 0, buyOutTotal),
+        totalRollingCommission: Math.max(trip.sharing?.totalRollingCommission || 0, totalRollingFromRecords),
+        totalWinLoss: totalWinLossFromRecords !== 0 ? totalWinLossFromRecords : (trip.sharing?.totalWinLoss || 0),
+        netCashFlow: Math.max(trip.sharing?.totalBuyOut || 0, buyOutTotal) - Math.max(trip.sharing?.totalBuyIn || 0, buyInTotal)
+      }
+    };
+  });
+
+  const getWinLossStatus = (winLoss: number) => {
     if (winLoss === 0) {
       return { text: 'Break Even', icon: Target, color: 'text-gray-600' };
     } else if (winLoss > 0) {
-      return { text: 'Customer Win', icon: TrendingUp, color: 'text-red-600' };
+      return { text: 'Junket Loss', icon: TrendingDown, color: 'text-red-600' };
     } else {
-      return { text: 'House Win', icon: Trophy, color: 'text-green-600' };
+      return { text: 'Junket Profit', icon: Trophy, color: 'text-green-600' };
     }
   };
 
@@ -414,51 +568,57 @@ export function Dashboard({ user }: DashboardProps) {
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-r from-green-50 to-green-100 border-green-200">
+          <Card className={`bg-gradient-to-r ${metrics.houseGrossWin >= 0 ? 'from-green-50 to-green-100 border-green-200' : 'from-red-50 to-red-100 border-red-200'}`}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-green-800">Customer Win/Loss</CardTitle>
-              {metrics.customerTotalWinLoss >= 0 ? (
-                <TrendingUp className="h-4 w-4 text-red-600" />
-              ) : (
+              <CardTitle className={`text-sm font-medium ${metrics.houseGrossWin >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                Company Gross Profit
+              </CardTitle>
+              {metrics.houseGrossWin >= 0 ? (
                 <Trophy className="h-4 w-4 text-green-600" />
+              ) : (
+                <TrendingDown className="h-4 w-4 text-red-600" />
               )}
-            </CardHeader>
-            <CardContent>
-              <div className={`text-2xl font-bold ${metrics.customerTotalWinLoss >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                HK${safeFormatNumber(metrics.customerTotalWinLoss)}
-              </div>
-              <p className="text-xs text-green-600">
-                {metrics.customerTotalWinLoss <= 0 ? 'House Win' : 'Customer Win'} • {metrics.activeCustomers} active customers
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-r from-purple-50 to-purple-100 border-purple-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-purple-800">House Gross Win</CardTitle>
-              <Trophy className="h-4 w-4 text-purple-600" />
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 HK${safeFormatNumber(metrics.houseGrossWin)}
               </div>
-              <p className="text-xs text-purple-600">
-                {metrics.profitMargin.toFixed(1)}% profit margin on rolling
+              <p className={`text-xs ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                From trip sharing win/loss data
               </p>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-r from-orange-50 to-orange-100 border-orange-200">
+          <Card className="bg-gradient-to-r from-red-50 to-red-100 border-red-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-orange-800">Buy-in/Buy-out Flow</CardTitle>
-              <ArrowUpCircle className="h-4 w-4 text-orange-600" />
+              <CardTitle className="text-sm font-medium text-red-800">Expenses</CardTitle>
+              <Receipt className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-700">
-                HK${safeFormatNumber(metrics.customerTotalBuyOut - metrics.customerTotalBuyIn)}
+              <div className="text-2xl font-bold text-red-700">HK${safeFormatNumber(metrics.totalExpenses)}</div>
+              <p className="text-xs text-red-600">
+                Total operational expenses from trip sharing
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className={`bg-gradient-to-r ${metrics.houseFinalProfit >= 0 ? 'from-green-50 to-green-100 border-green-200' : 'from-red-50 to-red-100 border-red-200'}`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className={`text-sm font-medium ${metrics.houseFinalProfit >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                Company Net Profit
+              </CardTitle>
+              {metrics.houseFinalProfit >= 0 ? (
+                <Trophy className="h-4 w-4 text-green-600" />
+              ) : (
+                <TrendingDown className="h-4 w-4 text-red-600" />
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${metrics.houseFinalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                HK${safeFormatNumber(metrics.houseFinalProfit)}
               </div>
-              <p className="text-xs text-orange-600">
-                Net cash flow • {metrics.totalBuyInOutRecords} transactions
+              <p className={`text-xs ${metrics.houseFinalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                Company share from trip sharing
               </p>
             </CardContent>
           </Card>
@@ -523,131 +683,96 @@ export function Dashboard({ user }: DashboardProps) {
         </div>
       </div>
 
-      {/* House Performance Flow */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
-          <CardHeader>
-            <CardTitle className="text-indigo-800">House Performance Flow</CardTitle>
-            <CardDescription className="text-indigo-600">
-              Real-time calculation from customer data
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
-                  <span className="text-sm text-gray-600">Customer Win/Loss</span>
-                  <span className={`font-semibold ${metrics.customerTotalWinLoss <= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    HK${safeFormatNumber(metrics.customerTotalWinLoss)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
-                  <span className="text-sm text-green-700 font-medium">= House Gross Win</span>
-                  <span className="font-bold text-green-700">
-                    HK${safeFormatNumber(metrics.houseGrossWin)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
-                  <span className="text-sm text-gray-600">- Rolling Commission</span>
-                  <span className="font-semibold text-purple-600">
-                    HK${safeFormatNumber(metrics.totalRollingCommission)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg border border-orange-200">
-                  <span className="text-sm text-orange-700 font-medium">= House Net Win</span>
-                  <span className="font-bold text-orange-700">
-                    HK${safeFormatNumber(metrics.houseNetWin)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white rounded-lg border">
-                  <span className="text-sm text-gray-600">- Trip Expenses</span>
-                  <span className="font-semibold text-red-600">
-                    HK${safeFormatNumber(metrics.totalExpenses)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-4 bg-gradient-to-r from-blue-100 to-purple-100 rounded-lg border-2 border-indigo-300">
-                  <span className="text-sm text-indigo-700 font-bold">House Final Profit</span>
-                  <span className={`text-xl font-bold ${metrics.houseFinalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    HK${safeFormatNumber(metrics.houseFinalProfit)}
-                  </span>
-                </div>
-              </div>
+      {/* Active Trips */}
+      <Card className="h-full">
+        <CardHeader>
+          <CardTitle>Active Trips</CardTitle>
+          <CardDescription>
+            Current ongoing trips with real-time performance data
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {activeTrips.length === 0 ? (
+            <div className="text-center py-8">
+              <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">No active trips found</p>
+              <p className="text-xs text-gray-400 mt-1">Active trips will appear here when trips are in progress</p>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Real-time Activity Monitor */}
-        <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
-          <CardHeader>
-            <CardTitle className="text-green-800">Real-time Activity Monitor</CardTitle>
-            <CardDescription className="text-green-600">
-              Live transaction data and performance ratios
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          ) : (
             <div className="space-y-4">
-              {/* Recent Activity */}
-              <div>
-                <h4 className="font-semibold text-green-800 mb-3">24 Hour Activity</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex justify-between items-center p-2 bg-white rounded border">
-                    <span className="text-xs text-gray-600">Rolling Records</span>
-                    <span className="font-medium text-blue-600">{metrics.recentRollingRecords}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-2 bg-white rounded border">
-                    <span className="text-xs text-gray-600">Buy-in/Out</span>
-                    <span className="font-medium text-green-600">{metrics.recentBuyInOutRecords}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Buy-in/Buy-out Breakdown */}
-              <div>
-                <h4 className="font-semibold text-green-800 mb-3">Cash Flow Breakdown</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center p-3 bg-blue-100 rounded-lg">
-                    <span className="text-sm text-blue-800 font-medium">Total Buy-in</span>
-                    <span className="font-bold text-blue-700">
-                      HK${safeFormatNumber(metrics.customerTotalBuyIn)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-purple-100 rounded-lg">
-                    <span className="text-sm text-purple-800 font-medium">Total Buy-out</span>
-                    <span className="font-bold text-purple-700">
-                      HK${safeFormatNumber(metrics.customerTotalBuyOut)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-green-100 rounded-lg">
-                    <span className="text-sm text-green-800 font-medium">Net Cash Flow</span>
-                    <span className={`font-bold ${(metrics.customerTotalBuyOut - metrics.customerTotalBuyIn) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                      HK${safeFormatNumber(metrics.customerTotalBuyOut - metrics.customerTotalBuyIn)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Performance Ratios */}
-              <div>
-                <h4 className="font-semibold text-green-800 mb-3">Performance Ratios</h4>
-                <div className="grid grid-cols-1 gap-2 text-xs">
-                  <div className="flex justify-between p-2 bg-white rounded border">
-                    <span className="text-gray-600">Profit Margin</span>
-                    <span className="font-medium">{metrics.profitMargin.toFixed(2)}%</span>
-                  </div>
-                  <div className="flex justify-between p-2 bg-white rounded border">
-                    <span className="text-gray-600">Commission Rate</span>
-                    <span className="font-medium">{metrics.commissionRatio.toFixed(2)}%</span>
-                  </div>
-                  <div className="flex justify-between p-2 bg-white rounded border">
-                    <span className="text-gray-600">Expense Ratio</span>
-                    <span className="font-medium">{metrics.expenseRatio.toFixed(2)}%</span>
-                  </div>
-                </div>
-              </div>
+              {activeTrips
+                .slice(0, 5) // Show up to 5 trips to match customer performance section
+                .map((trip) => {
+                  const totalRolling = trip.sharing?.totalRollingCommission || trip.totalRolling || 0;
+                  const winLoss = trip.sharing?.totalWinLoss || trip.totalWinLoss || 0;
+                  const expenses = trip.sharing?.totalExpenses || trip.sharing?.total_expenses || 0;
+                  const cashFlow = (trip.sharing?.totalBuyOut || trip.totalBuyOut || 0) - (trip.sharing?.totalBuyIn || trip.totalBuyIn || 0);
+                  
+                  // Calculate progress based on dates
+                  const startDate = trip.start_date ? new Date(trip.start_date) : null;
+                  const endDate = trip.end_date ? new Date(trip.end_date) : null;
+                  const now = new Date();
+                  let progress = 0;
+                  
+                  if (startDate && endDate) {
+                    const totalDuration = endDate.getTime() - startDate.getTime();
+                    const elapsed = now.getTime() - startDate.getTime();
+                    progress = Math.max(0, Math.min(100, (elapsed / totalDuration) * 100));
+                  }
+                  
+                  return (
+                    <div key={trip.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center space-x-4">
+                        <div className="flex-shrink-0">
+                          <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
+                            {trip.status === 'active' ? 'Active' : 'Ongoing'}
+                          </Badge>
+                        </div>
+                        <div>
+                          <p className="font-medium">{trip.trip_name || trip.name || 'Unnamed Trip'}</p>
+                          <p className="text-sm text-gray-500 flex items-center">
+                            <MapPin className="h-3 w-3 mr-1" />
+                            {trip.destination || 'Unknown Destination'} • {trip.customers?.length || 0} customers
+                          </p>
+                          <p className="text-xs text-blue-600">
+                            Progress: {Math.round(progress)}% • {trip.start_date ? new Date(trip.start_date).toLocaleDateString() : 'TBD'} - {trip.end_date ? new Date(trip.end_date).toLocaleDateString() : 'TBD'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-3 text-right text-xs">
+                        <div>
+                          <div className="text-gray-500">Rolling</div>
+                          <div className="font-medium text-blue-600">HK${safeFormatNumber(totalRolling)}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">Win/Loss</div>
+                          <div className={`font-medium ${
+                            winLoss <= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            HK${safeFormatNumber(Math.abs(winLoss))}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">Expenses</div>
+                          <div className="font-medium text-red-600">HK${safeFormatNumber(expenses)}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500">Cash Flow</div>
+                          <div className={`font-medium ${
+                            cashFlow >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            HK${safeFormatNumber(cashFlow)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              }
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Recent Customer Activity */}
       <Card>
@@ -670,9 +795,9 @@ export function Dashboard({ user }: DashboardProps) {
                 .sort((a, b) => safeNumber(b.totalRolling) - safeNumber(a.totalRolling))
                 .slice(0, 5)
                 .map((customer) => {
-                  const indicator = getWinLossIndicator(customer.totalWinLoss);
+                  const indicator = getWinLossStatus(customer.totalWinLoss || 0);
                   const Icon = indicator.icon;
-                  const commission = customer.totalRolling * (customer.rollingPercentage / 100);
+                  const commission = (customer.totalRolling || 0) * ((customer.rollingPercentage || 0) / 100);
                   
                   return (
                     <div key={customer.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
@@ -696,9 +821,9 @@ export function Dashboard({ user }: DashboardProps) {
                         <div>
                           <div className="text-gray-500">Win/Loss</div>
                           <div className={`font-medium ${
-                            customer.totalWinLoss >= 0 ? 'text-red-600' : 'text-green-600'
+                            (customer.totalWinLoss || 0) <= 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            {customer.totalWinLoss >= 0 ? '+' : ''}HK${safeFormatNumber(customer.totalWinLoss)}
+                            HK${safeFormatNumber(Math.abs(customer.totalWinLoss || 0))}
                           </div>
                         </div>
                         <div>
@@ -708,9 +833,9 @@ export function Dashboard({ user }: DashboardProps) {
                         <div>
                           <div className="text-gray-500">Cash Flow</div>
                           <div className={`font-medium ${
-                            (customer.totalBuyOut - customer.totalBuyIn) >= 0 ? 'text-green-600' : 'text-red-600'
+                            ((customer.totalBuyOut || 0) - (customer.totalBuyIn || 0)) >= 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            HK${safeFormatNumber(customer.totalBuyOut - customer.totalBuyIn)}
+                            HK${safeFormatNumber((customer.totalBuyOut || 0) - (customer.totalBuyIn || 0))}
                           </div>
                         </div>
                       </div>

@@ -138,42 +138,26 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         console.log('🔍 Sample customer details:', Array.from(customerDetailsMap.entries())[0]);
       }
 
-      // Process customers with backward compatibility and real-time rolling calculations
+      // Process customers using database totals directly (no manual calculations)
       const processedCustomers = customersData.map((customer: Customer) => {
-        // Calculate real-time totals from rolling records
-        const customerRollingRecords = rollingData.filter((record: any) => record.customerId === customer.id);
-        const customerBuyInOutRecords = buyInOutData.filter((record: any) => record.customerId === customer.id);
-        
-        const totalRolling = rollingRecords.reduce((sum: number, record: any) => {
-          return sum + record.amount;
-        }, 0);
-        const netAmount = buyInOutRecords.reduce((sum: number, record: any) => {
-          return sum + record.amount;
-        }, 0);
-        const realTimeWinLoss = customerRollingRecords.reduce((sum: number, record: any) => sum + (record.winLoss || 0), 0);
-        const realTimeBuyIn = customerBuyInOutRecords
-          .filter((record: any) => record.transactionType === 'buy-in')
-          .reduce((sum: number, record: any) => sum + record.amount, 0);
-        const realTimeBuyOut = customerBuyInOutRecords
-          .filter((record: any) => record.transactionType === 'buy-out')
-          .reduce((sum: number, record: any) => sum + record.amount, 0);
-
         // Get customer details from the map
         const customerDetails = customerDetailsMap.get(customer.id);
         
-        // Debug log for each customer
-        if (customerDetails) {
-          console.log(`🔍 Customer ${customer.name} has details:`, customerDetails);
-        }
+        // Debug log for each customer's database totals
+        console.log(`🔍 Customer ${customer.name} database totals:`, {
+          total_rolling: customer.total_rolling,
+          total_win_loss: customer.total_win_loss,
+          total_buy_in: customer.total_buy_in,
+          total_buy_out: customer.total_buy_out
+        });
 
         return {
           ...customer,
-          // Only include properties that exist in the Customer type
-          // Real-time financial calculations
-          totalRolling: totalRolling,
-          totalWinLoss: realTimeWinLoss,
-          totalBuyIn: realTimeBuyIn,
-          totalBuyOut: realTimeBuyOut,
+          // Use database totals directly - these are kept up-to-date by the backend
+          totalRolling: parseFloat(String(customer.total_rolling || 0)) || 0,
+          totalWinLoss: parseFloat(String(customer.total_win_loss || 0)) || 0,
+          totalBuyIn: parseFloat(String(customer.total_buy_in || 0)) || 0,
+          totalBuyOut: parseFloat(String(customer.total_buy_out || 0)) || 0,
           // Customer details merged into customer object
           details: customerDetails,
           // Get attachments from customer details instead of customer table
@@ -181,9 +165,9 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           // Backward compatibility
           isAgent: customer.isAgent || false,
           sourceAgentId: customer.sourceAgentId || undefined,
-          rollingPercentage: customer.rollingPercentage || 1.4,
-          creditLimit: customer.creditLimit || 0,
-          availableCredit: customer.availableCredit || 0
+          rollingPercentage: parseFloat(String(customer.rolling_percentage || 1.4)) || 1.4,
+          creditLimit: parseFloat(String(customer.credit_limit || 0)) || 0,
+          availableCredit: parseFloat(String(customer.available_credit || 0)) || 0
         };
       });
 

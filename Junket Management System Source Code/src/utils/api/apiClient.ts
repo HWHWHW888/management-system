@@ -249,6 +249,13 @@ class ApiClient {
     return this.request('/trips');
   }
 
+  async getTripsWithSharing() {
+    console.log('🔄 ApiClient: Fetching trips with sharing data...');
+    const response = await this.request('/trips');
+    console.log('📊 ApiClient: Trips with sharing data loaded:', Array.isArray(response.data) ? response.data.length : 0);
+    return response;
+  }
+
   async createTrip(tripData: any) {
     return this.request('/trips', {
       method: 'POST',

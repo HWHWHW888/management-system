@@ -21,13 +21,12 @@ async function calculateCustomerTripStats(tripId, customerId) {
       return { total_win: 0, total_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0 };
     }
 
-    // Get rolling records data - using actual table structure
+    // Get rolling records data from trip_rolling table
     const { data: rollingRecords, error: rollingError } = await supabase
-      .from('rolling_records')
+      .from('trip_rolling')
       .select('rolling_amount')
       .eq('trip_id', tripId)
-      .eq('customer_id', customerId)
-      .eq('verified', true); // Only include verified records
+      .eq('customer_id', customerId);
 
     if (rollingError) {
       console.error('Error fetching rolling records:', rollingError);
@@ -59,31 +58,11 @@ async function calculateCustomerTripStats(tripId, customerId) {
       }
     });
 
-    // Process rolling records - only rolling amounts (win/loss handled by trip_customer_stats)
+    // Process rolling records - calculate total rolling amount
     rollingRecords?.forEach(record => {
       const rollingAmt = parseFloat(record.rolling_amount) || 0;
-      // Add to rolling amount
       rolling_amount += rollingAmt;
     });
-
-    // If no rolling records found, try to get rolling amount from trip_customer_stats
-    if (!rollingRecords || rollingRecords.length === 0) {
-      const { data: customerStats } = await supabase
-        .from('trip_customer_stats')
-        .select('rolling_amount, net_result, total_buy_in, total_cash_out, total_win, total_loss')
-        .eq('trip_id', tripId)
-        .eq('customer_id', customerId)
-        .single();
-
-      if (customerStats) {
-        rolling_amount = parseFloat(customerStats.rolling_amount) || 0;
-        // Use stats from trip_customer_stats if available
-        total_buy_in = parseFloat(customerStats.total_buy_in) || total_buy_in;
-        total_cash_out = parseFloat(customerStats.total_cash_out) || total_cash_out;
-        total_win = parseFloat(customerStats.total_win) || total_win;
-        total_loss = parseFloat(customerStats.total_loss) || total_loss;
-      }
-    }
 
     // Calculate net result: (cash-out + wins) - (buy-in + losses)
     const net_result = (total_cash_out + total_win) - (total_buy_in + total_loss);
@@ -128,6 +107,9 @@ async function updateCustomerTripStats(tripId, customerId) {
 
   // Update customer's total win/loss in customers table
   await updateCustomerTotalWinLoss(customerId);
+  
+  // Update customer's total buy-in and buy-out in customers table
+  await updateCustomerTotalBuyInOut(customerId);
 
   return stats;
 }
@@ -135,6 +117,8 @@ async function updateCustomerTripStats(tripId, customerId) {
 // Helper function to update customer's total win/loss across all trips
 async function updateCustomerTotalWinLoss(customerId) {
   try {
+    console.log(`📊 Updating customer ${customerId} total win/loss - preserving other data...`);
+    
     // Calculate total win/loss from all trip customer stats
     const { data: allStats, error } = await supabase
       .from('trip_customer_stats')
@@ -151,7 +135,9 @@ async function updateCustomerTotalWinLoss(customerId) {
       totalWinLoss += parseFloat(stat.net_result) || 0;
     });
 
-    // Update customer table
+    console.log(`💰 Customer ${customerId} calculated total win/loss: ${totalWinLoss}`);
+
+    // ⚠️ IMPORTANT: Only update specific fields to preserve other customer data
     const { error: updateError } = await supabase
       .from('customers')
       .update({
@@ -162,6 +148,8 @@ async function updateCustomerTotalWinLoss(customerId) {
 
     if (updateError) {
       console.error('Error updating customer total win/loss:', updateError);
+    } else {
+      console.log(`✅ Updated customer ${customerId}: total_win_loss=${totalWinLoss} (other fields preserved)`);
     }
 
   } catch (error) {
@@ -169,9 +157,118 @@ async function updateCustomerTotalWinLoss(customerId) {
   }
 }
 
-// Helper function to calculate trip win/loss statistics from customer stats
+// Helper function to update customer's total buy-in and buy-out across all trips
+async function updateCustomerTotalBuyInOut(customerId) {
+  try {
+    console.log(`📊 Updating customer ${customerId} total buy-in/buy-out - preserving other data...`);
+    
+    // Calculate total buy-in and buy-out from all trip customer stats
+    const { data: allStats, error } = await supabase
+      .from('trip_customer_stats')
+      .select('total_buy_in, total_cash_out')
+      .eq('customer_id', customerId);
+
+    if (error) {
+      console.error('Error fetching customer trip stats for buy-in/out:', error);
+      return;
+    }
+
+    let totalBuyIn = 0;
+    let totalBuyOut = 0;
+    
+    allStats?.forEach(stat => {
+      totalBuyIn += parseFloat(stat.total_buy_in) || 0;
+      totalBuyOut += parseFloat(stat.total_cash_out) || 0;
+    });
+
+    console.log(`💰 Customer ${customerId} calculated totals: buy-in=${totalBuyIn}, buy-out=${totalBuyOut}`);
+
+    // ⚠️ IMPORTANT: Only update specific fields to preserve other customer data
+    const { error: updateError } = await supabase
+      .from('customers')
+      .update({
+        total_buy_in: totalBuyIn,
+        total_buy_out: totalBuyOut,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', customerId);
+
+    if (updateError) {
+      console.error('Error updating customer total buy-in/out:', updateError);
+    } else {
+      console.log(`✅ Updated customer ${customerId}: total_buy_in=${totalBuyIn}, total_buy_out=${totalBuyOut} (other fields preserved)`);
+    }
+
+  } catch (error) {
+    console.error('Error in updateCustomerTotalBuyInOut:', error);
+  }
+}
+
+// Helper function to update customer's total rolling amount across all trips
+async function updateCustomerTotalRolling(customerId) {
+  try {
+    console.log(`🎲 Updating customer ${customerId} total rolling amount - preserving other data...`);
+    
+    // Calculate total rolling amount from all trip customer stats
+    const { data: allStats, error } = await supabase
+      .from('trip_customer_stats')
+      .select('rolling_amount')
+      .eq('customer_id', customerId);
+
+    if (error) {
+      console.error('Error fetching customer trip stats for rolling:', error);
+      return;
+    }
+
+    let totalRolling = 0;
+    
+    allStats?.forEach(stat => {
+      totalRolling += parseFloat(stat.rolling_amount) || 0;
+    });
+
+    console.log(`🎲 Customer ${customerId} calculated total rolling: ${totalRolling}`);
+
+    // ⚠️ IMPORTANT: Only update specific fields to preserve other customer data
+    const { error: updateError } = await supabase
+      .from('customers')
+      .update({
+        total_rolling: totalRolling,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', customerId);
+
+    if (updateError) {
+      console.error('Error updating customer total rolling:', updateError);
+    } else {
+      console.log(`✅ Updated customer ${customerId}: total_rolling=${totalRolling} (other fields preserved)`);
+    }
+
+  } catch (error) {
+    console.error('Error in updateCustomerTotalRolling:', error);
+  }
+}
+
+// Comprehensive function to synchronize all customer data
+async function synchronizeCustomerData(customerId) {
+  try {
+    console.log(`🔄 Starting comprehensive customer data synchronization for customer: ${customerId}`);
+    
+    // Update all customer statistics
+    await updateCustomerTotalWinLoss(customerId);
+    await updateCustomerTotalBuyInOut(customerId);
+    await updateCustomerTotalRolling(customerId);
+    
+    console.log(`✅ Completed comprehensive customer data synchronization for customer: ${customerId}`);
+  } catch (error) {
+    console.error(`Error in synchronizeCustomerData for customer ${customerId}:`, error);
+  }
+}
+
+// Helper function to calculate trip statistics (no longer updates trips table)
 async function calculateTripStats(tripId) {
   try {
+    console.log('📊 Calculating trip statistics for trip:', tripId);
+    
     // Get all customer stats for this trip
     const { data: customerStats, error } = await supabase
       .from('trip_customer_stats')
@@ -211,40 +308,18 @@ async function calculateTripStats(tripId) {
   }
 }
 
-// Helper function to update trip statistics
+// Helper function to update trip statistics (now only calculates, doesn't update trips table)
 async function updateTripStats(tripId) {
-  // First, update all customer stats for this trip
-  const { data: tripCustomers } = await supabase
-    .from('trip_customers')
-    .select('customer_id')
-    .eq('trip_id', tripId);
-
-  if (tripCustomers) {
-    for (const tc of tripCustomers) {
-      await updateCustomerTripStats(tripId, tc.customer_id);
-    }
-  }
-
-  // Then calculate and update trip totals
   const stats = await calculateTripStats(tripId);
   
-  const { error } = await supabase
-    .from('trips')
-    .update({
-      total_win: stats.total_win,
-      total_loss: stats.total_loss,
-      net_profit: stats.net_profit,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', tripId);
-
-  if (error) {
-    console.error('Error updating trip stats:', error);
-  }
-
-  // Update trip sharing calculations
-  await updateTripSharing(tripId, stats);
-
+  console.log('📊 Calculated trip stats:', {
+    tripId,
+    stats
+  });
+  
+  // Note: Financial stats are now stored in trip_sharing table, not trips table
+  console.log('✅ Trip stats calculated successfully (stored in trip_sharing)');
+  
   return stats;
 }
 
@@ -278,6 +353,20 @@ async function updateTripSharing(tripId, tripStats) {
     // Check if there are any customers - if not, set sharing values to 0 but preserve expenses
     const hasCustomers = customerStats && customerStats.length > 0;
     
+    // Get total rolling amount from rolling_records table
+    const { data: tripRollingRecords, error: rollingError } = await supabase
+      .from('rolling_records')
+      .select('rolling_amount')
+      .eq('trip_id', tripId);
+
+    if (rollingError) {
+      console.error('Error fetching trip rolling records:', rollingError);
+    }
+
+    // Calculate total rolling from rolling_records table
+    const totalRollingFromTable = tripRollingRecords?.reduce((sum, record) => 
+      sum + (parseFloat(record.rolling_amount) || 0), 0) || 0;
+    
     // Calculate Rolling Commission based on customer rolling amounts at 1.4%
     const totalRolling = hasCustomers ? 
       customerStats.reduce((sum, stat) => sum + (parseFloat(stat.rolling_amount) || 0), 0) : 0;
@@ -286,16 +375,10 @@ async function updateTripSharing(tripId, tripStats) {
     
     console.log('🎲 Rolling Commission Debug:');
     console.log('- hasCustomers:', hasCustomers);
-    console.log('- customerStats:', JSON.stringify(customerStats, null, 2));
-    console.log('- totalRolling:', totalRolling);
+    console.log('- totalRollingFromTable (rolling_records):', totalRollingFromTable);
+    console.log('- totalRolling (customer stats):', totalRolling);
     console.log('- rollingCommissionRate:', rollingCommissionRate);
     console.log('- totalRollingCommission:', totalRollingCommission);
-    
-    if (customerStats) {
-      customerStats.forEach((stat, index) => {
-        console.log(`- Customer ${index + 1} rolling_amount:`, stat.rolling_amount, typeof stat.rolling_amount);
-      });
-    }
 
     // Calculate net cash flow and result from company perspective
     let netCashFlow, netResult;
@@ -467,7 +550,8 @@ async function updateTripSharing(tripId, tripStats) {
       company_share: companyShare,
       agent_share_percentage: agentSharePercentage,
       company_share_percentage: companySharePercentage,
-      agent_breakdown: agentBreakdown
+      agent_breakdown: agentBreakdown,
+      total_rolling: totalRollingFromTable // Total rolling amount from rolling_records table
     };
     
     console.log('Updating trip sharing with data:', sharingData);
@@ -491,59 +575,84 @@ async function updateTripSharing(tripId, tripStats) {
   }
 }
 
+// Helper function to recalculate agent statistics from actual data
+async function recalculateAgentStatistics(agentId) {
+  try {
+    console.log('🔄 Recalculating agent statistics for agent:', agentId);
+    
+    // Get all trips this agent is assigned to
+    const { data: tripAgents, error: tripError } = await supabase
+      .from('trip_agents')
+      .select('trip_id')
+      .eq('agent_id', agentId);
+    
+    if (tripError) {
+      console.error('Error fetching agent trips:', tripError);
+      return;
+    }
+    
+    const totalTrips = tripAgents.length;
+    let totalCommission = 0;
+    
+    // Calculate total commission from trip_sharing records
+    for (const tripAgent of tripAgents) {
+      const { data: sharing, error: sharingError } = await supabase
+        .from('trip_sharing')
+        .select('agent_breakdown')
+        .eq('trip_id', tripAgent.trip_id)
+        .single();
+      
+      if (!sharingError && sharing?.agent_breakdown) {
+        const agentShare = sharing.agent_breakdown.find(a => a.agent_id === agentId);
+        if (agentShare) {
+          totalCommission += parseFloat(agentShare.share_amount || 0);
+        }
+      }
+    }
+    
+    // Update agent statistics with calculated totals
+    const { error: updateError } = await supabase
+      .from('agents')
+      .update({
+        total_commission: totalCommission,
+        total_trips: totalTrips
+      })
+      .eq('id', agentId);
+    
+    if (updateError) {
+      console.error(`Error updating agent ${agentId} statistics:`, updateError);
+    } else {
+      console.log(`✅ Recalculated agent ${agentId}: ${totalCommission} commission, ${totalTrips} trips`);
+    }
+    
+  } catch (error) {
+    console.error('Error in recalculateAgentStatistics:', error);
+  }
+}
+
 // Helper function to update agent statistics
 async function updateAgentStatistics(tripId, agentBreakdown) {
   try {
     console.log('📊 Updating agent statistics for trip:', tripId);
-        
-    for (const agent of agentBreakdown) {
-      const { agent_id, share_amount } = agent;
-          
-      // Get current agent statistics
-      const { data: currentAgent, error: fetchError } = await supabase
-        .from('agents')
-        .select('total_commission, total_trips')
-        .eq('id', agent_id)
-        .single();
-            
-      if (fetchError) {
-        console.error(`Error fetching agent ${agent_id} stats:`, fetchError);
-        continue;
-      }
-            
-      // Check if this agent already has commission recorded for this trip
-      const { data: existingRecord, error: checkError } = await supabase
-        .from('trip_sharing')
-        .select('agent_breakdown')
-        .eq('trip_id', tripId)
-        .single();
-            
-      if (checkError) {
-        console.error('Error checking existing trip sharing:', checkError);
-        continue;
-      }
-            
-      // Calculate new totals
-      const currentCommission = parseFloat(currentAgent?.total_commission || 0);
-      const currentTrips = parseInt(currentAgent?.total_trips || 0);
-      const newCommission = share_amount || 0;
-            
-      // Update agent statistics
-      const { error: updateError } = await supabase
-        .from('agents')
-        .update({
-          total_commission: currentCommission + newCommission,
-          total_trips: currentTrips + 1
-        })
-        .eq('id', agent_id);
-            
-      if (updateError) {
-        console.error(`Error updating agent ${agent_id} statistics:`, updateError);
-      } else {
-        console.log(`✅ Updated agent ${agent_id}: +${newCommission} commission, +1 trip`);
-        console.log(`   Total: ${currentCommission + newCommission} commission, ${currentTrips + 1} trips`);
-      }
+    
+    // Get all agents involved in this trip
+    const { data: tripAgents, error: tripAgentsError } = await supabase
+      .from('trip_agents')
+      .select('agent_id')
+      .eq('trip_id', tripId);
+    
+    if (tripAgentsError) {
+      console.error('Error fetching trip agents:', tripAgentsError);
+      return;
     }
+    
+    // Recalculate statistics for all agents involved in this trip
+    const agentIds = tripAgents.map(ta => ta.agent_id);
+    
+    for (const agentId of agentIds) {
+      await recalculateAgentStatistics(agentId);
+    }
+    
   } catch (error) {
     console.error('Error in updateAgentStatistics:', error);
   }
@@ -570,11 +679,9 @@ router.get('/my-schedule', authenticateToken, async (req, res) => {
           end_date,
           status,
           total_budget,
-          total_win,
-          total_loss,
-          net_profit,
           created_at,
           updated_at,
+          activecustomerscount,
           staff!staff_id(id, name, email),
           customers:trip_customers(
             customer:customers(id, name, email, vip_level)
@@ -627,11 +734,9 @@ router.get('/', authenticateToken, async (req, res) => {
           end_date,
           status,
           total_budget,
-          total_win,
-          total_loss,
-          net_profit,
           created_at,
           updated_at,
+          activecustomerscount,
           staff!staff_id(id, name, email)
         `);
         // Staff can only see their assigned trips
@@ -645,11 +750,39 @@ router.get('/', authenticateToken, async (req, res) => {
                 details: error.message
             });
         }
+
+        // Fetch trip sharing data for all trips
+        const tripsWithSharing = await Promise.all(trips.map(async (trip) => {
+            const { data: sharing, error: sharingError } = await supabase
+                .from('trip_sharing')
+                .select('*')
+                .eq('trip_id', trip.id)
+                .single();
+
+            return {
+                ...trip,
+                sharing: sharing || {
+                    totalWinLoss: 0,
+                    totalExpenses: 0,
+                    totalRollingCommission: 0,
+                    totalBuyIn: 0,
+                    totalBuyOut: 0,
+                    netCashFlow: 0,
+                    netResult: 0,
+                    totalAgentShare: 0,
+                    companyShare: 0,
+                    agentSharePercentage: 0,
+                    companySharePercentage: 100,
+                    agentBreakdown: []
+                }
+            };
+        }));
+
         res.json({
             success: true,
-            data: trips,
+            data: tripsWithSharing,
             userRole,
-            totalTrips: trips?.length || 0
+            totalTrips: tripsWithSharing?.length || 0
         });
     }
     catch (error) {
@@ -906,9 +1039,39 @@ router.post('/:id/check-out', authenticateToken, canAccessTrip, async (req, res)
             });
         }
 
-        // Update agent statistics when trip is completed
-        console.log('🎯 Trip completed, updating agent statistics...');
-        await updateTripSharing(tripId);
+        // Comprehensive customer data synchronization when trip is completed
+        console.log('🎯 Trip completed, performing comprehensive customer data synchronization...');
+        
+        // 1. Update all customer trip statistics (including rolling amounts)
+        const { data: tripCustomers } = await supabase
+          .from('trip_customers')
+          .select('customer_id')
+          .eq('trip_id', tripId);
+          
+        if (tripCustomers) {
+          console.log(`📊 Updating statistics for ${tripCustomers.length} customers...`);
+          for (const tc of tripCustomers) {
+            // Update customer trip stats (includes rolling amounts from trip_rolling table)
+            await updateCustomerTripStats(tripId, tc.customer_id);
+            
+            // Update customer's total win/loss across all trips
+            await updateCustomerTotalWinLoss(tc.customer_id);
+            
+            // Update customer's total buy-in/buy-out across all trips
+            await updateCustomerTotalBuyInOut(tc.customer_id);
+            
+            // Update customer's total rolling amount across all trips
+            await updateCustomerTotalRolling(tc.customer_id);
+          }
+        }
+        
+        // 2. Update trip-level statistics and sharing
+        const tripStats = await updateTripStats(tripId);
+        
+        // 3. Update trip sharing calculations (includes rolling commission)
+        await updateTripSharing(tripId, tripStats);
+        
+        console.log('✅ Customer data synchronization completed for trip:', tripId);
         
         res.json({
             success: true,
@@ -1593,6 +1756,9 @@ router.post('/:id/agents', authenticateToken, canAccessTrip, async (req, res) =>
 
     // Update trip stats after agent addition
     await updateTripStats(tripId);
+    
+    // Recalculate agent statistics
+    await recalculateAgentStatistics(agent_id);
 
     res.status(201).json({
       success: true,
@@ -1662,6 +1828,234 @@ router.get('/:id/agents', authenticateToken, canAccessTrip, async (req, res) => 
 });
 
 /**
+ * POST /trips/:id/staff
+ * Add staff to trip
+ */
+router.post('/:id/staff', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const tripId = req.params.id;
+    const { staff_id } = req.body;
+    
+    console.log('POST /trips/:id/staff - Request data:', {
+      tripId,
+      body: req.body,
+      staff_id
+    });
+    
+    if (!staff_id) {
+      console.log('Missing staff_id in request body');
+      return res.status(400).json({
+        error: 'Staff ID is required'
+      });
+    }
+
+    // Check if staff exists
+    console.log('🔍 Looking for staff with ID:', staff_id);
+    const { data: staff, error: staffError } = await supabase
+      .from('staff')
+      .select('id, name, email, position')
+      .eq('id', staff_id)
+      .single();
+
+    console.log('📊 Staff lookup result:', { staff, staffError });
+
+    if (staffError || !staff) {
+      console.log('❌ Staff not found:', staffError);
+      return res.status(404).json({
+        error: 'Staff member not found',
+        debug: { staffError, staff_id }
+      });
+    }
+
+    // Check if staff is already assigned to this trip
+    const { data: existing, error: existingError } = await supabase
+      .from('trip_staff')
+      .select('id')
+      .eq('trip_id', tripId)
+      .eq('staff_id', staff_id)
+      .maybeSingle();
+
+    if (existingError && existingError.code !== 'PGRST116') {
+      console.error('Error checking existing staff:', existingError);
+      return res.status(500).json({
+        error: 'Failed to check existing staff assignment',
+        details: existingError.message
+      });
+    }
+
+    if (existing) {
+      return res.status(400).json({
+        error: 'Staff member is already assigned to this trip'
+      });
+    }
+
+    // Add staff to trip
+    const { data: tripStaff, error } = await supabase
+      .from('trip_staff')
+      .insert({
+        trip_id: tripId,
+        staff_id: staff_id,
+        created_at: new Date().toISOString()
+      })
+      .select(`
+        id,
+        staff_id,
+        created_at
+      `)
+      .single();
+
+    if (error) {
+      return res.status(500).json({
+        error: 'Failed to add staff to trip',
+        details: error.message
+      });
+    }
+
+    // Update trip stats after staff addition
+    await updateTripStats(tripId);
+
+    res.status(201).json({
+      success: true,
+      message: `Staff member ${staff.name} added to trip successfully`,
+      data: {
+        ...tripStaff,
+        staff: staff
+      }
+    });
+
+  } catch (error) {
+    console.error('Error adding staff to trip:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * DELETE /trips/:id/staff/:staffId
+ * Remove staff from trip
+ */
+router.delete('/:id/staff/:staffId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const tripId = req.params.id;
+    const staffId = req.params.staffId;
+
+    // Check if staff assignment exists
+    const { data: existing, error: checkError } = await supabase
+      .from('trip_staff')
+      .select('id')
+      .eq('trip_id', tripId)
+      .eq('staff_id', staffId)
+      .single();
+
+    if (checkError || !existing) {
+      return res.status(404).json({
+        error: 'Staff assignment not found'
+      });
+    }
+
+    // Remove staff from trip
+    const { error } = await supabase
+      .from('trip_staff')
+      .delete()
+      .eq('trip_id', tripId)
+      .eq('staff_id', staffId);
+
+    if (error) {
+      return res.status(500).json({
+        error: 'Failed to remove staff from trip',
+        details: error.message
+      });
+    }
+
+    // Update trip stats after staff removal
+    await updateTripStats(tripId);
+
+    res.json({
+      success: true,
+      message: 'Staff member removed from trip successfully'
+    });
+
+  } catch (error) {
+    console.error('Error removing staff from trip:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * GET /trips/:id/staff
+ * Get all staff assigned to trip
+ */
+router.get('/:id/staff', authenticateToken, canAccessTrip, async (req, res) => {
+  try {
+    const tripId = req.params.id;
+
+    // Get trip staff assignments
+    const { data: tripStaff, error } = await supabase
+      .from('trip_staff')
+      .select('id, staff_id, created_at')
+      .eq('trip_id', tripId);
+
+    if (error) {
+      console.error('Error fetching trip staff:', error);
+      return res.status(500).json({
+        error: 'Failed to fetch trip staff',
+        details: error.message
+      });
+    }
+
+    // Get staff details separately
+    const staffIds = (tripStaff || []).map(ts => ts.staff_id);
+    console.log('🔍 Staff IDs to fetch:', staffIds);
+    let staffDetails = [];
+    
+    if (staffIds.length > 0) {
+      const { data: staff, error: staffError } = await supabase
+        .from('staff')
+        .select('id, name, email, position, status')
+        .in('id', staffIds);
+        
+      console.log('📊 Staff details fetch result:', { staff, staffError });
+        
+      if (staffError) {
+        console.error('Error fetching staff details:', staffError);
+      } else {
+        staffDetails = staff || [];
+      }
+    }
+
+    // Transform data for frontend by combining trip staff with staff details
+    const transformedStaff = (tripStaff || []).map(ts => {
+      const staffInfo = staffDetails.find(s => s.id === ts.staff_id);
+      return {
+        id: ts.id,
+        staffId: ts.staff_id,
+        staff_id: ts.staff_id,
+        staffName: staffInfo?.name,
+        staff: staffInfo,
+        created_at: ts.created_at
+      };
+    });
+
+    res.json({
+      success: true,
+      data: transformedStaff
+    });
+
+  } catch (error) {
+    console.error('Error fetching trip staff:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+/**
  * DELETE /trips/:id/agents/:agentId
  * Remove agent from trip
  */
@@ -1684,6 +2078,9 @@ router.delete('/:id/agents/:agentId', authenticateToken, canAccessTrip, async (r
 
     // Update trip stats after agent removal
     await updateTripStats(tripId);
+    
+    // Recalculate agent statistics
+    await recalculateAgentStatistics(agentId);
 
     res.json({
       success: true,
@@ -2123,7 +2520,7 @@ router.get('/:id/statistics', authenticateToken, canAccessTrip, async (req, res)
     // Get current trip data
     const { data: trip, error: tripError } = await supabase
       .from('trips')
-      .select('id, trip_name, total_win, total_loss, net_profit, total_budget')
+      .select('id, trip_name, total_budget')
       .eq('id', tripId)
       .single();
 
@@ -2423,6 +2820,348 @@ router.post('/:id/recalculate-stats', authenticateToken, canAccessTrip, async (r
   } catch (error) {
     res.status(500).json({
       error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /trips/:id/transactions
+ * Admin function to add transaction to a trip
+ */
+router.post('/:id/transactions', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const tripId = req.params.id;
+    const { 
+      customer_id, 
+      agent_id, 
+      amount, 
+      transaction_type, 
+      status = 'completed', 
+      notes,
+      recorded_by_staff_id 
+    } = req.body;
+
+    // Validate required fields
+    if (!customer_id || !amount || !transaction_type) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['customer_id', 'amount', 'transaction_type']
+      });
+    }
+
+    // Validate transaction type
+    if (!['buy-in', 'cash-out'].includes(transaction_type)) {
+      return res.status(400).json({
+        error: 'Invalid transaction type',
+        allowed: ['buy-in', 'cash-out']
+      });
+    }
+
+    // Verify customer is in the trip
+    const { data: tripCustomer, error: customerError } = await supabase
+      .from('trip_customers')
+      .select('id')
+      .eq('trip_id', tripId)
+      .eq('customer_id', customer_id)
+      .single();
+
+    if (customerError || !tripCustomer) {
+      return res.status(400).json({
+        error: 'Customer not found in this trip'
+      });
+    }
+
+    // Get customer's agent if not provided
+    let finalAgentId = agent_id;
+    if (!finalAgentId) {
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('agent_id')
+        .eq('id', customer_id)
+        .single();
+      
+      finalAgentId = customer?.agent_id;
+    }
+
+    // Create transaction
+    const { data: transaction, error: transactionError } = await supabase
+      .from('transactions')
+      .insert({
+        id: crypto.randomUUID(),
+        trip_id: tripId,
+        customer_id: customer_id,
+        agent_id: finalAgentId,
+        amount: parseFloat(amount),
+        transaction_type: transaction_type,
+        status: status || 'completed',
+        notes: notes,
+        recorded_by_staff_id: recorded_by_staff_id || req.user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (transactionError) {
+      return res.status(500).json({
+        error: 'Failed to create transaction',
+        details: transactionError.message
+      });
+    }
+
+    // Update customer trip stats automatically
+    await updateCustomerTripStats(tripId, customer_id);
+
+    // Update trip statistics
+    await updateTripStats(tripId);
+
+    res.status(201).json({
+      success: true,
+      message: 'Transaction added successfully',
+      data: transaction
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /trips/:id/rolling-records
+ * Admin function to add rolling record to a trip
+ */
+router.post('/:id/rolling-records', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const tripId = req.params.id;
+    console.log('🎯 Rolling record request received:', { tripId, body: req.body });
+    
+    const {
+      customer_id,
+      staff_id,
+      game_type,
+      rolling_amount,
+      notes,
+      attachment_id
+    } = req.body;
+
+    // Validate required fields
+    if (!customer_id || !staff_id || !game_type || !rolling_amount) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['customer_id', 'staff_id', 'game_type', 'rolling_amount']
+      });
+    }
+
+    // Verify customer is in the trip
+    const { data: tripCustomer, error: customerError } = await supabase
+      .from('trip_customers')
+      .select('id')
+      .eq('trip_id', tripId)
+      .eq('customer_id', customer_id)
+      .single();
+
+    if (customerError || !tripCustomer) {
+      return res.status(400).json({
+        error: 'Customer not found in this trip'
+      });
+    }
+
+    // Create rolling record with new simplified schema
+    const { data: rollingRecord, error: rollingError } = await supabase
+      .from('trip_rolling')
+      .insert({
+        trip_id: tripId,
+        customer_id: customer_id,
+        staff_id: staff_id,
+        game_type: game_type,
+        rolling_amount: parseFloat(rolling_amount),
+        notes: notes || null,
+        attachment_id: attachment_id || null
+      })
+      .select()
+      .single();
+
+    if (rollingError) {
+      console.error('❌ Rolling record creation error:', rollingError);
+      return res.status(500).json({
+        error: 'Failed to create rolling record',
+        details: rollingError.message
+      });
+    }
+
+    // Update customer trip stats to include rolling amount
+    await updateCustomerTripStats(tripId, customer_id);
+
+    // Update trip statistics
+    await updateTripStats(tripId);
+
+    res.status(201).json({
+      success: true,
+      message: 'Rolling record added successfully',
+      data: rollingRecord
+    });
+
+  } catch (error) {
+    console.error('❌ Rolling record endpoint error:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// Export helper functions for use in other modules
+export { 
+  updateCustomerTripStats, 
+  updateTripStats, 
+  updateTripSharing, 
+  updateCustomerTotalWinLoss,
+  updateCustomerTotalBuyInOut,
+  updateCustomerTotalRolling,
+  synchronizeCustomerData
+};
+
+/**
+ * POST /trips/:id/sync-customer-data
+ * Manually trigger comprehensive customer data synchronization for a trip
+ */
+router.post('/:id/sync-customer-data', authenticateToken, canAccessTrip, async (req, res) => {
+  try {
+    const tripId = req.params.id;
+    
+    console.log(`🔄 Manual customer data synchronization triggered for trip: ${tripId}`);
+    
+    // Get all customers in this trip
+    const { data: tripCustomers, error } = await supabase
+      .from('trip_customers')
+      .select('customer_id')
+      .eq('trip_id', tripId);
+      
+    if (error) {
+      return res.status(500).json({
+        error: 'Failed to fetch trip customers',
+        details: error.message
+      });
+    }
+    
+    if (!tripCustomers || tripCustomers.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No customers found in trip',
+        synchronized_customers: 0
+      });
+    }
+    
+    // Synchronize data for each customer
+    const results = [];
+    for (const tc of tripCustomers) {
+      try {
+        // Update customer trip stats (includes rolling amounts)
+        await updateCustomerTripStats(tripId, tc.customer_id);
+        
+        // Comprehensive customer data sync
+        await synchronizeCustomerData(tc.customer_id);
+        
+        results.push({
+          customer_id: tc.customer_id,
+          status: 'success'
+        });
+      } catch (error) {
+        console.error(`Error synchronizing customer ${tc.customer_id}:`, error);
+        results.push({
+          customer_id: tc.customer_id,
+          status: 'error',
+          error: error.message
+        });
+      }
+    }
+    
+    // Update trip-level statistics
+    const tripStats = await updateTripStats(tripId);
+    await updateTripSharing(tripId, tripStats);
+    
+    const successCount = results.filter(r => r.status === 'success').length;
+    const errorCount = results.filter(r => r.status === 'error').length;
+    
+    res.json({
+      success: true,
+      message: `Customer data synchronization completed for trip ${tripId}`,
+      synchronized_customers: successCount,
+      failed_customers: errorCount,
+      details: results
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      error: 'Internal server error during customer data synchronization',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /trips/recalculate-agent-statistics
+ * Recalculate statistics for all agents
+ */
+router.post('/recalculate-agent-statistics', authenticateToken, async (req, res) => {
+  try {
+    console.log('🔄 Starting recalculation of all agent statistics...');
+    
+    // Get all agents
+    const { data: agents, error: agentsError } = await supabase
+      .from('agents')
+      .select('id, name');
+    
+    if (agentsError) {
+      return res.status(500).json({
+        error: 'Failed to fetch agents',
+        details: agentsError.message
+      });
+    }
+    
+    const results = [];
+    
+    // Recalculate statistics for each agent
+    for (const agent of agents) {
+      try {
+        await recalculateAgentStatistics(agent.id);
+        results.push({
+          agent_id: agent.id,
+          agent_name: agent.name,
+          status: 'success'
+        });
+        console.log(`✅ Recalculated statistics for agent: ${agent.name}`);
+      } catch (error) {
+        results.push({
+          agent_id: agent.id,
+          agent_name: agent.name,
+          status: 'error',
+          error: error.message
+        });
+        console.error(`❌ Failed to recalculate statistics for agent ${agent.name}:`, error);
+      }
+    }
+    
+    const successCount = results.filter(r => r.status === 'success').length;
+    const errorCount = results.filter(r => r.status === 'error').length;
+    
+    res.json({
+      success: true,
+      message: `Agent statistics recalculation completed`,
+      total_agents: agents.length,
+      successful_recalculations: successCount,
+      failed_recalculations: errorCount,
+      details: results
+    });
+    
+  } catch (error) {
+    console.error('Error in recalculate-agent-statistics:', error);
+    res.status(500).json({
+      error: 'Internal server error during agent statistics recalculation',
       details: error.message
     });
   }

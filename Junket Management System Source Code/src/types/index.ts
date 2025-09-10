@@ -83,6 +83,14 @@ export interface Customer {
   rollingPercentage: number; // Customer's default rolling percentage
   isAgent: boolean; // Customer can be an agent
   sourceAgentId?: string; // If customer is also an agent, this is their agent ID
+  // Database field names (snake_case) for compatibility
+  total_rolling?: number;
+  total_win_loss?: number;
+  total_buy_in?: number;
+  total_buy_out?: number;
+  rolling_percentage?: number;
+  credit_limit?: number;
+  available_credit?: number;
 }
 
 export interface Transaction {
@@ -194,18 +202,33 @@ export interface TripExpense {
 }
 
 export interface TripSharing {
-  totalWinLoss: number; // Total customer win/loss in HKD (negative = customer loss = house win) - trip-specific
-  totalExpenses: number; // Total expenses in HKD
-  totalRollingCommission: number; // Total rolling commission paid to customers in HKD - trip-specific
-  totalBuyIn: number; // Total customer buy-in amount in HKD - trip-specific
-  totalBuyOut: number; // Total customer buy-out amount in HKD - trip-specific
-  netCashFlow: number; // Net cash flow (total buy-out - total buy-in) in HKD - trip-specific
-  netResult: number; // House final profit = (House Net Win - Total Expenses) where House Net Win = (House Gross Win - Rolling Commission) - trip-specific
-  totalAgentShare: number; // Total amount going to all agents combined
-  companyShare: number; // Company's share of house final profit in HKD
-  agentSharePercentage: number; // Total agent share percentage calculated from individual agents
-  companySharePercentage: number; // Company share percentage (100% - total agent percentage)
-  agentBreakdown: TripAgent[]; // Individual agent shares
+  // Support both camelCase (fallback) and snake_case (API response) formats
+  totalWinLoss?: number; // Total customer win/loss in HKD (negative = customer loss = house win) - trip-specific
+  total_win_loss?: number; // API response format
+  totalExpenses?: number; // Total expenses in HKD
+  total_expenses?: number; // API response format
+  totalRollingCommission?: number; // Total rolling commission paid to customers in HKD - trip-specific
+  total_rolling_commission?: number; // API response format
+  totalBuyIn?: number; // Total customer buy-in amount in HKD - trip-specific
+  total_buy_in?: number; // API response format
+  totalBuyOut?: number; // Total customer buy-out amount in HKD - trip-specific
+  total_buy_out?: number; // API response format
+  netCashFlow?: number; // Net cash flow (total buy-out - total buy-in) in HKD - trip-specific
+  net_cash_flow?: number; // API response format
+  netResult?: number; // House final profit = (House Net Win - Total Expenses) where House Net Win = (House Gross Win - Rolling Commission) - trip-specific
+  net_result?: number; // API response format
+  totalAgentShare?: number; // Total amount going to all agents combined
+  total_agent_share?: number; // API response format
+  companyShare?: number; // Company's share of house final profit in HKD
+  company_share?: number; // API response format
+  agentSharePercentage?: number; // Total agent share percentage calculated from individual agents
+  agent_share_percentage?: number; // API response format
+  companySharePercentage?: number; // Company share percentage (100% - total agent percentage)
+  company_share_percentage?: number; // API response format
+  agentBreakdown?: TripAgent[]; // Individual agent shares
+  agent_breakdown?: TripAgent[]; // API response format
+  totalRolling?: number; // New field: Total rolling amount from trip_sharing table
+  total_rolling?: number; // API response format
 }
 
 export interface Trip {
@@ -231,10 +254,9 @@ export interface Trip {
   recentActivityCount?: number;
   totalExpenses?: number;
   // Backend API fields (snake_case from trips.js)
-  total_win?: number; // From backend API
-  total_loss?: number; // From backend API
-  net_profit?: number; // From backend API
+  // Note: total_win, total_loss, net_profit removed from trips table - now in trip_sharing
   total_budget?: number; // From backend API
+  activecustomerscount?: number; // Updated field name from schema
   // Legacy fields for backward compatibility
   agentId?: string;
   agentName?: string;

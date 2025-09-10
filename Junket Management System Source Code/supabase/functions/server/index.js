@@ -17,6 +17,7 @@ import reportsRouter from './reports.js';
 import rollingRecordsRouter from './rolling-records.js';
 import buyInOutRecordsRouter from './buy-in-out-records.js';
 import chipExchangesRouter from './chip-exchanges.js';
+// import gameTypesRouter from './game-types.js'; // Commented out - file doesn't exist
 
 
 const app = express();
@@ -48,6 +49,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/rolling-records', rollingRecordsRouter);
 app.use('/api/buy-in-out-records', buyInOutRecordsRouter);
 app.use('/api/chip-exchanges', chipExchangesRouter);
+
 
 // Error handling middleware
 app.use((err, req, res, next) => {

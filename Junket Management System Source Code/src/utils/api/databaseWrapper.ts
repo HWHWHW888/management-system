@@ -68,6 +68,14 @@ export class DatabaseWrapper {
           const transactionsResponse = await apiClient.getTransactions();
           data = transactionsResponse.success ? (transactionsResponse.data as any[]) || [] : [];
           break;
+        case 'staff':
+          const staffResponse = await apiClient.getStaffs();
+          data = staffResponse.success ? (staffResponse.data as any[]) || [] : [];
+          break;
+        case 'rolling_records':
+          const rollingResponse = await apiClient.get('/rolling-records');
+          data = rollingResponse.success ? (rollingResponse.data as any[]) || [] : [];
+          break;
         default:
           console.warn(`Table ${table} not supported in API wrapper`);
           return [];

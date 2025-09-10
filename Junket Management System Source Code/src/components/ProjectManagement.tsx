@@ -41,6 +41,7 @@ function ProjectManagementComponent() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [staff, setStaff] = useState<any[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [activeTab, setActiveTab] = useState('trips');
   const [selectedTripTab, setSelectedTripTab] = useState('overview');
@@ -62,11 +63,29 @@ function ProjectManagementComponent() {
   const [showAddAgent, setShowAddAgent] = useState(false);
   const [showEditAgent, setShowEditAgent] = useState(false);
   const [showDeleteAgent, setShowDeleteAgent] = useState(false);
+  const [showAddStaff, setShowAddStaff] = useState(false);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [showAddRolling, setShowAddRolling] = useState(false);
+  const [selectedCustomerForTransaction, setSelectedCustomerForTransaction] = useState<any>(null);
+  const [selectedCustomerForRolling, setSelectedCustomerForRolling] = useState<any>(null);
   const [showAddExpense, setShowAddExpense] = useState(false);
   
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [sharingLoading, setSharingLoading] = useState(false);
   
+  // Transaction and Rolling form states
+  const [transactionForm, setTransactionForm] = useState({
+    type: 'buy_in', // buy_in, cash_out
+    amount: '',
+    description: ''
+  });
+  const [rollingForm, setRollingForm] = useState({
+    amount: '',
+    staff_id: '',
+    game_type: 'baccarat',
+    description: ''
+  });
+
   // Form data states
   const [newTrip, setNewTrip] = useState({
     name: '',
@@ -220,8 +239,6 @@ function ProjectManagementComponent() {
       setErrorMessage('');
       clearError();
       
-      console.log('🔄 Loading project data from API...');
-      
       // First ensure we have authentication
       const token = await tokenManager.getToken();
       if (!token) {
@@ -266,27 +283,14 @@ function ProjectManagementComponent() {
         }
       }
       
-      console.log('🔑 Token available, proceeding with API calls...');
       
       // Load all required data
-      console.log('🔄 Starting API calls...');
-      const [tripsData, customersData, agentsData] = await Promise.all([
+      const [tripsData, customersData, agentsData, staffData] = await Promise.all([
         db.get('trips', []),
         db.get('customers', []),
-        db.get('agents', [])
+        db.get('agents', []),
+        db.get('staff', [])
       ]);
-
-      console.log('📊 Raw API responses:', {
-        tripsData,
-        customersData,
-        agentsData
-      });
-
-      console.log('📊 Data loaded:', {
-        trips: tripsData?.length || 0,
-        customers: customersData?.length || 0,
-        agents: agentsData?.length || 0
-      });
 
       // Load trip statistics for each trip
       const transformedTrips = await Promise.all((tripsData || []).map(async (trip: any) => {
@@ -424,10 +428,11 @@ function ProjectManagementComponent() {
 
       console.log('🔄 Transformed trips with financial data:', transformedTrips);
 
-      // Set data
+      // Set state with loaded data
       setTrips(transformedTrips);
       setCustomers(customersData || []);
       setAgents(agentsData || []);
+      setStaff(staffData || []);
       setLastSyncTime(new Date());
       setDataLoaded(true);
       
@@ -593,13 +598,14 @@ function ProjectManagementComponent() {
       setLoading(true);
       
       // Load comprehensive trip data from backend API
-      const [customersResponse, expensesResponse, sharingResponse, statisticsResponse, transactionsResponse, agentsResponse] = await Promise.all([
+      const [customersResponse, expensesResponse, sharingResponse, statisticsResponse, transactionsResponse, agentsResponse, staffResponse] = await Promise.all([
         apiClient.get(`/trips/${trip.id}/customer-stats`),
         apiClient.get(`/trips/${trip.id}/expenses`),
         apiClient.get(`/trips/${trip.id}/sharing`),
         apiClient.get(`/trips/${trip.id}/statistics`),
         apiClient.get(`/trips/${trip.id}/transactions`),
-        apiClient.get(`/trips/${trip.id}/agents`)
+        apiClient.get(`/trips/${trip.id}/agents`),
+        apiClient.get(`/trips/${trip.id}/staff`)
       ]);
       
       console.log('📊 Backend API responses:', {
@@ -608,7 +614,8 @@ function ProjectManagementComponent() {
         sharing: sharingResponse,
         statistics: statisticsResponse,
         transactions: transactionsResponse,
-        agents: agentsResponse
+        agents: agentsResponse,
+        staff: staffResponse
       });
       
       // Create enriched trip object with actual backend data
@@ -617,6 +624,7 @@ function ProjectManagementComponent() {
         customers: customersResponse.success ? customersResponse.data : [],
         expenses: expensesResponse.success ? (expensesResponse.data?.expenses || []) : [],
         agents: agentsResponse.success ? agentsResponse.data : [],
+        staff: staffResponse.success ? staffResponse.data : [],
         sharing: sharingResponse.success ? sharingResponse.data : trip.sharing,
         statistics: statisticsResponse.success ? statisticsResponse.data : null,
         transactions: transactionsResponse.success ? transactionsResponse.data : [],
@@ -748,38 +756,164 @@ function ProjectManagementComponent() {
 
   // Add agent to trip
   const handleAddAgentToTrip = async (agentId: string) => {
-    if (!selectedTrip) return;
-
-    const agent = agents.find(a => a.id === agentId);
-    if (!agent) return;
-
-    if (selectedTrip.agents.some(ta => ta.agentId === agentId || (ta as any).agent_id === agentId)) {
-      showError('Agent is already added to this trip');
+    if (!selectedTrip) {
+      showError('No trip selected');
       return;
     }
 
+    try {
+      setSaving(true);
+      
+      const response = await apiClient.post(`/trips/${selectedTrip.id}/agents`, {
+        agent_id: agentId,
+        share_percentage: newAgentShare
+      });
+      
+      if (response.success) {
+        console.log(' Agent added to trip via API:', agentId);
+        
+        // Refresh trip data to get updated agent list
+        await selectTrip(selectedTrip);
+        setShowAddAgent(false);
+        setNewAgentShare(25);
+        
+      } else {
+        showError(response.error || 'Failed to add agent to trip');
+      }
+    } catch (error) {
+      console.error('Error adding agent to trip:', error);
+      showError('Failed to add agent to trip');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Add staff to trip
+  const handleAddStaffToTrip = async (staffId: string) => {
+    if (!selectedTrip) {
+      showError('No trip selected');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      
+      const response = await apiClient.post(`/trips/${selectedTrip.id}/staff`, {
+        staff_id: staffId
+      });
+      
+      if (response.success) {
+        console.log(' Staff added to trip via API');
+        
+        // Refresh trip data to get updated staff list
+        await selectTrip(selectedTrip);
+        setShowAddStaff(false);
+        
+      } else {
+        showError(response.error || 'Failed to add staff to trip');
+      }
+    } catch (error) {
+      console.error('Error adding staff to trip:', error);
+      showError('Failed to add staff to trip');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Remove staff from trip
+  const handleRemoveStaffFromTrip = async (staffId: string) => {
+    if (!selectedTrip) {
+      showError('No trip selected');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      
+      const response = await apiClient.delete(`/trips/${selectedTrip.id}/staff/${staffId}`);
+      
+      if (response.success) {
+        console.log(' Staff removed from trip via API');
+        
+        // Refresh trip data to get updated staff list
+        await selectTrip(selectedTrip);
+        
+      } else {
+        showError(response.error || 'Failed to remove staff from trip');
+      }
+    } catch (error) {
+      console.error('Error removing staff from trip:', error);
+      showError('Failed to remove staff from trip');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
+  // Handle transaction operations
+  const handleAddTransaction = async () => {
+    if (!selectedTrip || !selectedCustomerForTransaction) return;
+    
     setSaving(true);
     try {
-      // Make API call to add agent to trip
-      const response = await apiClient.post(`/trips/${selectedTrip.id}/agents`, {
-        agent_id: agentId
+      const response = await apiClient.post(`/trips/${selectedTrip.id}/transactions`, {
+        customer_id: selectedCustomerForTransaction.customerId || selectedCustomerForTransaction.customer_id,
+        transaction_type: transactionForm.type.replace('_', '-'), // Convert buy_in to buy-in, cash_out to cash-out
+        amount: parseFloat(transactionForm.amount),
+        notes: transactionForm.description
       });
-
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to add agent to trip');
+      
+      if (response.success) {
+        // Refresh the selected trip data
+        await selectTrip(selectedTrip);
+        setShowAddTransaction(false);
+        setTransactionForm({ type: 'buy_in', amount: '', description: '' });
+        setSelectedCustomerForTransaction(null);
+      } else {
+        showError('Failed to add transaction');
       }
-
-      console.log('✅ Agent added to trip via API:', agent.name);
-      
-      // Refresh trip data to get updated agent list
-      await selectTrip(selectedTrip);
-      setShowAddAgent(false);
-      setNewAgentShare(25);
-      
     } catch (error) {
-      console.error('❌ Error adding agent to trip:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      showError(`Failed to add agent to trip: ${errorMessage}`);
+      console.error('Error adding transaction:', error);
+      showError('Failed to add transaction');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle rolling operations
+  const handleAddRolling = async () => {
+    if (!selectedTrip || !selectedCustomerForRolling) return;
+    
+    setSaving(true);
+    try {
+      console.log('🎯 Rolling request data:', {
+        customer_id: selectedCustomerForRolling.customerId || selectedCustomerForRolling.customer_id,
+        staff_id: rollingForm.staff_id,
+        game_type: rollingForm.game_type,
+        rolling_amount: parseFloat(rollingForm.amount),
+        notes: rollingForm.description
+      });
+      
+      const response = await apiClient.post(`/trips/${selectedTrip.id}/rolling-records`, {
+        customer_id: selectedCustomerForRolling.customerId || selectedCustomerForRolling.customer_id,
+        staff_id: rollingForm.staff_id,
+        game_type: rollingForm.game_type,
+        rolling_amount: parseFloat(rollingForm.amount),
+        notes: rollingForm.description
+      });
+      
+      if (response.success) {
+        // Refresh the selected trip data
+        await selectTrip(selectedTrip);
+        setShowAddRolling(false);
+        setRollingForm({ amount: '', staff_id: '', game_type: 'baccarat', description: '' });
+        setSelectedCustomerForRolling(null);
+      } else {
+        showError('Failed to add rolling');
+      }
+    } catch (error) {
+      console.error('Error adding rolling:', error);
+      showError('Failed to add rolling');
     } finally {
       setSaving(false);
     }
@@ -1231,44 +1365,23 @@ function ProjectManagementComponent() {
                       </div>
                       
                       {/* Trip Summary Metrics using Backend Data */}
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
-                        {(() => {
-                          console.log(`🎯 UI Values for trip ${trip.id}:`, {
-                            'trip.activeCustomersCount': trip.activeCustomersCount,
-                            'trip.totalBuyIn': trip.totalBuyIn,
-                            'trip.totalBuyOut': trip.totalBuyOut,
-                            'trip.totalWinLoss': trip.totalWinLoss,
-                            'totalBuyIn': totalBuyIn,
-                            'totalCashOut': totalCashOut,
-                            'totalWinLoss': totalWinLoss,
-                            'netProfit': netProfit,
-                            'trip.customers?.length': trip.customers?.length,
-                            'trip object keys': Object.keys(trip)
-                          });
-                          return null;
-                        })()}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
                         <div className="text-center">
                           <div className="text-gray-500 text-xs">Customers</div>
                           <div className="font-medium">{trip.activeCustomersCount || trip.customers?.length || 0}</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-gray-500 text-xs">Total Win</div>
-                          <div className="font-medium text-green-600">HK${safeFormatNumber(totalBuyIn)}</div>
+                          <div className="text-gray-500 text-xs">Total Rolling</div>
+                          <div className="font-medium text-blue-600">HK${safeFormatNumber(trip.totalRolling || trip.calculatedTotalRolling || 0)}</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-gray-500 text-xs">Total Loss</div>
-                          <div className="font-medium text-red-600">HK${safeFormatNumber(totalCashOut)}</div>
+                          <div className="text-gray-500 text-xs">Expenses</div>
+                          <div className="font-medium text-red-600">HK${safeFormatNumber(Math.abs(trip.totalExpenses || trip.sharing?.totalExpenses || 0))}</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-gray-500 text-xs">Win/Loss</div>
-                          <div className={`font-medium ${totalWinLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            HK${safeFormatNumber(totalWinLoss)}
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-gray-500 text-xs">Net Profit</div>
-                          <div className={`font-medium ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            HK${safeFormatNumber(netProfit)}
+                          <div className="text-gray-500 text-xs">Profit</div>
+                          <div className={`font-medium ${(trip.sharing?.netResult || netProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            HK${safeFormatNumber(Math.abs(trip.sharing?.netResult || netProfit))}
                           </div>
                         </div>
                       </div>
@@ -1306,7 +1419,7 @@ function ProjectManagementComponent() {
 
               {/* Trip Details Tabs */}
               <Tabs value={selectedTripTab} onValueChange={setSelectedTripTab} className="space-y-4">
-                <TabsList className="grid w-full grid-cols-5">
+                <TabsList className="grid w-full grid-cols-6">
                   <TabsTrigger value="overview" className="flex items-center gap-1">
                     <BarChart className="w-3 h-3" />
                     Overview
@@ -1318,6 +1431,10 @@ function ProjectManagementComponent() {
                   <TabsTrigger value="agents" className="flex items-center gap-1">
                     <UserCheck className="w-3 h-3" />
                     Agents
+                  </TabsTrigger>
+                  <TabsTrigger value="staff" className="flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    Staff
                   </TabsTrigger>
                   <TabsTrigger value="expenses" className="flex items-center gap-1">
                     <DollarSign className="w-3 h-3" />
@@ -1342,7 +1459,7 @@ function ProjectManagementComponent() {
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <Card>
                               <CardHeader className="pb-2">
-                                <CardTitle className="text-sm text-gray-600">Buy-in Total</CardTitle>
+                                <CardTitle className="text-sm text-gray-600">Buy-in</CardTitle>
                               </CardHeader>
                               <CardContent>
                                 <div className="text-2xl font-bold text-blue-600">
@@ -1354,7 +1471,7 @@ function ProjectManagementComponent() {
                             </Card>
                             <Card>
                               <CardHeader className="pb-2">
-                                <CardTitle className="text-sm text-gray-600">Cash-out Total</CardTitle>
+                                <CardTitle className="text-sm text-gray-600">Buy-out</CardTitle>
                               </CardHeader>
                               <CardContent>
                                 <div className="text-2xl font-bold text-purple-600">
@@ -1366,27 +1483,25 @@ function ProjectManagementComponent() {
                             </Card>
                             <Card>
                               <CardHeader className="pb-2">
-                                <CardTitle className="text-sm text-gray-600">Win/Loss</CardTitle>
+                                <CardTitle className="text-sm text-gray-600">Expenses</CardTitle>
                               </CardHeader>
                               <CardContent>
-                                <div className={`text-2xl font-bold ${
-                                  ((selectedTrip as any)?.backendData?.totalWin - (selectedTrip as any)?.backendData?.totalLoss) >= 0 ? 'text-red-600' : 'text-green-600'
-                                }`}>
-                                  HK${safeFormatNumber(((selectedTrip as any)?.backendData?.totalWin || 0) - ((selectedTrip as any)?.backendData?.totalLoss || 0))}
+                                <div className="text-2xl font-bold text-orange-600">
+                                  HK${safeFormatNumber(totalExpenses)}
                                 </div>
-                                <p className="text-xs text-gray-500">Customer perspective</p>
-                                <p className="text-xs text-orange-500">From rolling records</p>
+                                <p className="text-xs text-gray-500">After all expenses</p>
+                                <p className="text-xs text-orange-500">House perspective</p>
                               </CardContent>
                             </Card>
                             <Card>
                               <CardHeader className="pb-2">
-                                <CardTitle className="text-sm text-gray-600">Net Profit</CardTitle>
+                                <CardTitle className="text-sm text-gray-600">Profit</CardTitle>
                               </CardHeader>
                               <CardContent>
                                 <div className={`text-2xl font-bold ${
-                                  ((selectedTrip as any)?.backendData?.netProfit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                                  ((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                 }`}>
-                                  HK${safeFormatNumber((selectedTrip as any)?.backendData?.netProfit || 0)}
+                                  HK${safeFormatNumber((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0)}
                                 </div>
                                 <p className="text-xs text-gray-500">House perspective</p>
                                 <p className="text-xs text-green-500">After all expenses</p>
@@ -1581,14 +1696,40 @@ function ProjectManagementComponent() {
                                   </div>
                                 )}
                               </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRemoveCustomerFromTrip(tripCustomer.customerId || tripCustomer.customer_id)}
-                                disabled={saving}
-                              >
-                                <X className="w-4 h-4" />
-                              </Button>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedCustomerForTransaction(tripCustomer);
+                                    setShowAddTransaction(true);
+                                  }}
+                                  disabled={saving}
+                                >
+                                  <Plus className="w-3 h-3 mr-1" />
+                                  Transaction
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedCustomerForRolling(tripCustomer);
+                                    setShowAddRolling(true);
+                                  }}
+                                  disabled={saving}
+                                >
+                                  <Plus className="w-3 h-3 mr-1" />
+                                  Rolling
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRemoveCustomerFromTrip(tripCustomer.customerId || tripCustomer.customer_id)}
+                                  disabled={saving}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
@@ -1824,6 +1965,98 @@ function ProjectManagementComponent() {
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
+                </TabsContent>
+
+                {/* Staff Tab */}
+                <TabsContent value="staff" className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-medium">Trip Staff ({(selectedTrip as any)?.staff?.length || 0})</h3>
+                    <Dialog open={showAddStaff} onOpenChange={setShowAddStaff}>
+                      <DialogTrigger asChild>
+                        <Button size="sm">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add Staff
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Staff to Trip</DialogTitle>
+                          <DialogDescription>
+                            Select from available staff members ({(staff || []).filter(s => !((selectedTrip as any)?.staff || []).some((ts: any) => ts.staffId === s.id || ts.staff_id === s.id)).length} available)
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 max-h-96 overflow-y-auto">
+                          {(() => {
+                            const availableStaff = (staff || [])
+                              .filter(s => !((selectedTrip as any)?.staff || []).some((ts: any) => ts.staffId === s.id || ts.staff_id === s.id));
+                            return availableStaff.map(staffMember => (
+                              <div key={staffMember.id} className="flex items-center justify-between p-3 border rounded">
+                                <div>
+                                  <div className="font-medium">{staffMember.name}</div>
+                                  <div className="text-sm text-gray-500">{staffMember.email}</div>
+                                  <div className="text-xs text-gray-400">Position: {staffMember.position}</div>
+                                </div>
+                                <Button size="sm" onClick={() => handleAddStaffToTrip(staffMember.id)} disabled={saving}>
+                                  {saving ? 'Adding...' : 'Add'}
+                                </Button>
+                              </div>
+                            ));
+                          })()}
+                          {(staff || []).filter(s => !((selectedTrip as any)?.staff || []).some((ts: any) => ts.staffId === s.id || ts.staff_id === s.id)).length === 0 && (
+                            <p className="text-center text-gray-500 py-8">All staff members are already assigned to this trip</p>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
+                  {(!selectedTrip || !(selectedTrip as any).staff || !Array.isArray((selectedTrip as any).staff) || (selectedTrip as any).staff.length === 0) ? (
+                    <Card>
+                      <CardContent className="text-center py-8">
+                        <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-500">No staff assigned to this trip</p>
+                        <p className="text-xs text-gray-400 mt-2">Add staff members to help manage this trip</p>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="space-y-4">
+                      {((selectedTrip as any).staff || []).map((staffMember: any) => (
+                        <Card key={staffMember.id || staffMember.staff_id}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                  <Users className="w-5 h-5 text-blue-600" />
+                                </div>
+                                <div>
+                                  <div className="font-medium">{staffMember.name || staffMember.staffName}</div>
+                                  <div className="text-sm text-gray-500">{staffMember.email || staffMember.staffEmail}</div>
+                                  <div className="text-xs text-gray-400">
+                                    Position: {staffMember.position || staffMember.staffPosition}
+                                  </div>
+                                  {staffMember.created_at && (
+                                    <div className="text-xs text-gray-400">
+                                      Added: {new Date(staffMember.created_at).toLocaleDateString()}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRemoveStaffFromTrip(staffMember.staff_id || staffMember.id)}
+                                  disabled={saving}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* Expenses Tab */}
@@ -2170,6 +2403,137 @@ function ProjectManagementComponent() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Add Transaction Dialog */}
+      <Dialog open={showAddTransaction} onOpenChange={setShowAddTransaction}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Transaction</DialogTitle>
+            <DialogDescription>
+              Add a new transaction for {selectedCustomerForTransaction?.customerName || selectedCustomerForTransaction?.customer?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Transaction Type</label>
+              <select
+                className="w-full mt-1 p-2 border rounded-md"
+                value={transactionForm.type}
+                onChange={(e) => setTransactionForm({...transactionForm, type: e.target.value})}
+              >
+                <option value="buy_in">Buy In</option>
+                <option value="cash_out">Cash Out</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Amount (HK$)</label>
+              <input
+                type="number"
+                className="w-full mt-1 p-2 border rounded-md"
+                placeholder="Enter amount"
+                value={transactionForm.amount}
+                onChange={(e) => setTransactionForm({...transactionForm, amount: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Description (Optional)</label>
+              <input
+                type="text"
+                className="w-full mt-1 p-2 border rounded-md"
+                placeholder="Enter description"
+                value={transactionForm.description}
+                onChange={(e) => setTransactionForm({...transactionForm, description: e.target.value})}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => setShowAddTransaction(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddTransaction} 
+              disabled={saving || !transactionForm.amount}
+            >
+              {saving ? 'Adding...' : 'Add Transaction'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Rolling Dialog */}
+      <Dialog open={showAddRolling} onOpenChange={setShowAddRolling}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Rolling</DialogTitle>
+            <DialogDescription>
+              Add rolling amount for {selectedCustomerForRolling?.customerName || selectedCustomerForRolling?.customer?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Staff Member *</label>
+              <select
+                className="w-full mt-1 p-2 border rounded-md"
+                value={rollingForm.staff_id}
+                onChange={(e) => setRollingForm({...rollingForm, staff_id: e.target.value})}
+              >
+                <option value="">Select staff member</option>
+                {(selectedTrip as any)?.staff?.map((staffMember: any) => (
+                  <option key={staffMember.staffId || staffMember.staff_id} value={staffMember.staffId || staffMember.staff_id}>
+                    {staffMember.staffName || staffMember.staff?.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Game Type *</label>
+              <select
+                className="w-full mt-1 p-2 border rounded-md"
+                value={rollingForm.game_type}
+                onChange={(e) => setRollingForm({...rollingForm, game_type: e.target.value})}
+              >
+                <option value="baccarat">Baccarat</option>
+                <option value="blackjack">Blackjack</option>
+                <option value="roulette">Roulette</option>
+                <option value="poker">Poker</option>
+                <option value="slots">Slots</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Rolling Amount (HK$) *</label>
+              <input
+                type="number"
+                className="w-full mt-1 p-2 border rounded-md"
+                placeholder="Enter rolling amount"
+                value={rollingForm.amount}
+                onChange={(e) => setRollingForm({...rollingForm, amount: e.target.value})}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Notes (Optional)</label>
+              <input
+                type="text"
+                className="w-full mt-1 p-2 border rounded-md"
+                placeholder="Enter notes"
+                value={rollingForm.description}
+                onChange={(e) => setRollingForm({...rollingForm, description: e.target.value})}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button variant="outline" onClick={() => setShowAddRolling(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddRolling} 
+              disabled={saving || !rollingForm.amount || !rollingForm.staff_id}
+            >
+              {saving ? 'Adding...' : 'Add Rolling'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

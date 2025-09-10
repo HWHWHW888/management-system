@@ -92,30 +92,25 @@ CREATE TABLE chip_exchanges (
     proof_photo uuid
 );
 
-CREATE TABLE rolling_records (
-    id uuid,
-    customer_id uuid,
-    customer_name text,
-    agent_id uuid,
-    agent_name text,
-    staff_id uuid,
-    staff_name text,
-    rolling_amount numeric,
-    game_type uuid,
-    venue text,
-    table_number text,
-    session_start_time timestamp without time zone,
-    session_end_time timestamp without time zone,
-    recorded_at timestamptz,
-    notes text,
-    attachments jsonb,
-    ocr_data jsonb,
-    verified boolean,
-    verified_by uuid,
-    verified_at timestamp without time zone,
-    shift_id uuid,
-    trip_id uuid
-);
+create table public.trip_rolling (
+  id uuid not null default gen_random_uuid (),
+  trip_id uuid not null,
+  customer_id uuid not null,
+  staff_id uuid not null,
+  game_type uuid not null,
+  rolling_amount numeric not null default 0,
+  notes text null,
+  attachment_id uuid null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint trip_rolling_pkey primary key (id),
+  constraint trip_rolling_attachment_id_fkey foreign KEY (attachment_id) references file_attachments (id),
+  constraint trip_rolling_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete CASCADE,
+  constraint trip_rolling_game_type_fkey foreign KEY (game_type) references game_types (id),
+  constraint trip_rolling_staff_id_fkey foreign KEY (staff_id) references staff (id),
+  constraint trip_rolling_trip_id_fkey foreign KEY (trip_id) references trips (id) on delete CASCADE
+) TABLESPACE pg_default;
+
 
 CREATE TABLE transactions (
     id uuid,
@@ -189,26 +184,47 @@ CREATE TABLE game_types (
 );
 
 -- ========== 行程相关 ==========
-CREATE TABLE trips (
-    id uuid,
-    trip_name varchar(255),
-    destination varchar(255),
-    start_date date,
-    end_date date,
-    status varchar(50),
-    total_budget numeric(15,2),
-    total_win numeric(15,2),
-    total_loss numeric(15,2),
-    net_profit numeric(15,2),
-    staff_id uuid,
-    check_in_time timestamptz,
-    check_out_time timestamptz,
-    check_in_notes text,
-    check_out_notes text,
-    activeCustomersCount integer DEFAULT 0,
-    created_at timestamptz,
-    updated_at timestamptz
-);
+create table trips (
+  id uuid not null default gen_random_uuid (),
+  trip_name character varying(255) not null,
+  destination character varying(255) not null,
+  start_date date not null,
+  end_date date not null,
+  status character varying(50) null default 'active'::character varying,
+  total_budget numeric(15, 2) null default 0,
+  staff_id uuid null,
+  check_in_time timestamp with time zone null,
+  check_out_time timestamp with time zone null,
+  check_in_notes text null,
+  check_out_notes text null,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  activecustomerscount integer null default 0,
+  constraint trips_pkey primary key (id),
+  constraint trips_staff_id_fkey foreign KEY (staff_id) references staff (id),
+  constraint trips_status_check check (
+    (
+      (status)::text = any (
+        (
+          array[
+            'active'::character varying,
+            'in-progress'::character varying,
+            'completed'::character varying,
+            'cancelled'::character varying
+          ]
+        )::text[]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_trips_dates on trips using btree (start_date, end_date) TABLESPACE pg_default;
+
+create index IF not exists idx_trips_active_customers_count on trips using btree (activecustomerscount) TABLESPACE pg_default;
+
+create index IF not exists idx_trips_staff_id on trips using btree (staff_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trips_status on trips using btree (status) TABLESPACE pg_default;
 
 CREATE TABLE trip_agents (
     id uuid,
@@ -252,21 +268,25 @@ CREATE TABLE trip_expenses (
     updated_at timestamptz
 );
 
-CREATE TABLE trip_sharing (
-    trip_id uuid,
-    total_win_loss numeric,
-    total_expenses numeric,
-    total_rolling_commission numeric,
-    total_buy_in numeric,
-    total_buy_out numeric,
-    net_cash_flow numeric,
-    net_result numeric,
-    total_agent_share numeric,
-    company_share numeric,
-    agent_share_percentage numeric,
-    company_share_percentage numeric,
-    agent_breakdown jsonb
-);
+create table trip_sharing (
+  trip_id uuid not null,
+  total_win_loss numeric null,
+  total_expenses numeric null,
+  total_rolling_commission numeric null,
+  total_buy_in numeric null,
+  total_buy_out numeric null,
+  net_cash_flow numeric null,
+  net_result numeric null,
+  total_agent_share numeric null,
+  company_share numeric null,
+  agent_share_percentage numeric null,
+  company_share_percentage numeric null,
+  agent_breakdown jsonb null,
+  total_rolling numeric(15, 2) null default 0,
+  constraint trip_sharing_pkey primary key (trip_id)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_sharing_trip_id on trip_sharing using btree (trip_id) TABLESPACE pg_default;
 
 -- ========== 班次相关 ==========
 CREATE TABLE staff_shifts (
@@ -521,3 +541,14 @@ WHERE total_commission IS NULL OR total_trips IS NULL;
 -- Create index for better performance on statistics queries
 CREATE INDEX idx_agents_total_commission ON agents(total_commission);
 CREATE INDEX idx_agents_total_trips ON agents(total_trips);
+
+
+
+create index IF not exists idx_trip_rolling_trip_id on public.trip_rolling using btree (trip_id) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_customer_id on public.trip_rolling using btree (customer_id) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_staff_id on public.trip_rolling using btree (staff_id) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_game_type on public.trip_rolling using btree (game_type) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_attachment_id on public.trip_rolling using btree (attachment_id) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_created_at on public.trip_rolling using btree (created_at desc) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_trip_customer on public.trip_rolling using btree (trip_id, customer_id) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_trip_staff on public.trip_rolling using btree (trip_id, staff_id) TABLESPACE pg_default;
