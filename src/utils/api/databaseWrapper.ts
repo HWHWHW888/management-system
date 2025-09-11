@@ -8,7 +8,8 @@ export class DatabaseWrapper {
   async testConnection() {
     try {
       // Test backend API health
-      const response = await fetch('http://localhost:3001/health');
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${apiUrl}/health`);
       const data = await response.json();
       
       if (response.ok && data.status === 'OK') {
