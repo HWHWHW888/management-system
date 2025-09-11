@@ -12,7 +12,7 @@ import { Textarea } from './ui/textarea';
 import { User, StaffShift, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { CalendarDays, Clock, Users, Eye, EyeOff, Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, Camera, Upload, FileText, AlertTriangle, RefreshCw, UserPlus, UserMinus, LogIn, LogOut, Shield, Key, Settings, Activity, MapPin, Phone, Mail, Badge as BadgeIcon, IdCard, Briefcase, Database, Paperclip, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Database, Save, Eye, UserPlus, Shield, Key, IdCard, Briefcase, EyeOff, LogIn, LogOut, CheckCircle, Clock } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { apiClient } from '../utils/api/apiClient';
 
@@ -436,18 +436,18 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
     }
   };
 
-  const getStaffShifts = async (staffId: string) => {
-    try {
-      const response = await apiClient.getStaffShifts(staffId);
-      if (response.success) {
-        return response.data || [];
-      }
-      return [];
-    } catch (error) {
-      console.error('❌ Error fetching staff shifts:', error);
-      return [];
-    }
-  };
+  // const getStaffShifts = async (staffId: string) => {
+  //   try {
+  //     const response = await apiClient.getStaffShifts(staffId);
+  //     if (response.success) {
+  //       return response.data || [];
+  //     }
+  //     return [];
+  //   } catch (error) {
+  //     console.error('❌ Error fetching staff shifts:', error);
+  //     return [];
+  //   }
+  // };
 
   const isStaffCheckedIn = (staffMember: StaffWithUser) => {
     return staffMember.current_shift && staffMember.current_shift.length > 0 && staffMember.current_shift[0].status === 'checked-in';
