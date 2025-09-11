@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Debug</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Authentication Debug Tool</h1>
+    
+    <div>
+        <h2>1. Check Login API</h2>
+        <button onclick="testLogin()">Test Login API</button>
+        <pre id="loginResult"></pre>
+    </div>
+    
+    <div>
+        <h2>2. Check Supabase Session</h2>
+        <button onclick="checkSupabaseSession()">Check Supabase Session</button>
+        <pre id="sessionResult"></pre>
+    </div>
+    
+    <div>
+        <h2>3. Test API Request</h2>
+        <button onclick="testAPIRequest()">Test API Request</button>
+        <pre id="apiResult"></pre>
+    </div>
+    
+    <div>
+        <h2>4. Initialize Admin User</h2>
+        <button onclick="initializeAdmin()">Initialize Admin User</button>
+        <pre id="initResult"></pre>
+    </div>
+
+    <script>
+        // Initialize Supabase client
+        const supabase = window.supabase.createClient(
+            'https://rtjdqnuzeupbgbovbriy.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0amRxbnV6ZXVwYmdib3Zicml5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYyNjYwOTUsImV4cCI6MjA3MTg0MjA5NX0.5oJes7rJykxuGX0BZFDt4LpTmRJAgoh0wHRpmJ8HTng'
+        );
+
+        function log(message, data) {
+            console.log(message, data);
+        }
+
+        async function testLogin() {
+            try {
+                log('🔐 Testing backend login...');
+                const response = await fetch('http://localhost:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+                
+                log('🔍 Response status:', response.status);
+                log('🔍 Response headers:', Object.fromEntries(response.headers.entries()));
+                
+                const data = await response.json();
+                log('🔍 Full login response:', JSON.stringify(data, null, 2));
+                log('🔍 Response data structure:', data);
+                log('🔍 Has data field:', !!data.data);
+                log('🔍 Has token field:', !!(data.data && data.data.token));
+                
+                if (data.success && data.data && data.data.token) {
+                    log('✅ Login successful! Token received:', data.data.token.substring(0, 20) + '...');
+                    return data.data.token;
+                } else {
+                    log('❌ Login failed or no token received');
+                    log('🔍 Success:', data.success);
+                    log('🔍 Data:', data.data);
+                    return null;
+                }
+            } catch (error) {
+                log('❌ Login error:', error);
+                return null;
+            }
+        }
+
+        async function checkSupabaseSession() {
+            const result = document.getElementById('sessionResult');
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                result.textContent = JSON.stringify({
+                    session: session,
+                    error: error
+                }, null, 2);
+            } catch (error) {
+                result.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function testAPIRequest() {
+            const result = document.getElementById('apiResult');
+            try {
+                const token = localStorage.getItem('authToken');
+                if (!token) {
+                    result.textContent = 'No token found in localStorage';
+                    return;
+                }
+
+                const response = await fetch('http://localhost:3001/api/agents', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                result.textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function initializeAdmin() {
+            const result = document.getElementById('initResult');
+            try {
+                // First check if admin exists
+                const { data: existingUser } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('username', 'admin')
+                    .single();
+                
+                if (existingUser) {
+                    result.textContent = 'Admin user already exists:\n' + JSON.stringify(existingUser, null, 2);
+                    return;
+                }
+
+                // Create auth user
+                const { data: authData, error: authError } = await supabase.auth.signUp({
+                    email: 'admin@casino.com',
+                    password: 'admin123',
+                    options: {
+                        data: {
+                            username: 'admin',
+                            role: 'admin'
+                        }
+                    }
+                });
+
+                if (authError && !authError.message.includes('already registered')) {
+                    throw authError;
+                }
+
+                // Create user profile
+                const userId = authData?.user?.id || 'admin-1';
+                const { error: profileError } = await supabase
+                    .from('users')
+                    .insert([{
+                        id: userId,
+                        username: 'admin',
+                        password: 'admin123',
+                        role: 'admin'
+                    }]);
+
+                if (profileError && !profileError.message.includes('duplicate')) {
+                    throw profileError;
+                }
+                
+                result.textContent = 'Admin user created successfully:\n' + JSON.stringify({
+                    authData: authData,
+                    profileError: profileError
+                }, null, 2);
+            } catch (error) {
+                result.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
