@@ -8,7 +8,7 @@ import { Badge } from './ui/badge';
 import { Textarea } from './ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { User, Staff, StaffShift, FileAttachment, Customer, GameType, RollingRecord } from '../types';
-import { Paperclip, ChevronDown, ChevronUp, UserCheck, Database, CalendarDays, Clock, Users, Eye, EyeOff, Plus, Trash2, Edit, Save, X, CheckCircle, XCircle, Upload, FileText, AlertTriangle, RefreshCw, UserPlus, UserMinus, LogIn, LogOut, Shield, Key, Settings, Activity, MapPin, Phone, Mail, Badge as BadgeIcon, IdCard, Briefcase, AlertCircle, Info, BarChart3, Calendar } from 'lucide-react';
+import { Database, Clock, CheckCircle, XCircle, RefreshCw, LogIn, LogOut, Activity, AlertCircle, Info, BarChart3, Calendar } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { StaffRollingRecorder } from './StaffRollingRecorder';
 import { StaffRollingHistory } from './StaffRollingHistory';

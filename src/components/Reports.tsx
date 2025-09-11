@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { User, Agent, Customer, Trip, RollingRecord, BuyInOutRecord } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, ComposedChart, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, ComposedChart, AreaChart, Area } from 'recharts';
 import { 
   Download, DollarSign, TrendingDown, Users, 
   RefreshCw, Activity, AlertTriangle,

@@ -12,7 +12,7 @@ import { Textarea } from './ui/textarea';
 import { User, StaffShift, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Database, Save, Eye, UserPlus, Shield, Key, IdCard, Briefcase, EyeOff, LogIn, LogOut, CheckCircle, Clock } from 'lucide-react';
+import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Database, Save, Eye, UserPlus, Shield, Key, EyeOff, LogIn, LogOut, CheckCircle, Clock } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { apiClient } from '../utils/api/apiClient';
 

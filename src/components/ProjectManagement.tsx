@@ -98,13 +98,11 @@ function ProjectManagementComponent() {
   });
   
   const [newCustomerData, setNewCustomerData] = useState({ name: '' });
-  const [newExpenseData, setNewExpenseData] = useState({ description: '', amount: 0, category: '' });
   const [newExpense, setNewExpense] = useState({
     description: '',
     amount: 0,
     category: 'flight' as const
   });
-  const [newAgentShare, setNewAgentShare] = useState(25);
   const [editAgentShare, setEditAgentShare] = useState(25);
   const [editingAgent, setEditingAgent] = useState<any>(null);
   const [deletingAgent, setDeletingAgent] = useState<any>(null);
@@ -150,7 +148,7 @@ function ProjectManagementComponent() {
     }
   };
 
-  const loadAgentProfits = async (tripId: string) => {
+  const loadAgentProfits = useCallback(async (tripId: string) => {
     try {
       console.log('🔍 Loading agent profits for trip:', tripId);
       const response = await apiClient.get(`/trips/${tripId}/agents/profits`);
@@ -169,7 +167,7 @@ function ProjectManagementComponent() {
       showError('Failed to load agent profits');
       setAgentProfits([]);
     }
-  };
+  }, []);
 
   const updateCommissionRate = async (agentId: string, customerId: string, commissionRate: number) => {
     try {
@@ -215,23 +213,6 @@ function ProjectManagementComponent() {
     }
   };
 
-  const updateTripSharing = async (tripId: string, sharingData: any) => {
-    try {
-      setSaving(true);
-      const response = await apiClient.put(`/trips/${tripId}/sharing`, sharingData);
-      if (response.success) {
-        await loadTripSharing(tripId);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error updating trip sharing:', error);
-      showError('Failed to update trip sharing');
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Enhanced data loading with better error handling
   const loadAllRealTimeData = useCallback(async () => {
@@ -435,12 +416,12 @@ function ProjectManagementComponent() {
       setLoading(false);
       console.log('🏁 Loading completed, setting loading to false');
     }
-  }, []);
+  }, [selectedTrip]);
 
   // Initial data load only
   useEffect(() => {
     loadAllRealTimeData();
-  }, []);
+  }, [loadAllRealTimeData]);
 
   // Separate effect for real-time updates
   useEffect(() => {
@@ -468,7 +449,7 @@ function ProjectManagementComponent() {
       });
       loadAgentProfits(selectedTrip.id);
     }
-  }, [selectedTrip, selectedTripTab]);
+  }, [selectedTrip, selectedTripTab, loadAgentProfits]);
 
   // Get filtered trips based on user role
   const getFilteredTrips = () => {
@@ -720,39 +701,6 @@ function ProjectManagementComponent() {
     }
   };
 
-  // Add agent to trip
-  const handleAddAgentToTrip = async (agentId: string) => {
-    if (!selectedTrip) {
-      showError('No trip selected');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      
-      const response = await apiClient.post(`/trips/${selectedTrip.id}/agents`, {
-        agent_id: agentId,
-        share_percentage: newAgentShare
-      });
-      
-      if (response.success) {
-        console.log(' Agent added to trip via API:', agentId);
-        
-        // Refresh trip data to get updated agent list
-        await selectTrip(selectedTrip);
-        setShowAddAgent(false);
-        setNewAgentShare(25);
-        
-      } else {
-        showError(response.error || 'Failed to add agent to trip');
-      }
-    } catch (error) {
-      console.error('Error adding agent to trip:', error);
-      showError('Failed to add agent to trip');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Add staff to trip
   const handleAddStaffToTrip = async (staffId: string) => {
@@ -989,18 +937,6 @@ function ProjectManagementComponent() {
     }
   };
 
-  // Open edit agent dialog
-  const openEditAgentDialog = (agent: TripAgent) => {
-    setEditingAgent(agent);
-    setEditAgentShare(agent.sharePercentage || 0);
-    setShowEditAgent(true);
-  };
-
-  // Open delete agent dialog
-  const openDeleteAgentDialog = (agent: TripAgent) => {
-    setDeletingAgent(agent);
-    setShowDeleteAgent(true);
-  };
 
   // Add expense to trip using API
   const handleAddExpense = async () => {
@@ -1343,10 +1279,7 @@ function ProjectManagementComponent() {
               })()}
               {(filteredTrips || []).map((trip) => {
                 // Use loaded statistics data
-                const totalBuyIn = trip.totalBuyIn || 0;
-                const totalCashOut = trip.totalBuyOut || 0;
                 const netProfit = trip.totalWinLoss || 0;
-                const totalWinLoss = trip.totalWinLoss || 0;
                 
                 return (
                   <Card key={trip.id} className="overflow-hidden hover:shadow-md transition-shadow">
@@ -1460,7 +1393,6 @@ function ProjectManagementComponent() {
                   <div className="space-y-6">
                     {(() => {
                       // Use backend data directly - no local calculation needed
-                      const backendData = (selectedTrip as any)?.backendData || {};
                       const totalExpenses = (selectedTrip?.expenses || []).reduce((sum: number, e: any) => sum + safeNumber(e.amount), 0);
                       return (
                         <>
