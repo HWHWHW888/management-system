@@ -4,23 +4,21 @@ import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { DatabaseWrapper } from '../utils/api/databaseWrapper';
 import { tokenManager } from '../utils/auth/tokenManager';
 import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { User, Trip, TripCustomer, TripAgent, TripExpense, Customer, Agent } from '../types';
-import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
+import { Trip, Customer, Agent } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { 
-  MapPin, RefreshCw, Activity, AlertTriangle, Info, Zap, Clock,
-  Users, DollarSign, Settings, Plus, Edit, Trash2, Eye,
-  Calculator, BarChart, UserCheck, X, CheckCircle, Pencil, Share2
+  MapPin, RefreshCw, Activity, AlertTriangle, Zap,
+  Users, DollarSign, Settings, Plus, Trash2, Eye,
+  BarChart, UserCheck, X, CheckCircle, Share2
 } from 'lucide-react';
 
 
@@ -60,7 +58,6 @@ function ProjectManagementComponent() {
   // Form states
   const [showCreateTrip, setShowCreateTrip] = useState(false);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
-  const [showAddAgent, setShowAddAgent] = useState(false);
   const [showEditAgent, setShowEditAgent] = useState(false);
   const [showDeleteAgent, setShowDeleteAgent] = useState(false);
   const [showAddStaff, setShowAddStaff] = useState(false);
@@ -97,7 +94,6 @@ function ProjectManagementComponent() {
     status: 'active' as 'active' | 'in-progress' | 'completed' | 'cancelled'
   });
   
-  const [newCustomerData, setNewCustomerData] = useState({ name: '' });
   const [newExpense, setNewExpense] = useState({
     description: '',
     amount: 0,

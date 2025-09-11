@@ -1,10 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
-import { Badge } from './ui/badge';
+import { Card } from './ui/card';
 import { FileAttachment } from '../types';
-import { Upload, File, Download, Trash2, Eye, X, AlertCircle } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Upload, Download, Trash2, Eye, X, AlertCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 
 interface FileUploadProps {
   attachments?: FileAttachment[]; // Made optional with default
