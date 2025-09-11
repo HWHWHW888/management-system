@@ -17,7 +17,7 @@ import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { 
-  Plus, Edit, Mail, Phone, DollarSign, TrendingUp, TrendingDown, Paperclip, Calendar, MapPin, Target, 
+  Plus, Edit, Mail, DollarSign, TrendingUp, TrendingDown, Paperclip, Calendar, MapPin, Target, 
   ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, Database, Save, RefreshCw, Activity, 
   IdCard, CreditCard, Heart, FileText, Clock, AlertCircle, CheckCircle, ArrowUpCircle, ArrowDownCircle, 
   Building2, Receipt, Wallet, Info, Globe, Home, Cake, Users

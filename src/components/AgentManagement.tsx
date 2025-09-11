@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -32,11 +32,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
     phone: ''
   });
 
-  useEffect(() => {
-    loadAllData();
-  }, []);
-
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     try {
       setLoading(true);
       clearError();
@@ -73,7 +69,11 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
     } finally {
       setLoading(false);
     }
-  };
+  }, [clearError, showError]);
+
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
 
   // Note: Direct agent saving removed - now using backend API endpoints
 

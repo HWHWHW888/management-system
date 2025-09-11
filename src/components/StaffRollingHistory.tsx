@@ -9,28 +9,16 @@ import {
   Filter,
   Calendar,
   Eye,
-  Plus,
-  Trash2,
-  Edit,
-  Save,
-  TrendingUp,
-  TrendingDown,
   DollarSign,
   Clock,
   UserIcon,
   AlertCircle,
   CheckCircle,
   RefreshCw,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  Target,
-  Award,
-  Coins,
   Activity,
-  BarChart,
-  PieChart,
-  LineChart,
+  Target,
+  TrendingUp,
+  TrendingDown,
   Database,
   Lock,
   Receipt,
@@ -45,8 +33,8 @@ import {
   ShieldCheck,
   CircleDollarSign
 } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
-import { RollingRecord, BuyInOutRecord, Customer, Staff } from '../types';
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
+import { RollingRecord, BuyInOutRecord, Staff } from '../types';
 import { User } from '../types';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { db } from '../utils/supabase/supabaseClients';
@@ -87,13 +75,11 @@ function StaffRollingHistoryComponent({ user, currentStaff, showError, clearErro
       console.log('🔄 Loading real-time rolling history from Supabase...');
       
       // Load all data in parallel
-      const [rollingRecords, buyInOutData, customerData] = await Promise.all([
+      const [rollingRecords, buyInOutData] = await Promise.all([
         db.get('rolling_records', []),
-        db.get('buy_in_out_records', []),
-        db.get('customers', [])
+        db.get('buy_in_out_records', [])
       ]);
 
-      // setCustomers(customerData); // Removed unused state
       setBuyInOutRecords(buyInOutData);
       
       // Filter records based on user role
