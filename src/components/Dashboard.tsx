@@ -4,10 +4,9 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { 
-  Users, UserCheck, TrendingUp, TrendingDown, DollarSign, Receipt, Trophy, Target, 
-  MapPin, PieChart, Percent, Building, Calendar, UserPlus, Activity, Database, 
-  RefreshCw, CheckCircle, AlertTriangle, Clock, Wifi, WifiOff, ArrowUpCircle, ArrowDownCircle,
-  Coffee, Zap, BarChart3, Gamepad2
+  Users, UserCheck, TrendingDown, DollarSign, Receipt, Trophy, Target, 
+  MapPin, Activity, Database, 
+  RefreshCw, AlertTriangle, Zap
 } from 'lucide-react';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';

@@ -76,7 +76,7 @@ function AdminManagementComponent({ user, showError, clearError }: AdminManageme
     } finally {
       setLoading(false);
     }
-  }, [db, clearError, showError]);
+  }, [clearError, showError]);
 
   useEffect(() => {
     loadAdminData();

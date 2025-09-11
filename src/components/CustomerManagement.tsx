@@ -17,10 +17,10 @@ import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { 
-  Plus, Edit, Mail, DollarSign, TrendingUp, TrendingDown, Paperclip, Calendar, MapPin, Target, 
+  Plus, Edit, Mail, DollarSign, TrendingUp, TrendingDown, Paperclip, MapPin, Target, 
   ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, Database, Save, RefreshCw, Activity, 
-  IdCard, CreditCard, Heart, FileText, Clock, AlertCircle, CheckCircle, ArrowUpCircle, ArrowDownCircle, 
-  Building2, Receipt, Wallet, Info, Globe, Home, Cake, Users
+  IdCard, Heart, FileText, CheckCircle, ArrowUpCircle, ArrowDownCircle, 
+  Building2, Receipt, Wallet
 } from 'lucide-react';
 
 interface CustomerManagementProps extends WithErrorHandlerProps {
@@ -618,25 +618,26 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     }
   };
 
-  const handleDeleteAttachment = async (customerId: string, attachmentId: string) => {
-    try {
-      console.log('🔍 Frontend - Deleting attachment:', customerId, attachmentId);
-      
-      // Delete via API
-      const response = await apiClient.deleteCustomerAttachment(customerId, attachmentId);
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to delete attachment');
-      }
+  // Attachment deletion function (currently unused but available for future use)
+  // const handleDeleteAttachment = async (customerId: string, attachmentId: string) => {
+  //   try {
+  //     console.log('🔍 Frontend - Deleting attachment:', customerId, attachmentId);
+  //     
+  //     // Delete via API
+  //     const response = await apiClient.deleteCustomerAttachment(customerId, attachmentId);
+  //     if (!response.success) {
+  //       throw new Error(response.error || 'Failed to delete attachment');
+  //     }
 
-      console.log('✅ Attachment deleted successfully');
-      
-      // Refresh data to get updated attachments
-      await loadRealTimeData();
-    } catch (error) {
-      console.error('❌ Error deleting attachment:', error);
-      showError(`Failed to delete attachment: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
-    }
-  };
+  //     console.log('✅ Attachment deleted successfully');
+  //     
+  //     // Refresh data to get updated attachments
+  //     await loadRealTimeData();
+  //   } catch (error) {
+  //     console.error('❌ Error deleting attachment:', error);
+  //     showError(`Failed to delete attachment: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+  //   }
+  // };
 
   const openNewCustomerDialog = () => {
     setEditingCustomer(null);

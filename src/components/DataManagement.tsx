@@ -21,13 +21,10 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Clock, 
-  HardDrive,
-  CloudOff,
   Activity,
   Archive,
   RotateCcw,
   Crown,
-  Settings,
   Trash2,
   Package
 } from 'lucide-react';

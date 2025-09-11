@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import { User, Agent, Customer, FileAttachment } from '../types';
+import { User, Agent, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { apiClient } from '../utils/api/apiClient';
@@ -20,12 +20,11 @@ interface AgentManagementProps extends WithErrorHandlerProps {
 
 function AgentManagementComponent({ user, showError, clearError }: AgentManagementProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -54,14 +53,9 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
         createdAt: new Date(agent.created_at).toLocaleDateString()
       }));
 
-      // For now, skip customers loading since table may not exist
-      // TODO: Re-enable when customers table is created
-      const processedCustomers: any[] = [];
-
       setAgents(processedAgents);
-      setCustomers(processedCustomers);
       
-      console.log(`✅ Loaded ${processedAgents.length} agents, ${processedCustomers.length} customers from backend API`);
+      console.log(`✅ Loaded ${processedAgents.length} agents from backend API`);
       
     } catch (error) {
       console.error('❌ Error loading agent data:', error);
