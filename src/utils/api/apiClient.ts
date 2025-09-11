@@ -1,5 +1,4 @@
 // API Client for connecting frontend to backend server
-import { supabase } from '../supabase/supabaseClients';
 import { tokenManager } from '../auth/tokenManager';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
