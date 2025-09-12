@@ -148,6 +148,13 @@ class ApiClient {
         throw new Error(data.message || `HTTP error! status: ${response.status}`);
       }
 
+      // Store token after successful login
+      if (data.success && data.data?.token) {
+        console.log('🔑 ApiClient: Storing token after successful login');
+        this.setToken(data.data.token);
+        tokenManager.setToken(data.data.token);
+      }
+
       return {
         success: true,
         data: data
