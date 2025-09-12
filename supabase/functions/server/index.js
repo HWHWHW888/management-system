@@ -32,9 +32,9 @@ app.use(cors({
     // Define allowed origins
     const allowedOrigins = [
       'http://localhost:3000',
-      'https://management-system-frontend.netlify.app',
       'https://management-system-production-9c14.up.railway.app',
-      'https://hoewingroup.com'
+      'https://hoewingroup.com',
+      'https://www.hoewingroup.com'
     ];
     
     // Check if origin is in allowed list or is any Netlify/Cloudflare Pages subdomain
