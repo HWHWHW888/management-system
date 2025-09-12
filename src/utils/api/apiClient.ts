@@ -1,7 +1,7 @@
 // API Client for connecting frontend to backend server
 import { tokenManager } from '../auth/tokenManager';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -48,7 +48,7 @@ class ApiClient {
     options: RequestInit = {},
     customToken?: string
   ): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = `${this.baseUrl}/api${endpoint}`;
     
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -126,7 +126,7 @@ class ApiClient {
 
   // Auth endpoints - login doesn't need token
   async login(username: string, password: string) {
-    const url = `${this.baseUrl}/auth/login`;
+    const url = `${this.baseUrl}/api/auth/login`;
     
     try {
       console.log('🔐 ApiClient: Making login request to:', url);

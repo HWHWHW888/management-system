@@ -2,7 +2,7 @@
 import { supabase } from '../supabase/supabaseClients';
 import { tokenManager } from '../auth/tokenManager';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 interface ApiResponse<T = any> {
   success: boolean;
