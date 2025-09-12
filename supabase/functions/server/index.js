@@ -21,7 +21,7 @@ import chipExchangesRouter from './chip-exchanges.js';
 
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 
 // Middleware
 app.use(cors({
@@ -33,7 +33,7 @@ app.use(cors({
     const allowedOrigins = [
       'http://localhost:3000',
       'https://management-system-frontend.netlify.app',
-      'https://management-system-production-2a78.up.railway.app',
+      'https://management-system-production-9c14.up.railway.app',
       'https://hoewingroup.com'
     ];
     
