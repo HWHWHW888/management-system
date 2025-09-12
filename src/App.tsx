@@ -27,6 +27,16 @@ function App() {
 
   useEffect(() => {
     initializeApplication();
+    
+    // Test API connection for Cloudflare Pages deployment
+    fetch(`${process.env.REACT_APP_API_URL}/health`)
+      .then(res => res.json())
+      .then(data => {
+        console.log('✅ Backend health check:', data);
+      })
+      .catch(error => {
+        console.error('❌ Backend health check failed:', error);
+      });
   }, []);
 
   const initializeApplication = async () => {

@@ -33,12 +33,14 @@ app.use(cors({
     const allowedOrigins = [
       'http://localhost:3000',
       'https://management-system-frontend.netlify.app',
-      'https://management-system-production-2a78.up.railway.app'
+      'https://management-system-production-2a78.up.railway.app',
+      'https://hoewingroup.com'
     ];
     
-    // Check if origin is in allowed list or is any Netlify subdomain
+    // Check if origin is in allowed list or is any Netlify/Cloudflare Pages subdomain
     if (allowedOrigins.includes(origin) || 
-        origin.endsWith('.netlify.app')) {
+        origin.endsWith('.netlify.app') ||
+        origin.endsWith('.pages.dev')) {
       return callback(null, true);
     }
     
