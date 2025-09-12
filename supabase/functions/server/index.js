@@ -36,10 +36,9 @@ app.use(cors({
       'https://management-system-production-2a78.up.railway.app'
     ];
     
-    // Check if origin is in allowed list or is a Netlify subdomain
+    // Check if origin is in allowed list or is any Netlify subdomain
     if (allowedOrigins.includes(origin) || 
-        origin.includes('.netlify.app') || 
-        origin.includes('--hoewin.netlify.app')) {
+        origin.endsWith('.netlify.app')) {
       return callback(null, true);
     }
     
@@ -96,9 +95,11 @@ app.use('*', (req, res) => {
 
 // Start server
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`🚀 Junket Management API running on port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  const HOST = process.env.HOST || '0.0.0.0';
+  app.listen(PORT, HOST, () => {
+    console.log(`🚀 Junket Management API running on ${HOST}:${PORT}`);
+    console.log(`📊 Health check: http://${HOST}:${PORT}/health`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
