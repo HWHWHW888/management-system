@@ -28,7 +28,8 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'https://management-system-frontend.netlify.app',
-    'https://*.netlify.app'
+    'https://*.netlify.app',
+    'https://management-system-production-2a78.up.railway.app'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
