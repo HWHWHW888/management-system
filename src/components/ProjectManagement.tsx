@@ -15,6 +15,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Trip, Customer, Agent } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
+import { useLanguage } from '../contexts/LanguageContext';
+import { isReadOnlyRole } from '../utils/permissions';
+import { 
+  SUPPORTED_CURRENCIES, 
+  formatCurrency, 
+  formatCurrencyWithSign, 
+  getCurrencySymbol,
+  convertAmount,
+  getDefaultExchangeRates
+} from '../utils/currency';
 import { 
   MapPin, RefreshCw, Activity, AlertTriangle, Zap,
   Users, DollarSign, Settings, Plus, Trash2, Eye,
@@ -24,11 +34,17 @@ import {
 
 const REAL_TIME_REFRESH_INTERVAL = 30000;
 
-function ProjectManagementComponent() {
-  // Mock user for now since AuthContext is not available
-  const user = { role: 'admin', agentId: null, username: 'admin' };
+interface ProjectManagementProps {
+  user?: { role: string; agentId?: string | null; username: string };
+}
+
+function ProjectManagementComponent({ user }: ProjectManagementProps) {
+  // Default user if not provided
+  const currentUser = user || { role: 'admin', agentId: null, username: 'admin' };
   const clearError = () => {};
   const showError = (message: string) => console.error(message);
+  const { t } = useLanguage();
+  const isReadOnly = isReadOnlyRole(currentUser.role);
   
   // Utility function for safe number conversion
   const safeNumber = (value: any): number => {
@@ -91,8 +107,31 @@ function ProjectManagementComponent() {
     endDate: '',
     venue: '',
     budget: '',
-    status: 'active' as 'active' | 'in-progress' | 'completed' | 'cancelled'
+    status: 'active' as 'active' | 'in-progress' | 'completed' | 'cancelled',
+    currency: 'HKD',
+    exchange_rate_peso: 1.0000,
+    exchange_rate_hkd: 1.0000,
+    exchange_rate_myr: 1.0000
   });
+
+  // Dynamic currency viewing state - initialize with trip's default currency
+  const [viewingCurrency, setViewingCurrency] = useState<string>('HKD');
+
+  // Update viewing currency when selected trip changes
+  useEffect(() => {
+    if (selectedTrip?.currency) {
+      setViewingCurrency(selectedTrip.currency);
+      console.log('🔄 Trip changed, updating viewing currency:', {
+        tripId: selectedTrip.id,
+        tripCurrency: selectedTrip.currency,
+        exchangeRates: {
+          peso: selectedTrip.exchange_rate_peso,
+          hkd: selectedTrip.exchange_rate_hkd,
+          myr: selectedTrip.exchange_rate_myr
+        }
+      });
+    }
+  }, [selectedTrip]);
   
   const [newExpense, setNewExpense] = useState({
     description: '',
@@ -110,10 +149,9 @@ function ProjectManagementComponent() {
   };
 
   // Permissions
-  const isAdmin = user.role === 'admin';
-  const isAgent = user.role === 'agent';
+  const isAdmin = currentUser.role === 'admin';
+  const isAgent = currentUser.role === 'agent' && currentUser.agentId;
 
-  // API functions for trip expenses and sharing
   const loadTripExpenses = async (tripId: string) => {
     try {
       setExpensesLoading(true);
@@ -210,9 +248,14 @@ function ProjectManagementComponent() {
   };
 
 
-  // Enhanced data loading with better error handling
-  const loadAllRealTimeData = useCallback(async () => {
+  // Enhanced data loading with better error handling and caching
+  const loadAllRealTimeData = useCallback(async (forceRefresh = false) => {
     try {
+      if (!forceRefresh && dataLoaded && trips.length > 0) {
+        console.log('📋 Using cached data, skipping reload');
+        return;
+      }
+      
       setLoading(true);
       setErrorMessage('');
       clearError();
@@ -225,7 +268,7 @@ function ProjectManagementComponent() {
         // Try to auto-login with admin credentials
         try {
           const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-          const loginResponse = await fetch(`${apiUrl}/api/auth/login`, {
+          const loginResponse = await fetch(`${apiUrl}/auth/login`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -262,8 +305,8 @@ function ProjectManagementComponent() {
         }
       }
       
-      
-      // Load all required data
+      // Load basic data first (fast) - no role filtering at database level
+      console.log('🔍 Loading data for user role:', currentUser.role);
       const [tripsData, customersData, agentsData, staffResponse] = await Promise.all([
         db.get('trips', []),
         db.get('customers', []),
@@ -271,78 +314,18 @@ function ProjectManagementComponent() {
         apiClient.get('/staffs')
       ]);
       
+      console.log('📊 Raw data loaded:', {
+        trips: tripsData?.length || 0,
+        customers: customersData?.length || 0,
+        agents: agentsData?.length || 0,
+        userRole: currentUser.role
+      });
+      
       // Extract staff data from API response
       const staffData = staffResponse.success ? staffResponse.data : [];
 
-      // Load trip statistics for each trip (optimized with parallel requests)
-      const transformedTrips = await Promise.all((tripsData || []).map(async (trip: any) => {
-        let tripStats = null;
-        let tripSharing = null;
-        let tripCustomerStats = null;
-        
-        try {
-          // Load all trip data in parallel for better performance
-          const [statsResponse, sharingResponse, customerStatsResponse] = await Promise.all([
-            apiClient.get(`/trips/${trip.id}/statistics`),
-            apiClient.get(`/trips/${trip.id}/sharing`),
-            apiClient.get(`/trips/${trip.id}/customer-stats`)
-          ]);
-          
-          if (statsResponse.success) tripStats = statsResponse.data;
-          if (sharingResponse.success) tripSharing = sharingResponse.data;
-          if (customerStatsResponse.success && customerStatsResponse.data) {
-            tripCustomerStats = customerStatsResponse.data;
-          }
-        } catch (error) {
-          console.warn(`Failed to load stats for trip ${trip.id}:`, error);
-        }
-        
-        // Extract customer count from customer stats API response
-        let customerCount = 0;
-        if (tripCustomerStats && Array.isArray(tripCustomerStats)) {
-          customerCount = tripCustomerStats.length;
-        } else if (tripStats?.statistics && Array.isArray(tripStats.statistics)) {
-          customerCount = tripStats.statistics.length;
-        } else if (tripStats?.customer_count) {
-          customerCount = tripStats.customer_count;
-        } else if (tripStats?.total_customers) {
-          customerCount = tripStats.total_customers;
-        } else if (tripSharing?.customer_count) {
-          customerCount = tripSharing.customer_count;
-        }
-        
-        // Simplified customer count extraction (removed verbose logging for performance)
-        
-        // Try different possible data paths based on API response structure
-        const statsRoot = tripStats?.statistics || tripStats;
-        
-        const finalTripData = {
-          totalRolling: statsRoot?.total_rolling || tripStats?.total_rolling || 0,
-          totalWinLoss: statsRoot?.net_profit || tripStats?.net_profit || 0,
-          totalBuyIn: statsRoot?.total_buy_in || tripStats?.total_buy_in || 0,
-          totalBuyOut: statsRoot?.total_cash_out || tripStats?.total_cash_out || 0,
-          customerCount: customerCount,
-        };
-        
-        console.log(`🔧 Data extraction debug for trip ${trip.id}:`, {
-          'tripStats structure': tripStats,
-          'statsRoot': statsRoot,
-          'tripStats keys': tripStats ? Object.keys(tripStats) : 'no tripStats',
-          'statsRoot keys': statsRoot ? Object.keys(statsRoot) : 'no statsRoot'
-        });
-        
-        console.log(`👥 Customer count debug for trip ${trip.id}:`, {
-          'tripStats?.statistics?.length': tripStats?.statistics?.length,
-          'tripStats?.customer_count': tripStats?.customer_count,
-          'tripStats?.total_customers': tripStats?.total_customers,
-          'finalCustomerCount': customerCount,
-          'tripStatsKeys': tripStats ? Object.keys(tripStats) : 'no tripStats'
-        });
-        
-        // Final data processing completed
-
-        // Trip transformation completed
-
+      // Transform trips with basic data only (no heavy API calls)
+      const transformedTrips = (tripsData || []).map((trip: any) => {
         return {
           id: trip.id,
           name: trip.trip_name || trip.name || 'Unnamed Trip',
@@ -353,40 +336,43 @@ function ProjectManagementComponent() {
           status: trip.status || 'active',
           budget: trip.total_budget || 0,
           createdAt: trip.created_at || new Date().toISOString(),
+          currency: trip.currency || 'HKD',
+          exchange_rate_peso: trip.exchange_rate_peso || 1.0,
+          exchange_rate_hkd: trip.exchange_rate_hkd || 1.0,
+          exchange_rate_myr: trip.exchange_rate_myr || (trip.name?.toLowerCase().includes('manila') || trip.trip_name?.toLowerCase().includes('manila') ? 0.6 : 1.0),
           customers: [],
           agents: [],
           expenses: [],
-          totalRolling: finalTripData.totalRolling,
-          totalWinLoss: finalTripData.totalWinLoss,
-          totalBuyIn: finalTripData.totalBuyIn,
-          totalBuyOut: finalTripData.totalBuyOut,
-          calculatedTotalRolling: finalTripData.totalRolling,
+          totalRolling: 0,
+          totalWinLoss: 0,
+          totalBuyIn: 0,
+          totalBuyOut: 0,
+          calculatedTotalRolling: 0,
           sharing: {
-            totalWinLoss: tripSharing?.total_win_loss || 0,
-            totalExpenses: tripSharing?.total_expenses || 0,
-            totalRollingCommission: tripSharing?.total_rolling_commission || 0,
-            totalBuyIn: tripSharing?.total_buy_in || 0,
-            totalBuyOut: tripSharing?.total_buy_out || 0,
-            netResult: tripSharing?.net_result || 0,
-            netCashFlow: tripSharing?.net_cash_flow || 0,
-            totalAgentShare: tripSharing?.total_agent_share || 0,
-            companyShare: tripSharing?.company_share || 0,
-            agentSharePercentage: tripSharing?.agent_share_percentage || 0,
-            companySharePercentage: tripSharing?.company_share_percentage || 100,
+            totalWinLoss: 0,
+            totalExpenses: 0,
+            totalRollingCommission: 0,
+            totalBuyIn: 0,
+            totalBuyOut: 0,
+            netResult: 0,
+            netCashFlow: 0,
+            totalAgentShare: 0,
+            companyShare: 0,
+            agentSharePercentage: 0,
+            companySharePercentage: 100,
             agentShares: [],
-            agentBreakdown: tripSharing?.agent_breakdown || []
+            agentBreakdown: []
           },
           attachments: [],
           lastDataUpdate: new Date().toISOString(),
-          activeCustomersCount: finalTripData.customerCount,
+          activeCustomersCount: 0,
           recentActivityCount: 0,
-          totalExpenses: tripSharing?.total_expenses || 0
+          totalExpenses: 0,
+          _dataLoaded: false
         } as unknown as Trip;
-      }));
+      });
 
-      console.log('🔄 Transformed trips with financial data:', transformedTrips);
-
-      // Set state with loaded data
+      // Set state with basic data immediately for fast UI response
       setTrips(transformedTrips);
       setCustomers(customersData || []);
       setAgents(agentsData || []);
@@ -394,16 +380,67 @@ function ProjectManagementComponent() {
       setLastSyncTime(new Date());
       setDataLoaded(true);
       
-      // Update selected trip if it exists
-      if (selectedTrip) {
-        const updatedSelectedTrip = transformedTrips.find(t => t.id === selectedTrip.id);
-        if (updatedSelectedTrip) {
-          setSelectedTrip(updatedSelectedTrip);
-        }
+      console.log(`✅ Basic project data loaded quickly: ${transformedTrips.length} trips`);
+      
+      // Load detailed trip data in background (lazy loading)
+      if (transformedTrips.length > 0) {
+        setTimeout(async () => {
+          try {
+            const enrichedTrips = await Promise.all(transformedTrips.map(async (trip: any) => {
+              try {
+                const [statsResponse, sharingResponse, customersResponse] = await Promise.all([
+                  apiClient.get(`/trips/${trip.id}/statistics`),
+                  apiClient.get(`/trips/${trip.id}/sharing`),
+                  apiClient.get(`/trips/${trip.id}/customer-stats`)
+                ]);
+                
+                const tripStats = statsResponse.success ? statsResponse.data : null;
+                const tripSharing = sharingResponse.success ? sharingResponse.data : null;
+                const tripCustomers = customersResponse.success ? customersResponse.data : [];
+                
+                const statsRoot = tripStats?.statistics || tripStats;
+                
+                return {
+                  ...trip,
+                  customers: tripCustomers,
+                  totalRolling: statsRoot?.total_rolling || tripStats?.total_rolling || 0,
+                  totalWinLoss: statsRoot?.net_profit || tripStats?.net_profit || 0,
+                  totalBuyIn: statsRoot?.total_buy_in || tripStats?.total_buy_in || 0,
+                  totalBuyOut: statsRoot?.total_cash_out || tripStats?.total_cash_out || 0,
+                  calculatedTotalRolling: statsRoot?.total_rolling || tripStats?.total_rolling || 0,
+                  sharing: {
+                    total_rolling: tripSharing?.total_rolling || 0,
+                    total_expenses: tripSharing?.total_expenses || 0,
+                    net_result: tripSharing?.net_result || 0,
+                    totalWinLoss: tripSharing?.total_win_loss || 0,
+                    totalRollingCommission: tripSharing?.total_rolling_commission || 0,
+                    totalBuyIn: tripSharing?.total_buy_in || 0,
+                    totalBuyOut: tripSharing?.total_buy_out || 0,
+                    netCashFlow: tripSharing?.net_cash_flow || 0,
+                    totalAgentShare: tripSharing?.total_agent_share || 0,
+                    companyShare: tripSharing?.company_share || 0,
+                    agentSharePercentage: tripSharing?.agent_share_percentage || 0,
+                    companySharePercentage: tripSharing?.company_share_percentage || 100,
+                    agentShares: [],
+                    agentBreakdown: tripSharing?.agent_breakdown || []
+                  },
+                  totalExpenses: tripSharing?.total_expenses || 0,
+                  _dataLoaded: true
+                };
+              } catch (error) {
+                console.warn(`Failed to load detailed data for trip ${trip.id}:`, error);
+                return { ...trip, _dataLoaded: false };
+              }
+            }));
+            
+            // Update trips with detailed data
+            setTrips(enrichedTrips);
+            console.log('✅ Detailed trip data loaded in background');
+          } catch (error) {
+            console.warn('Background data loading failed:', error);
+          }
+        }, 100); // Load detailed data after 100ms
       }
-      
-      console.log(`✅ Project data loaded successfully: ${transformedTrips.length} trips`);
-      
       
     } catch (error) {
       console.error('❌ Error loading data:', error);
@@ -411,29 +448,28 @@ function ProjectManagementComponent() {
       showError('Failed to load project data');
     } finally {
       setLoading(false);
-      console.log('🏁 Loading completed, setting loading to false');
     }
-  }, [selectedTrip]);
+  }, [selectedTrip, dataLoaded, trips.length]);
 
   // Initial data load only
   useEffect(() => {
-    loadAllRealTimeData();
-  }, [loadAllRealTimeData]);
+    loadAllRealTimeData(true);
+  }, []);
 
-  // Separate effect for real-time updates
+  // Separate effect for real-time updates (less frequent)
   useEffect(() => {
     let refreshInterval: NodeJS.Timeout;
-    if (isRealTimeEnabled) {
+    if (isRealTimeEnabled && dataLoaded) {
       refreshInterval = setInterval(() => {
         console.log('🔄 Real-time refresh triggered');
-        loadAllRealTimeData();
-      }, REAL_TIME_REFRESH_INTERVAL);
+        loadAllRealTimeData(true);
+      }, REAL_TIME_REFRESH_INTERVAL * 2); // Double the interval to reduce load
     }
 
     return () => {
       if (refreshInterval) clearInterval(refreshInterval);
     };
-  }, [isRealTimeEnabled, loadAllRealTimeData]);
+  }, [isRealTimeEnabled, dataLoaded]);
 
   // Load agent profits when switching to agents tab
   useEffect(() => {
@@ -450,12 +486,13 @@ function ProjectManagementComponent() {
 
   // Get filtered trips based on user role
   const getFilteredTrips = () => {
-    if (user.role === 'agent' && user.agentId) {
+    if (currentUser.role === 'agent' && currentUser.agentId) {
       return trips.filter(trip => 
-        trip.agents?.some(agent => agent.agentId === user.agentId) || 
-        trip.agentId === user.agentId
+        trip.agents?.some(agent => agent.agentId === currentUser.agentId) || 
+        trip.agentId === currentUser.agentId
       );
     }
+    // Boss and admin roles can see all trips
     return trips;
   };
 
@@ -495,7 +532,11 @@ function ProjectManagementComponent() {
         end_date: newTrip.endDate || newTrip.date,
         total_budget: parseFloat(newTrip.budget) || 0,
         description: newTrip.description || '',
-        status: newTrip.status
+        status: newTrip.status,
+        currency: newTrip.currency,
+        exchange_rate_peso: newTrip.exchange_rate_peso,
+        exchange_rate_hkd: newTrip.exchange_rate_hkd,
+        exchange_rate_myr: newTrip.exchange_rate_myr
       };
 
       console.log('Creating trip with data:', tripData);
@@ -517,7 +558,11 @@ function ProjectManagementComponent() {
           endDate: '',
           venue: '',
           budget: '',
-          status: 'active' as 'active' | 'in-progress' | 'completed' | 'cancelled'
+          status: 'active',
+          currency: 'HKD',
+          exchange_rate_peso: 1.0000,
+          exchange_rate_hkd: 1.0000,
+          exchange_rate_myr: 1.0000
         });
         
         console.log('✅ Trip created successfully:', response.data.trip_name);
@@ -972,22 +1017,35 @@ function ProjectManagementComponent() {
         filteredTrips: filteredTrips?.length,
         dataLoaded,
         loading,
-        userRole: user.role,
-        agentId: user.agentId,
-        hasToken: hasToken ? 'YES' : 'NO'
+        userRole: currentUser.role,
+        agentId: currentUser.agentId,
+        hasToken: hasToken ? 'YES' : 'NO',
+        tripsData: trips.map(t => ({ id: t.id, name: t.name, status: t.status }))
       });
+      
+      // Special debug for boss role
+      if (currentUser.role === 'boss') {
+        console.log('🔍 Boss role debug - should see all trips:', {
+          totalTrips: trips.length,
+          filteredTrips: filteredTrips.length,
+          tripsVisible: filteredTrips.map(t => t.name)
+        });
+      }
     };
     debugInfo();
-  }, [trips, filteredTrips, dataLoaded, loading, user.role, user.agentId]);
+  }, [trips, filteredTrips, dataLoaded, loading, currentUser.role, currentUser.agentId]);
 
   // Loading state
   if (loading && !dataLoaded) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Loading Project Data</h3>
-          <p className="text-sm text-gray-600">Connecting to Supabase and loading trips, customers, and agents...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-sm text-gray-600">Loading Project Data</p>
+          <p className="text-xs text-gray-500">Connecting to Supabase and loading trips, customers, and agents...</p>
+          <div className="mt-3 w-48 bg-gray-200 rounded-full h-2 mx-auto">
+            <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+          </div>
         </div>
       </div>
     );
@@ -1020,7 +1078,7 @@ function ProjectManagementComponent() {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={loadAllRealTimeData}
+              onClick={() => loadAllRealTimeData(true)}
               disabled={loading}
               className="text-xs"
             >
@@ -1088,7 +1146,7 @@ function ProjectManagementComponent() {
           <AlertDescription className="text-red-800">
             <strong>Error:</strong> {errorMessage}
             <Button
-              onClick={loadAllRealTimeData}
+              onClick={() => loadAllRealTimeData(true)}
               size="sm"
               variant="outline"
               className="ml-3 text-red-800 border-red-300 hover:bg-red-100"
@@ -1101,15 +1159,11 @@ function ProjectManagementComponent() {
       )}
 
       {/* Main Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="trips" className="flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            All Trips
-          </TabsTrigger>
-          <TabsTrigger value="trip-details" disabled={!selectedTrip} className="flex items-center gap-2">
-            <Eye className="w-4 h-4" />
-            Trip Details {selectedTrip && `- ${selectedTrip.name}`}
+          <TabsTrigger value="trips">{t('trips')}</TabsTrigger>
+          <TabsTrigger value="trip-details" disabled={!selectedTrip}>
+            {t('trip_details')}
           </TabsTrigger>
         </TabsList>
 
@@ -1120,10 +1174,10 @@ function ProjectManagementComponent() {
               <h2 className="text-2xl font-bold">Project Management</h2>
               <p className="text-gray-600">
                 Manage trips and project data with full CRUD functionality
-                {user.role === 'agent' && ' (Your trips only)'}
+                {currentUser.role === 'agent' && ' (Your trips only)'}
               </p>
             </div>
-            {(isAdmin || isAgent) && (
+            {!isReadOnly && (
               <Dialog open={showCreateTrip} onOpenChange={setShowCreateTrip}>
                 <DialogTrigger asChild>
                   <Button>
@@ -1215,6 +1269,70 @@ function ProjectManagementComponent() {
                         </SelectContent>
                       </Select>
                     </div>
+                    
+                    {/* Currency Selection */}
+                    <div>
+                      <Label htmlFor="currency">Currency</Label>
+                      <Select 
+                        value={newTrip.currency} 
+                        onValueChange={(value) => setNewTrip({...newTrip, currency: value})}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select currency" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SUPPORTED_CURRENCIES.map((currency) => (
+                            <SelectItem key={currency.value} value={currency.value}>
+                              {currency.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Exchange Rates */}
+                    <div className="space-y-3">
+                      <Label>Exchange Rates (Manual Input)</Label>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <Label htmlFor="ratePeso" className="text-sm">Peso Rate</Label>
+                          <Input
+                            id="ratePeso"
+                            type="number"
+                            step="0.0001"
+                            value={newTrip.exchange_rate_peso}
+                            onChange={(e) => setNewTrip({...newTrip, exchange_rate_peso: parseFloat(e.target.value) || 1.0000})}
+                            placeholder="1.0000"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="rateHKD" className="text-sm">HKD Rate</Label>
+                          <Input
+                            id="rateHKD"
+                            type="number"
+                            step="0.0001"
+                            value={newTrip.exchange_rate_hkd}
+                            onChange={(e) => setNewTrip({...newTrip, exchange_rate_hkd: parseFloat(e.target.value) || 1.0000})}
+                            placeholder="1.0000"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="rateMYR" className="text-sm">MYR Rate</Label>
+                          <Input
+                            id="rateMYR"
+                            type="number"
+                            step="0.0001"
+                            value={newTrip.exchange_rate_myr}
+                            onChange={(e) => setNewTrip({...newTrip, exchange_rate_myr: parseFloat(e.target.value) || 1.0000})}
+                            placeholder="1.0000"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Set exchange rates for currency conversion. Current selection: {getCurrencySymbol(newTrip.currency)}
+                      </p>
+                    </div>
+
                     <div className="flex justify-end space-x-2">
                       <Button 
                         variant="outline" 
@@ -1261,7 +1379,7 @@ function ProjectManagementComponent() {
                   </Button>
                 )}
                 {!dataLoaded && (
-                  <Button onClick={loadAllRealTimeData} variant="outline">
+                  <Button onClick={() => loadAllRealTimeData(true)} variant="outline">
                     <RefreshCw className="w-4 h-4 mr-2" />
                     Retry Loading
                   </Button>
@@ -1307,20 +1425,20 @@ function ProjectManagementComponent() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
                         <div className="text-center">
                           <div className="text-gray-500 text-xs">Customers</div>
-                          <div className="font-medium">{trip.activeCustomersCount || trip.customers?.length || 0}</div>
+                          <div className="font-medium">{trip.customers?.length || 0}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-gray-500 text-xs">Total Rolling</div>
-                          <div className="font-medium text-blue-600">HK${safeFormatNumber(trip.totalRolling || trip.calculatedTotalRolling || 0)}</div>
+                          <div className="font-medium text-blue-600">HK${safeFormatNumber(trip.sharing?.total_rolling || 0)}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-gray-500 text-xs">Expenses</div>
-                          <div className="font-medium text-red-600">HK${safeFormatNumber(Math.abs(trip.totalExpenses || trip.sharing?.totalExpenses || 0))}</div>
+                          <div className="font-medium text-red-600">HK${safeFormatNumber(Math.abs(trip.sharing?.total_expenses || 0))}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-gray-500 text-xs">Profit</div>
-                          <div className={`font-medium ${(trip.sharing?.netResult || netProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            HK${safeFormatNumber(Math.abs(trip.sharing?.netResult || netProfit))}
+                          <div className={`font-medium ${(trip.sharing?.net_result || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            HK${safeFormatNumber(Math.abs(trip.sharing?.net_result || 0))}
                           </div>
                         </div>
                       </div>
@@ -1336,24 +1454,48 @@ function ProjectManagementComponent() {
         <TabsContent value="trip-details" className="space-y-4">
           {selectedTrip ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex justify-between items-center">
                 <div>
                   <h2 className="text-2xl font-bold">{selectedTrip.name}</h2>
                   <p className="text-gray-600">{selectedTrip.description}</p>
-                  <div className="flex items-center space-x-4 mt-2">
-                    <Badge variant={
-                      selectedTrip.status === 'completed' ? 'default' : 
-                      selectedTrip.status === 'in-progress' ? 'secondary' : 'outline'
-                    }>
-                      {selectedTrip.status?.charAt(0).toUpperCase() + selectedTrip.status?.slice(1)}
-                    </Badge>
-                    <span className="text-sm text-gray-500">{selectedTrip.date}</span>
-                  </div>
                 </div>
-                <Button variant="outline" onClick={() => setActiveTab('trips')}>
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Back to Trips
-                </Button>
+                <div className="flex items-center gap-4">
+                  {/* Currency Selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">{t('view_in')}</span>
+                    <Select value={viewingCurrency} onValueChange={(newCurrency) => {
+                      console.log('🔄 Currency selector changed:', {
+                        from: viewingCurrency,
+                        to: newCurrency,
+                        tripData: selectedTrip ? {
+                          id: selectedTrip.id,
+                          currency: selectedTrip.currency,
+                          rates: {
+                            peso: selectedTrip.exchange_rate_peso,
+                            hkd: selectedTrip.exchange_rate_hkd,
+                            myr: selectedTrip.exchange_rate_myr
+                          }
+                        } : null
+                      });
+                      setViewingCurrency(newCurrency);
+                    }}>
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SUPPORTED_CURRENCIES.map((currency) => (
+                          <SelectItem key={currency.value} value={currency.value}>
+                            {currency.symbol}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button variant="outline" onClick={() => setActiveTab('trips')}>
+                    <MapPin className="w-4 h-4 mr-2" />
+                    {t('back_to_trips')}
+                  </Button>
+                </div>
               </div>
 
               {/* Trip Details Tabs */}
@@ -1401,7 +1543,7 @@ function ProjectManagementComponent() {
                               </CardHeader>
                               <CardContent>
                                 <div className="text-2xl font-bold text-green-600">
-                                  HK${safeFormatNumber((selectedTrip as any)?.backendData?.totalBuyIn || 0)}
+                                  {formatCurrency((selectedTrip as any)?.backendData?.totalBuyIn || 0, viewingCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">{selectedTrip?.activeCustomersCount || selectedTrip?.customers?.length || 0} customers</p>
                                 <p className="text-xs text-green-500">From transactions</p>
@@ -1413,7 +1555,7 @@ function ProjectManagementComponent() {
                               </CardHeader>
                               <CardContent>
                                 <div className="text-2xl font-bold text-red-600">
-                                  HK${safeFormatNumber(Math.abs((selectedTrip as any)?.backendData?.totalCashOut || 0))}
+                                  {formatCurrency(Math.abs((selectedTrip as any)?.backendData?.totalCashOut || 0), viewingCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">Customer withdrawals</p>
                                 <p className="text-xs text-red-500">From transactions</p>
@@ -1425,7 +1567,7 @@ function ProjectManagementComponent() {
                               </CardHeader>
                               <CardContent>
                                 <div className="text-2xl font-bold text-red-600">
-                                  HK${safeFormatNumber(Math.abs(totalExpenses))}
+                                  {formatCurrency(Math.abs(totalExpenses), viewingCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">After all expenses</p>
                                 <p className="text-xs text-red-500">House perspective</p>
@@ -1439,7 +1581,7 @@ function ProjectManagementComponent() {
                                 <div className={`text-2xl font-bold ${
                                   ((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                 }`}>
-                                  HK${safeFormatNumber(Math.abs((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0))}
+                                  {formatCurrency(Math.abs((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0), viewingCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">House perspective</p>
                                 <p className={`text-xs ${((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>After all expenses</p>
@@ -1448,31 +1590,33 @@ function ProjectManagementComponent() {
                           </div>
 
                           {/* Quick Actions */}
-                          <Card>
-                            <CardHeader>
-                              <CardTitle className="text-sm">Quick Actions</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="flex flex-wrap gap-3">
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => setSelectedTripTab('expenses')}
-                                >
-                                  <DollarSign className="w-4 h-4 mr-2" />
-                                  Manage Expenses
-                                </Button>
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => setSelectedTripTab('sharing')}
-                                >
-                                  <Share2 className="w-4 h-4 mr-2" />
-                                  Manage Sharing
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
+                          {!isReadOnly && (
+                            <Card>
+                              <CardHeader>
+                                <CardTitle className="text-sm">Quick Actions</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="flex flex-wrap gap-3">
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => setSelectedTripTab('expenses')}
+                                  >
+                                    <DollarSign className="w-4 h-4 mr-2" />
+                                    Manage Expenses
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => setSelectedTripTab('sharing')}
+                                  >
+                                    <Share2 className="w-4 h-4 mr-2" />
+                                    Manage Sharing
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          )}
 
                           {/* Backend Data Verification Panel */}
                           <Card>
@@ -1530,13 +1674,14 @@ function ProjectManagementComponent() {
                 <TabsContent value="customers" className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium">Trip Customers ({selectedTrip?.activeCustomersCount || selectedTrip?.customers?.length || 0})</h3>
-                    <Dialog open={showAddCustomer} onOpenChange={setShowAddCustomer}>
-                      <DialogTrigger asChild>
-                        <Button size="sm">
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Customer
-                        </Button>
-                      </DialogTrigger>
+                    {!isReadOnly && (
+                      <Dialog open={showAddCustomer} onOpenChange={setShowAddCustomer}>
+                        <DialogTrigger asChild>
+                          <Button size="sm">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Customer
+                          </Button>
+                        </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Add Customer to Trip</DialogTitle>
@@ -1554,9 +1699,11 @@ function ProjectManagementComponent() {
                                   <div className="text-sm text-gray-500">{customer.email}</div>
                                   <div className="text-xs text-gray-400">Agent: {customer.agentName}</div>
                                 </div>
-                                <Button size="sm" onClick={() => handleAddCustomerToTrip(customer.id)} disabled={saving}>
-                                  {saving ? 'Adding...' : 'Add'}
-                                </Button>
+                                {!isReadOnly && (
+                                  <Button size="sm" onClick={() => handleAddCustomerToTrip(customer.id)} disabled={saving}>
+                                    {saving ? 'Adding...' : 'Add'}
+                                  </Button>
+                                )}
                               </div>
                             ))}
                           {(customers || []).filter(c => !(selectedTrip?.customers || []).some(tc => tc.customerId === c.id)).length === 0 && (
@@ -1565,6 +1712,7 @@ function ProjectManagementComponent() {
                         </div>
                       </DialogContent>
                     </Dialog>
+                    )}
                   </div>
 
                   {(selectedTrip?.customers?.length || 0) === 0 ? (
@@ -1572,10 +1720,12 @@ function ProjectManagementComponent() {
                       <CardContent className="text-center py-8">
                         <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                         <p className="text-gray-500">No customers added to this trip</p>
-                        <Button className="mt-4" onClick={() => setShowAddCustomer(true)}>
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add First Customer
-                        </Button>
+                        {!isReadOnly && (
+                          <Button className="mt-4" onClick={() => setShowAddCustomer(true)}>
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add First Customer
+                          </Button>
+                        )}
                       </CardContent>
                     </Card>
                   ) : (
@@ -1595,42 +1745,42 @@ function ProjectManagementComponent() {
                                   <div>
                                     <span className="text-sm text-gray-500">Buy-in:</span>
                                     <div className="font-medium text-blue-600">
-                                      HK${safeFormatNumber(tripCustomer.total_buy_in || tripCustomer.buyInAmount || 0)}
+                                      {formatCurrency(tripCustomer.total_buy_in || tripCustomer.buyInAmount || 0, viewingCurrency, selectedTrip)}
                                     </div>
                                   </div>
                                   <div>
                                     <span className="text-sm text-gray-500">Cash-out:</span>
                                     <div className="font-medium text-purple-600">
-                                      HK${safeFormatNumber(tripCustomer.total_cash_out || tripCustomer.buyOutAmount || 0)}
+                                      {formatCurrency(tripCustomer.total_cash_out || tripCustomer.buyOutAmount || 0, viewingCurrency, selectedTrip)}
                                     </div>
                                   </div>
                                   <div>
                                     <span className="text-sm text-gray-500">Rolling:</span>
                                     <div className="font-medium text-orange-600">
-                                      HK${safeFormatNumber(tripCustomer.rolling_amount || tripCustomer.rollingAmount || 0)}
+                                      {formatCurrency(tripCustomer.rolling_amount || tripCustomer.rollingAmount || 0, viewingCurrency, selectedTrip)}
                                     </div>
                                   </div>
                                   <div>
                                     <span className="text-sm text-gray-500">Win/Loss:</span>
                                     <div className={`font-medium ${
-                                      (tripCustomer.total_win - tripCustomer.total_loss || tripCustomer.winLoss || 0) >= 0 ? 'text-red-600' : 'text-green-600'
+                                      (tripCustomer.total_buy_in || 0) > (tripCustomer.total_cash_out || 0) ? 'text-green-600' : 'text-red-600'
                                     }`}>
-                                      HK${safeFormatNumber((tripCustomer.total_win || 0) - (tripCustomer.total_loss || 0) || tripCustomer.winLoss || 0)}
+                                      {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0)), viewingCurrency, selectedTrip)}
                                     </div>
                                   </div>
                                   <div>
                                     <span className="text-sm text-gray-500">Net Result:</span>
                                     <div className={`font-medium ${
-                                      (tripCustomer.net_result || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                                      ((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) - (tripCustomer.rolling_amount || 0)) >= 0 ? 'text-green-600' : 'text-red-600'
                                     }`}>
-                                      HK${safeFormatNumber(tripCustomer.net_result || 0)}
+                                      {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) - (tripCustomer.rolling_amount || 0)), viewingCurrency, selectedTrip)}
                                     </div>
                                   </div>
                                 </div>
                                 {/* Commission Info */}
                                 {tripCustomer.commission_earned && (
                                   <div className="mt-2 p-2 bg-yellow-50 rounded text-xs">
-                                    <span className="text-yellow-700">Commission Earned: HK${safeFormatNumber(tripCustomer.commission_earned)}</span>
+                                    <span className="text-yellow-700">Commission Earned: {formatCurrency(tripCustomer.commission_earned, viewingCurrency, selectedTrip)}</span>
                                   </div>
                                 )}
                               </div>
@@ -1749,7 +1899,7 @@ function ProjectManagementComponent() {
                               </div>
                               <div className="text-right">
                                 <div className="text-2xl font-bold text-blue-600">
-                                  HK${safeFormatNumber(agentProfit.total_agent_commission || agentProfit.total_commission || 0)}
+                                  {formatCurrency(agentProfit.total_agent_commission || agentProfit.total_commission || 0, viewingCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-sm text-gray-500">Total Commission</p>
                               </div>
@@ -1763,7 +1913,7 @@ function ProjectManagementComponent() {
                                   <div className={`text-lg font-bold ${
                                     agentProfit.total_customer_net >= 0 ? 'text-green-600' : 'text-red-600'
                                   }`}>
-                                    HK${safeFormatNumber(agentProfit.total_customer_net)}
+                                    {formatCurrencyWithSign(agentProfit.total_customer_net, viewingCurrency, selectedTrip)}
                                   </div>
                                 </div>
                                 <div className="p-3 bg-green-50 rounded">
@@ -1871,9 +2021,11 @@ function ProjectManagementComponent() {
                           >
                             Cancel
                           </Button>
-                          <Button onClick={handleEditAgentShare} disabled={saving}>
-                            {saving ? 'Updating...' : 'Update Share'}
-                          </Button>
+                          {!isReadOnly && (
+                            <Button onClick={handleEditAgentShare} disabled={saving}>
+                              {saving ? 'Updating...' : 'Update Share'}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </DialogContent>
@@ -1909,13 +2061,14 @@ function ProjectManagementComponent() {
                 <TabsContent value="staff" className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium">Trip Staff ({(selectedTrip as any)?.staff?.length || 0})</h3>
-                    <Dialog open={showAddStaff} onOpenChange={setShowAddStaff}>
-                      <DialogTrigger asChild>
-                        <Button size="sm">
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Staff
-                        </Button>
-                      </DialogTrigger>
+                    {!isReadOnly && (
+                      <Dialog open={showAddStaff} onOpenChange={setShowAddStaff}>
+                        <DialogTrigger asChild>
+                          <Button size="sm">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Staff
+                          </Button>
+                        </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Add Staff to Trip</DialogTitle>
@@ -1975,6 +2128,7 @@ function ProjectManagementComponent() {
                         </div>
                       </DialogContent>
                     </Dialog>
+                    )}
                   </div>
 
                   {(!selectedTrip || !(selectedTrip as any).staff || !Array.isArray((selectedTrip as any).staff) || (selectedTrip as any).staff.length === 0) ? (
@@ -2030,13 +2184,14 @@ function ProjectManagementComponent() {
                 <TabsContent value="expenses" className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-medium">Trip Expenses ({tripExpenses?.length || 0})</h3>
-                    <Dialog open={showAddExpense} onOpenChange={setShowAddExpense}>
-                      <DialogTrigger asChild>
-                        <Button size="sm">
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Expense
-                        </Button>
-                      </DialogTrigger>
+                    {!isReadOnly && (
+                      <Dialog open={showAddExpense} onOpenChange={setShowAddExpense}>
+                        <DialogTrigger asChild>
+                          <Button size="sm">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Expense
+                          </Button>
+                        </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Add Expense</DialogTitle>
@@ -2055,7 +2210,7 @@ function ProjectManagementComponent() {
                             />
                           </div>
                           <div>
-                            <Label htmlFor="expenseAmount">Amount (HKD)</Label>
+                            <Label htmlFor="expenseAmount">Amount ({getCurrencySymbol(selectedTrip?.currency || 'HKD')})</Label>
                             <Input
                               id="expenseAmount"
                               type="number"
@@ -2087,13 +2242,16 @@ function ProjectManagementComponent() {
                             <Button variant="outline" onClick={() => setShowAddExpense(false)}>
                               Cancel
                             </Button>
-                            <Button onClick={handleAddExpense}>
-                              Add Expense
-                            </Button>
+                            {!isReadOnly && (
+                              <Button onClick={handleAddExpense}>
+                                Add Expense
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </DialogContent>
                     </Dialog>
+                    )}
                   </div>
 
                   {expensesLoading ? (
@@ -2108,10 +2266,12 @@ function ProjectManagementComponent() {
                       <CardContent className="text-center py-8">
                         <DollarSign className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                         <p className="text-gray-500">No expenses recorded for this trip</p>
-                        <Button className="mt-4" onClick={() => setShowAddExpense(true)}>
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add First Expense
-                        </Button>
+                        {!isReadOnly && (
+                          <Button className="mt-4" onClick={() => setShowAddExpense(true)}>
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add First Expense
+                          </Button>
+                        )}
                       </CardContent>
                     </Card>
                   ) : (
@@ -2123,7 +2283,7 @@ function ProjectManagementComponent() {
                         </CardHeader>
                         <CardContent>
                           <div className="text-2xl font-bold text-red-600">
-                            HK${safeFormatNumber((tripExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0))}
+                            {formatCurrency((tripExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0), viewingCurrency, selectedTrip)}
                           </div>
                           <p className="text-sm text-gray-500">{tripExpenses?.length || 0} expense items</p>
                         </CardContent>
@@ -2148,7 +2308,7 @@ function ProjectManagementComponent() {
                                   <TableCell className="capitalize">{expense.expense_type?.replace('_', ' ')}</TableCell>
                                   <TableCell>{expense.expense_date}</TableCell>
                                   <TableCell className="text-right font-medium text-red-600">
-                                    HK${safeFormatNumber(expense.amount)}
+                                    {formatCurrency(expense.amount, viewingCurrency, selectedTrip)}
                                   </TableCell>
                                 </TableRow>
                               ))}
@@ -2204,7 +2364,7 @@ function ProjectManagementComponent() {
                             <div className={`text-2xl font-bold ${
                               tripSharing.net_result >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}>
-                              HK${safeFormatNumber(Math.abs(tripSharing.net_result))}
+                              {formatCurrency(Math.abs(tripSharing.net_result), viewingCurrency, selectedTrip)}
                             </div>
                             <p className="text-xs text-gray-500">After all expenses and commissions</p>
                           </CardContent>
@@ -2218,7 +2378,7 @@ function ProjectManagementComponent() {
                             <div className={`text-2xl font-bold ${
                               tripSharing.total_agent_share >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}>
-                              HK${safeFormatNumber(Math.abs(tripSharing.total_agent_share))}
+                              {formatCurrency(Math.abs(tripSharing.total_agent_share), viewingCurrency, selectedTrip)}
                             </div>
                             <p className="text-xs text-gray-500">{tripSharing.agent_share_percentage}% of net result</p>
                           </CardContent>
@@ -2232,7 +2392,7 @@ function ProjectManagementComponent() {
                             <div className={`text-2xl font-bold ${
                               tripSharing.company_share >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}>
-                              HK${safeFormatNumber(Math.abs(tripSharing.company_share))}
+                              {formatCurrency(Math.abs(tripSharing.company_share), viewingCurrency, selectedTrip)}
                             </div>
                             <p className="text-xs text-gray-500">{tripSharing.company_share_percentage}% of net result</p>
                           </CardContent>
@@ -2248,34 +2408,34 @@ function ProjectManagementComponent() {
                           <div className="space-y-3">
                             <div className="flex justify-between items-center p-3 bg-green-50 rounded">
                               <span className="font-medium">Total Buy-in</span>
-                              <span className="text-green-600 font-bold">HK${safeFormatNumber(tripSharing.total_buy_in)}</span>
+                              <span className="text-green-600 font-bold">{formatCurrency(tripSharing.total_buy_in, viewingCurrency, selectedTrip)}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-red-50 rounded">
                               <span className="font-medium">Total Cash-out</span>
-                              <span className="text-red-600 font-bold">HK${safeFormatNumber(Math.abs(tripSharing.total_buy_out))}</span>
+                              <span className="text-red-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_buy_out), viewingCurrency, selectedTrip)}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-gray-100 rounded">
                               <span className="font-medium">Gross Profit</span>
                               <span className={`font-bold ${
                                 tripSharing.total_win_loss >= 0 ? 'text-red-600' : 'text-green-600'
                               }`}>
-                                HK${safeFormatNumber(Math.abs(tripSharing.total_win_loss))}
+                                {formatCurrency(Math.abs(tripSharing.total_win_loss), viewingCurrency, selectedTrip)}
                               </span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-purple-50 rounded">
                               <span className="font-medium">Rolling Commission</span>
-                              <span className="text-purple-600 font-bold">HK${safeFormatNumber(Math.abs(tripSharing.total_rolling_commission))}</span>
+                              <span className="text-purple-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_rolling_commission), viewingCurrency, selectedTrip)}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-red-50 rounded">
                               <span className="font-medium">Total Expenses</span>
-                              <span className="text-red-600 font-bold">HK${safeFormatNumber(Math.abs(tripSharing.total_expenses))}</span>
+                              <span className="text-red-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_expenses), viewingCurrency, selectedTrip)}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
                               <span className="font-medium">Net Result</span>
                               <span className={`font-bold ${
                                 tripSharing.net_result >= 0 ? 'text-green-600' : 'text-red-600'
                               }`}>
-                                HK${safeFormatNumber(Math.abs(tripSharing.net_result))}
+                                {formatCurrency(Math.abs(tripSharing.net_result), viewingCurrency, selectedTrip)}
                               </span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
@@ -2283,7 +2443,7 @@ function ProjectManagementComponent() {
                               <span className={`font-bold ${
                                 tripSharing.net_cash_flow >= 0 ? 'text-green-600' : 'text-red-600'
                               }`}>
-                                HK${safeFormatNumber(Math.abs(tripSharing.net_cash_flow))}
+                                {formatCurrency(Math.abs(tripSharing.net_cash_flow), viewingCurrency, selectedTrip)}
                               </span>
                             </div>
                           </div>

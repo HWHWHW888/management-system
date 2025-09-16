@@ -21,7 +21,7 @@ import chipExchangesRouter from './chip-exchanges.js';
 
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
@@ -32,14 +32,14 @@ app.use(cors({
     // Define allowed origins
     const allowedOrigins = [
       'http://localhost:3000',
+      'http://localhost:8081',
       'https://management-system-production-9c14.up.railway.app',
       'https://hoewingroup.com',
       'https://www.hoewingroup.com'
     ];
     
-    // Check if origin is in allowed list or is any Netlify/Cloudflare Pages subdomain
+    // Check if origin is in allowed list or is any Cloudflare Pages subdomain
     if (allowedOrigins.includes(origin) || 
-        origin.endsWith('.netlify.app') ||
         origin.endsWith('.pages.dev')) {
       return callback(null, true);
     }

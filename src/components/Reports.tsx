@@ -1,25 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, ComposedChart, AreaChart, Area } from 'recharts';
+import { Calendar, TrendingUp, TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, Filter, Clock, Wifi, WifiOff, AlertCircle, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpCircle, ArrowUpDown } from 'lucide-react';
+import { supabase } from '../utils/supabase/supabaseClients';
+import { tokenManager } from '../utils/auth/tokenManager';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { User, Agent, Customer, Trip, RollingRecord, BuyInOutRecord } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Line, ComposedChart, AreaChart, Area } from 'recharts';
-import { 
-  Download, DollarSign, TrendingDown, Users, 
-  RefreshCw, Activity, AlertTriangle,
-  BarChart3, Zap,
-  ArrowUpDown, ArrowUpCircle, Percent, Trophy
-} from 'lucide-react';
-import { db } from '../utils/supabase/supabaseClients';
+
+// Real-time refresh interval (30 seconds)
+const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 interface ReportsProps {
   user: User;
 }
-
-// Real-time refresh interval (30 seconds)
-const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 
 export function Reports({ user }: ReportsProps) {
@@ -58,43 +55,72 @@ export function Reports({ user }: ReportsProps) {
     return value;
   };
 
-  // Real-time data loading from Supabase
+  // Real-time data loading from backend API with trip_sharing data
   const loadRealTimeReportsData = useCallback(async () => {
     try {
       setRefreshing(true);
       setErrorMessage('');
       
-      console.log('📊 Loading real-time reports data from Supabase...');
+      console.log('📊 Loading real-time reports data from backend API...');
       
-      // Load all required data from Supabase in parallel
-      const [agentsData, customersData, tripsData, rollingData, buyInOutData] = await Promise.all([
-        db.get('agents', []),
-        db.get('customers', []),
-        db.get('trips', []),
-        db.get('rolling_records', []),
-        db.get('buy_in_out_records', [])
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+      const token = await tokenManager.getToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+      
+      // Load all required data from backend API in parallel
+      const [agentsResponse, customersResponse, tripsResponse] = await Promise.all([
+        fetch(`${API_URL}/agents`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/customers`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/trips`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
       ]);
+      
+      if (!agentsResponse.ok || !customersResponse.ok || !tripsResponse.ok) {
+        throw new Error('Failed to fetch data from backend API');
+      }
+      
+      const [agentsResult, customersResult, tripsResult] = await Promise.all([
+        agentsResponse.json(),
+        customersResponse.json(),
+        tripsResponse.json()
+      ]);
+      
+      const agentsData = agentsResult.data || [];
+      const customersData = customersResult.data || [];
+      const tripsData = tripsResult.data || []; // This includes trip_sharing data
 
-      // Process customers with real-time rolling calculations
+      // 🔍 DEBUG: Log retrieved data from backend API
+      console.group('📊 Reports Data Retrieved from Backend API');
+      console.log('🏢 Agents Data:', agentsData);
+      console.log('👥 Customers Data:', customersData);
+      console.log('✈️ Trips Data:', tripsData);
+      console.log('📈 Trip Sharing Data Details:');
+      tripsData.forEach((trip: any, index: number) => {
+        console.log(`Trip ${index + 1} (${trip.trip_name}):`, {
+          tripId: trip.id,
+          sharing: trip.sharing,
+          hasSharing: !!trip.sharing,
+          sharingKeys: trip.sharing ? Object.keys(trip.sharing) : 'No sharing data'
+        });
+      });
+      console.groupEnd();
+
+      // Process customers with data from backend (already includes totals)
       const processedCustomers = customersData.map((customer: Customer) => {
-        const customerRollingRecords = rollingData.filter(record => record.customerId === customer.id);
-        const customerBuyInOutRecords = buyInOutData.filter(record => record.customerId === customer.id);
-        
-        const realTimeRolling = customerRollingRecords.reduce((sum, record) => sum + (record.rollingAmount || 0), 0);
-        const realTimeWinLoss = customerRollingRecords.reduce((sum, record) => sum + (record.winLoss || 0), 0);
-        const realTimeBuyIn = customerBuyInOutRecords
-          .filter(record => record.transactionType === 'buy-in')
-          .reduce((sum, record) => sum + record.amount, 0);
-        const realTimeBuyOut = customerBuyInOutRecords
-          .filter(record => record.transactionType === 'buy-out')
-          .reduce((sum, record) => sum + record.amount, 0);
-
         return {
           ...customer,
-          totalRolling: realTimeRolling,
-          totalWinLoss: realTimeWinLoss,
-          totalBuyIn: realTimeBuyIn,
-          totalBuyOut: realTimeBuyOut,
+          totalRolling: customer.totalRolling || 0,
+          totalWinLoss: customer.totalWinLoss || 0,
+          totalBuyIn: customer.totalBuyIn || 0,
+          totalBuyOut: customer.totalBuyOut || 0,
           attachments: customer.attachments || [],
           isAgent: customer.isAgent || false,
           rollingPercentage: customer.rollingPercentage || 1.4,
@@ -103,48 +129,57 @@ export function Reports({ user }: ReportsProps) {
         };
       });
 
-      // Process trips with real-time calculations
+      // Process trips with trip_sharing data from backend API
       const processedTrips = tripsData.map((trip: Trip) => {
-        const tripCustomerIds = trip.customers?.map(c => c.customerId) || [];
-        const tripRollingRecords = rollingData.filter(record => 
-          tripCustomerIds.includes(record.customerId)
-        );
-        const tripBuyInOutRecords = buyInOutData.filter(record => 
-          tripCustomerIds.includes(record.customerId)
-        );
+        // Use trip_sharing data from backend API (now in camelCase)
+        const sharing = trip.sharing || {
+          totalWinLoss: 0,
+          totalExpenses: 0,
+          totalRollingCommission: 0,
+          totalBuyIn: 0,
+          totalBuyOut: 0,
+          netCashFlow: 0,
+          netResult: 0,
+          totalAgentShare: 0,
+          companyShare: 0,
+          agentSharePercentage: 0,
+          companySharePercentage: 100,
+          agentBreakdown: []
+        };
 
-        const tripTotalRolling = tripRollingRecords.reduce((sum, record) => sum + (record.rollingAmount || 0), 0);
-        const tripTotalWinLoss = tripRollingRecords.reduce((sum, record) => sum + (record.winLoss || 0), 0);
-        const tripTotalBuyIn = tripBuyInOutRecords
-          .filter(record => record.transactionType === 'buy-in')
-          .reduce((sum, record) => sum + record.amount, 0);
-        const tripTotalBuyOut = tripBuyInOutRecords
-          .filter(record => record.transactionType === 'buy-out')
-          .reduce((sum, record) => sum + record.amount, 0);
+        // Calculate total rolling from commission (reverse calculation)
+        const totalRolling = sharing?.totalRollingCommission ? (sharing.totalRollingCommission / 0.014) : 0;
 
-        const calculatedTotalRolling = tripTotalRolling * 0.014;
+        // 🔍 DEBUG: Log individual trip processing
+        console.log(`🔄 Processing Trip: ${(trip as any).name || (trip as any).trip_name} (ID: ${trip.id})`, {
+          originalSharing: sharing,
+          calculatedTotalRolling: totalRolling,
+          sharingTotalWinLoss: sharing?.totalWinLoss,
+          sharingCompanyShare: sharing?.companyShare,
+          sharingTotalRollingCommission: sharing?.totalRollingCommission
+        });
 
         return {
           ...trip,
-          totalRolling: tripTotalRolling,
-          totalWinLoss: tripTotalWinLoss,
-          totalBuyIn: tripTotalBuyIn,
-          totalBuyOut: tripTotalBuyOut,
-          calculatedTotalRolling,
+          totalRolling: totalRolling,
+          totalWinLoss: sharing?.totalWinLoss || 0,
+          totalBuyIn: sharing?.totalBuyIn || 0,
+          totalBuyOut: sharing?.totalBuyOut || 0,
+          calculatedTotalRolling: sharing?.totalRollingCommission || 0,
           attachments: trip.attachments || [],
-          sharing: trip.sharing || {
-            totalWinLoss: tripTotalWinLoss,
-            totalExpenses: 0,
-            totalRollingCommission: calculatedTotalRolling,
-            totalBuyIn: tripTotalBuyIn,
-            totalBuyOut: tripTotalBuyOut,
-            netCashFlow: tripTotalBuyOut - tripTotalBuyIn,
-            netResult: 0,
-            totalAgentShare: 0,
-            companyShare: 0,
-            agentSharePercentage: 0,
-            companySharePercentage: 100,
-            agentBreakdown: []
+          sharing: {
+            totalWinLoss: sharing?.totalWinLoss || 0,
+            totalExpenses: sharing?.totalExpenses || 0,
+            totalRollingCommission: sharing?.totalRollingCommission || 0,
+            totalBuyIn: sharing?.totalBuyIn || 0,
+            totalBuyOut: sharing?.totalBuyOut || 0,
+            netCashFlow: sharing?.netCashFlow || 0,
+            netResult: sharing?.netResult || 0,
+            totalAgentShare: sharing?.totalAgentShare || 0,
+            companyShare: sharing?.companyShare || 0,
+            agentSharePercentage: sharing?.agentSharePercentage || 0,
+            companySharePercentage: sharing?.companySharePercentage || 100,
+            agentBreakdown: sharing?.agentBreakdown || []
           }
         };
       });
@@ -153,12 +188,12 @@ export function Reports({ user }: ReportsProps) {
       setAgents(agentsData);
       setCustomers(processedCustomers);
       setTrips(processedTrips);
-      setRollingRecords(rollingData);
-      setBuyInOutRecords(buyInOutData);
+      setRollingRecords([]); // Not used anymore
+      setBuyInOutRecords([]); // Not used anymore
       setLastSyncTime(new Date());
       setConnectionStatus('connected');
       
-      console.log(`✅ Real-time reports data loaded: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips, ${rollingData.length} rolling records`);
+      console.log(`✅ Real-time reports data loaded from backend API: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips with trip_sharing data`);
       
     } catch (error) {
       console.error('❌ Error loading real-time reports data:', error);
@@ -203,8 +238,8 @@ export function Reports({ user }: ReportsProps) {
   const getFilteredData = () => {
     let filteredCustomers = customers;
     let filteredTrips = trips;
-    let filteredRollingRecords = rollingRecords;
-    let filteredBuyInOutRecords = buyInOutRecords;
+    let filteredRollingRecords: any[] = []; // Not used anymore
+    let filteredBuyInOutRecords: any[] = []; // Not used anymore
 
     // Apply user role filter
     if (user.role === 'agent' && user.agentId) {
@@ -213,21 +248,14 @@ export function Reports({ user }: ReportsProps) {
         (t.agents && t.agents.some(agent => agent.agentId === user.agentId)) ||
         t.agentId === user.agentId
       );
-      filteredRollingRecords = rollingRecords.filter(r => r.agentId === user.agentId);
-      filteredBuyInOutRecords = buyInOutRecords.filter(b => {
-        const customer = customers.find(c => c.id === b.customerId);
-        return customer?.agentId === user.agentId;
-      });
     } else if (user.role === 'staff' && user.staffId) {
-      // Staff can only see records they created
-      filteredRollingRecords = rollingRecords.filter(r => r.staffId === user.staffId);
-      filteredBuyInOutRecords = buyInOutRecords.filter(b => b.staffId === user.staffId);
-      // Filter customers and trips based on staff records
-      const staffCustomerIds = Array.from(new Set([...filteredRollingRecords.map(r => r.customerId), ...filteredBuyInOutRecords.map(b => b.customerId)]));
-      filteredCustomers = customers.filter(c => staffCustomerIds.includes(c.id));
-      filteredTrips = trips.filter(t => 
-        t.customers?.some(tc => staffCustomerIds.includes(tc.customerId))
-      );
+      // Staff can only see trips they are assigned to
+      filteredTrips = trips.filter(t => (t as any).staffId === user.staffId);
+      // Filter customers based on trips
+      const tripCustomerIds = Array.from(new Set(
+        filteredTrips.flatMap(t => t.customers?.map(tc => tc.customerId) || [])
+      ));
+      filteredCustomers = customers.filter(c => tripCustomerIds.includes(c.id));
     }
 
     // Apply agent filter (admin only)
@@ -237,83 +265,140 @@ export function Reports({ user }: ReportsProps) {
         (t.agents && t.agents.some(agent => agent.agentId === selectedAgent)) ||
         t.agentId === selectedAgent
       );
-      filteredRollingRecords = filteredRollingRecords.filter(r => r.agentId === selectedAgent);
-      filteredBuyInOutRecords = filteredBuyInOutRecords.filter(b => {
-        const customer = customers.find(c => c.id === b.customerId);
-        return customer?.agentId === selectedAgent;
-      });
     }
 
-    // Apply date range filter
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - parseInt(dateRange));
-    
-    filteredTrips = filteredTrips.filter(t => 
-      new Date(t.date) >= cutoffDate
-    );
-    
-    filteredRollingRecords = filteredRollingRecords.filter(r =>
-      new Date(r.recordedAt) >= cutoffDate
-    );
-    
-    filteredBuyInOutRecords = filteredBuyInOutRecords.filter(b =>
-      new Date(b.timestamp) >= cutoffDate
-    );
+  // Apply date range filter - but show ALL data regardless of date for now
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - parseInt(dateRange));
+  
+  // 🔧 TEMPORARY FIX: Show all trips regardless of date to display the data
+  const showAllData = true;
+
+  // 🔍 DEBUG: Log filtering parameters
+  console.group('🔍 Data Filtering Debug');
+  console.log('📅 Time Range (days):', parseInt(dateRange));
+  console.log('📅 Cutoff Date:', cutoffDate.toISOString());
+  console.log('📊 Total Trips Before Filter:', trips.length);
+  trips.forEach((t: any, index: number) => {
+    const tripDate = t.date || t.start_date || t.created_at;
+    const isValidDate = tripDate && !isNaN(new Date(tripDate).getTime());
+    console.log(`📊 Trip ${index + 1} Details:`, {
+      id: t.id,
+      name: t.name || t.trip_name,
+      rawTrip: t, // Show full trip object
+      date: tripDate,
+      dateType: typeof tripDate,
+      isValidDate,
+      parsedDate: isValidDate ? new Date(tripDate).toISOString() : 'Invalid Date',
+      cutoffDate: cutoffDate.toISOString(),
+      isAfterCutoff: isValidDate ? new Date(tripDate) >= cutoffDate : false
+    });
+  });
+
+  filteredCustomers = filteredCustomers.filter(c => 
+    new Date((c as any).createdAt || (c as any).created_at) >= cutoffDate
+  );
+  
+    filteredTrips = filteredTrips.filter(t => {
+      if (showAllData) {
+        console.log('🔧 Showing all trips (date filter bypassed)');
+        return true; // Show all trips regardless of date
+      }
+      const tripDate = t.date || (t as any).start_date || (t as any).created_at;
+      return tripDate && !isNaN(new Date(tripDate).getTime()) && new Date(tripDate) >= cutoffDate;
+    });
+
+    console.log('📊 Filtered Trips Count:', filteredTrips.length);
+    console.log('📊 Filtered Customers Count:', filteredCustomers.length);
+    console.groupEnd();
 
     return { filteredCustomers, filteredTrips, filteredRollingRecords, filteredBuyInOutRecords };
   };
 
   const { filteredCustomers, filteredTrips, filteredRollingRecords, filteredBuyInOutRecords } = getFilteredData();
 
-  // Calculate comprehensive metrics from real-time data
+  // Calculate comprehensive metrics from trip_sharing data
   const calculateMetrics = () => {
-    // Customer totals from rolling records
-    const customerTotalRolling = filteredRollingRecords.reduce((sum, r) => sum + safeNumber(r.rollingAmount), 0);
-    const customerTotalWinLoss = filteredRollingRecords.reduce((sum, r) => sum + safeNumber(r.winLoss), 0);
-    const customerTotalBuyIn = filteredBuyInOutRecords
-      .filter(r => r.transactionType === 'buy-in')
-      .reduce((sum, r) => sum + r.amount, 0);
-    const customerTotalBuyOut = filteredBuyInOutRecords
-      .filter(r => r.transactionType === 'buy-out')
-      .reduce((sum, r) => sum + r.amount, 0);
+    // Calculate aggregated metrics from filtered trips
+    const totalWinLoss = filteredTrips.reduce((sum: number, trip: any) => sum + (trip.totalWinLoss || 0), 0);
+    const totalRolling = filteredTrips.reduce((sum: number, trip: any) => sum + (trip.totalRolling || 0), 0);
+    const totalBuyIn = filteredTrips.reduce((sum: number, trip: any) => sum + (trip.totalBuyIn || 0), 0);
+    const totalBuyOut = filteredTrips.reduce((sum: number, trip: any) => sum + (trip.totalBuyOut || 0), 0);
+    
+    // Calculate company profit/loss from trip_sharing data
+    const companyProfitLoss = filteredTrips.reduce((sum: number, trip: any) => {
+      return sum + (trip.sharing?.companyShare || 0);
+    }, 0);
+    
+    const isCompanyProfitable = companyProfitLoss > 0;
 
-    // Trip totals
-    const tripTotalRolling = filteredTrips.reduce((sum, t) => sum + safeNumber(t.totalRolling), 0);
-    const tripTotalWinLoss = filteredTrips.reduce((sum, t) => sum + safeNumber(t.totalWinLoss), 0);
-    const totalRollingCommission = filteredTrips.reduce((sum, t) => sum + safeNumber(t.calculatedTotalRolling), 0);
-    const totalExpenses = filteredTrips.reduce((sum, trip) => 
-      sum + (trip.expenses || []).reduce((expSum, exp) => expSum + safeNumber(exp.amount), 0), 0
-    );
+    // 🔍 DEBUG: Log calculated aggregated metrics
+    console.group('📊 Calculated Aggregated Metrics');
+    console.log('💰 Total Win/Loss:', totalWinLoss);
+    console.log('🎲 Total Rolling:', totalRolling);
+    console.log('💵 Total Buy-In:', totalBuyIn);
+    console.log('💸 Total Buy-Out:', totalBuyOut);
+    console.log('🏢 Company Profit/Loss:', companyProfitLoss);
+    console.log('📈 Is Company Profitable:', isCompanyProfitable);
+    console.log('🔢 Filtered Trips Count:', filteredTrips.length);
+    console.groupEnd();
 
-    // House performance
-    const houseGrossWin = -customerTotalWinLoss;
-    const houseNetWin = houseGrossWin - totalRollingCommission;
-    const houseFinalProfit = houseNetWin - totalExpenses;
+    // Company totals from trip_sharing data
+    const companyTotalRolling = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalRollingCommission), 0);
+    const companyTotalWinLoss = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalWinLoss), 0);
+    const companyTotalBuyIn = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalBuyIn), 0);
+    const companyTotalBuyOut = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalBuyOut), 0);
+    const companyTotalExpenses = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalExpenses), 0);
+    const companyNetResult = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.netResult), 0);
+    const companyShare = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.companyShare), 0);
+
+    // 🔍 DEBUG: Log company totals from trip_sharing
+    console.group('🏢 Company Totals from Trip Sharing Data');
+    console.log('🎲 Company Total Rolling Commission:', companyTotalRolling);
+    console.log('💰 Company Total Win/Loss:', companyTotalWinLoss);
+    console.log('💵 Company Total Buy-In:', companyTotalBuyIn);
+    console.log('💸 Company Total Buy-Out:', companyTotalBuyOut);
+    console.log('💳 Company Total Expenses:', companyTotalExpenses);
+    console.log('📊 Company Net Result:', companyNetResult);
+    console.log('🏦 Company Share:', companyShare);
+    console.log('🔢 Filtered Trips Count:', filteredTrips.length);
+    console.groupEnd();
+
+    // Trip totals for display
+    const tripTotalRolling = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.totalRolling), 0);
+    const tripTotalWinLoss = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.totalWinLoss), 0);
+    const totalRollingCommission = companyTotalRolling;
+    const totalExpenses = companyTotalExpenses;
+
+    // House performance from company perspective (trip_sharing data)
+    const houseGrossWin = Math.abs(companyTotalWinLoss); // Always show absolute value
+    const houseNetWin = Math.abs(companyNetResult - totalExpenses); // Company net after expenses
+    const houseFinalProfit = Math.abs(companyShare); // Final company share
 
     // Customer metrics
     const totalCustomers = filteredCustomers.length;
-    const activeCustomers = filteredCustomers.filter(c => c.isActive).length;
+    const activeCustomers = filteredCustomers.filter((c: any) => c.isActive).length;
 
     // Agent metrics
     const totalAgents = agents.length;
-    const activeAgents = agents.filter(a => a.status === 'active').length;
+    const activeAgents = agents.filter((a: any) => a.status === 'active').length;
 
     // Trip metrics
     const totalTrips = filteredTrips.length;
-    const completedTrips = filteredTrips.filter(t => t.status === 'completed').length;
-    const ongoingTrips = filteredTrips.filter(t => t.status === 'in-progress').length;
+    const completedTrips = filteredTrips.filter((t: any) => t.status === 'completed').length;
+    const ongoingTrips = filteredTrips.filter((t: any) => t.status === 'in-progress').length;
 
     // Performance ratios
-    const profitMargin = customerTotalRolling > 0 ? ((houseFinalProfit / customerTotalRolling) * 100) : 0;
-    const averageRollingPercentage = filteredRollingRecords.length > 0 
-      ? filteredCustomers.reduce((sum, c) => sum + c.rollingPercentage, 0) / filteredCustomers.length
+    const profitMargin = companyTotalRolling > 0 ? ((houseFinalProfit / companyTotalRolling) * 100) : 0;
+    const averageRollingPercentage = filteredCustomers.length > 0 
+      ? filteredCustomers.reduce((sum: number, c: any) => sum + c.rollingPercentage, 0) / filteredCustomers.length
       : 1.4;
 
     return {
-      customerTotalRolling,
-      customerTotalWinLoss,
-      customerTotalBuyIn,
-      customerTotalBuyOut,
+      customerTotalRolling: companyTotalRolling,
+      customerTotalWinLoss: companyTotalWinLoss,
+      customerTotalBuyIn: companyTotalBuyIn,
+      customerTotalBuyOut: companyTotalBuyOut,
       tripTotalRolling,
       tripTotalWinLoss,
       totalRollingCommission,
@@ -330,20 +415,29 @@ export function Reports({ user }: ReportsProps) {
       ongoingTrips,
       profitMargin,
       averageRollingPercentage,
-      totalRollingRecords: filteredRollingRecords.length,
-      totalBuyInOutRecords: filteredBuyInOutRecords.length
+      totalRollingRecords: filteredTrips.length, // Number of trips with sharing data
+      totalBuyInOutRecords: filteredTrips.filter(t => ((t.sharing?.totalBuyIn || 0) > 0) || ((t.sharing?.totalBuyOut || 0) > 0)).length,
+      // Company performance indicators
+      companyNetResult,
+      companyShare,
+      isCompanyProfitable: companyShare > 0
     };
   };
 
   const metrics = calculateMetrics();
 
-  // Prepare chart data
+  // Prepare chart data from trip_sharing data
   const getDailyChartData = () => {
     const dailyData: {[key: string]: any} = {};
 
-    // Process rolling records by date
-    filteredRollingRecords.forEach(record => {
-      const date = record.recordedAt.split('T')[0]; // Get date part only
+    // Process trips by date using trip_sharing data
+    filteredTrips.forEach(trip => {
+      const tripDate = trip.date || (trip as any).start_date || (trip as any).created_at;
+      if (!tripDate) {
+        console.warn('Trip has no valid date:', trip);
+        return;
+      }
+      const date = tripDate.split('T')[0]; // Get date part only
       if (!dailyData[date]) {
         dailyData[date] = { 
           date, 
@@ -353,43 +447,25 @@ export function Reports({ user }: ReportsProps) {
           buyIn: 0, 
           buyOut: 0, 
           netCashFlow: 0,
+          expenses: 0,
+          companyShare: 0,
           recordCount: 0,
           transactions: 0
         };
       }
-      dailyData[date].rolling += safeNumber(record.rollingAmount);
-      dailyData[date].winLoss += safeNumber(record.winLoss);
-      dailyData[date].commission += safeNumber(record.rollingAmount) * 0.014; // Default commission
+      
+      // Use trip_sharing data
+      const sharing = trip.sharing || {};
+      dailyData[date].rolling += safeNumber(sharing.totalRollingCommission);
+      dailyData[date].winLoss += safeNumber(sharing.totalWinLoss);
+      dailyData[date].commission += safeNumber(sharing.totalRollingCommission);
+      dailyData[date].buyIn += safeNumber(sharing.totalBuyIn);
+      dailyData[date].buyOut += safeNumber(sharing.totalBuyOut);
+      dailyData[date].expenses += safeNumber(sharing.totalExpenses);
+      dailyData[date].companyShare += safeNumber(sharing.companyShare);
+      dailyData[date].netCashFlow += safeNumber(sharing.netCashFlow);
       dailyData[date].recordCount += 1;
-    });
-
-    // Process buy-in/out records by date
-    filteredBuyInOutRecords.forEach(record => {
-      const date = record.timestamp.split('T')[0];
-      if (!dailyData[date]) {
-        dailyData[date] = { 
-          date, 
-          rolling: 0, 
-          winLoss: 0, 
-          commission: 0, 
-          buyIn: 0, 
-          buyOut: 0, 
-          netCashFlow: 0,
-          recordCount: 0,
-          transactions: 0
-        };
-      }
-      if (record.transactionType === 'buy-in') {
-        dailyData[date].buyIn += record.amount;
-      } else {
-        dailyData[date].buyOut += record.amount;
-      }
-      dailyData[date].transactions += 1;
-    });
-
-    // Calculate net cash flow
-    Object.values(dailyData).forEach((day: any) => {
-      day.netCashFlow = day.buyOut - day.buyIn;
+      dailyData[date].transactions += (((sharing.totalBuyIn || 0) > 0) || ((sharing.totalBuyOut || 0) > 0)) ? 1 : 0;
     });
 
     return Object.values(dailyData).sort((a: any, b: any) => 
@@ -436,7 +512,7 @@ export function Reports({ user }: ReportsProps) {
         commission: rolling * 0.014,
         trips: agentTrips.length,
         rollingRecords: agentRollingRecords.length,
-        buyInOutRecords: agentBuyInOutRecords.length,
+        buyInOutRecords: agentTrips.filter(t => ((t.sharing?.totalBuyIn || 0) > 0) || ((t.sharing?.totalBuyOut || 0) > 0)).length,
         averageRollingPercentage: agentCustomers.length > 0 
           ? agentCustomers.reduce((sum, c) => sum + c.rollingPercentage, 0) / agentCustomers.length
           : 0

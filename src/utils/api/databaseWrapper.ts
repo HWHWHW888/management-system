@@ -9,7 +9,7 @@ export class DatabaseWrapper {
     try {
       // Test backend API health
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-      const response = await fetch(`${apiUrl}/health`);
+      const response = await fetch(`${apiUrl?.replace('/api', '')}/health`);
       const data = await response.json();
       
       if (response.ok && data.status === 'OK') {

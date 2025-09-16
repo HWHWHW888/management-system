@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collap
 import { User, Agent, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
+import { isReadOnlyRole } from '../utils/permissions';
 import { apiClient } from '../utils/api/apiClient';
 import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Database, Save, Eye } from 'lucide-react';
 
@@ -19,12 +20,14 @@ interface AgentManagementProps extends WithErrorHandlerProps {
 }
 
 function AgentManagementComponent({ user, showError, clearError }: AgentManagementProps) {
+  const isReadOnly = isReadOnlyRole(user.role);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+  const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null);
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -77,6 +80,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
     e.preventDefault();
     
     try {
+      setSaving(true);
       if (editingAgent) {
         // Update existing agent - only send required fields to backend
         const updateData = {
@@ -120,6 +124,8 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
       
     } catch (error) {
       showError(`Failed to save agent: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -136,30 +142,38 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
   // Note: Agent-to-customer creation is now handled automatically by the backend
   // when an agent is created, so no manual customer creation is needed
 
-  const toggleAgentStatus = async (agentId: string) => {
+  const handleDeleteAgent = async () => {
+    if (!deletingAgent) return;
+
     try {
-      // Update agent status via API
-      const agent = agents.find(a => a.id === agentId);
-      if (!agent) return;
+      setSaving(true);
+      clearError();
       
-      const updateData = {
-        name: agent.name,
-        email: agent.email,
-        phone: agent.phone,
-        status: agent.status ? 'inactive' : 'active'
-      };
+      console.log('🗑️ Deleting agent:', deletingAgent.name, deletingAgent.id);
       
-      const response = await apiClient.updateAgent(agentId, updateData);
+      // Call backend API to delete agent
+      const response = await apiClient.deleteAgent(deletingAgent.id);
+      
       if (!response.success) {
-        throw new Error(response.error || 'Failed to update agent status');
+        throw new Error(response.error || 'Failed to delete agent');
       }
       
-      // Refresh data
+      console.log('✅ Agent deleted successfully');
+      
+      // Refresh data to get updated agent list
       await loadAllData();
+      
+      // Close dialog and reset state
+      setDeletingAgent(null);
+      
     } catch (error) {
-      showError(`Failed to update agent status: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+      console.error('❌ Error deleting agent:', error);
+      showError(`Failed to delete agent: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+    } finally {
+      setSaving(false);
     }
   };
+
 
   const openNewAgentDialog = () => {
     setEditingAgent(null);
@@ -241,7 +255,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
             }
           </p>
         </div>
-        {isAdmin && (
+        {!isReadOnly && (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openNewAgentDialog} disabled={saving}>
@@ -399,48 +413,45 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                       </div>
                     </div>
 
-                    {isAdmin && (
+                    {!isReadOnly && (
                       <div className="flex space-x-2">
                         <Button variant="outline" size="sm" onClick={() => handleEdit(agent)} disabled={saving}>
                           <Edit className="w-4 h-4 mr-2" />
                           Edit
                         </Button>
-                        {agent.status ? (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="sm" disabled={saving}>
-                                Deactivate
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Deactivate Agent</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to deactivate "{agent.name}"? Deactivated agents will no longer be able to bring customers or participate in trips, but their existing data and customer relationships will be preserved. This action will also affect their customer record if they are registered as a customer.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => toggleAgentStatus(agent.id)}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                  disabled={saving}
-                                >
-                                  {saving ? 'Saving...' : 'Deactivate Agent'}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        ) : (
-                          <Button 
-                            variant="default"
-                            size="sm"
-                            onClick={() => toggleAgentStatus(agent.id)}
-                            disabled={saving}
-                          >
-                            {saving ? 'Saving...' : 'Activate'}
-                          </Button>
-                        )}
+                        <AlertDialog open={deletingAgent?.id === agent.id} onOpenChange={(open) => !open && setDeletingAgent(null)}>
+                          <AlertDialogTrigger asChild>
+                            <Button 
+                              variant="destructive" 
+                              size="sm" 
+                              onClick={() => setDeletingAgent(agent)}
+                              disabled={saving}
+                              className="bg-red-600 hover:bg-red-700 text-white"
+                            >
+                              Delete
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Agent</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to permanently delete "{agent.name}"? This action cannot be undone and will remove all agent data from the system.
+                                <br /><br />
+                                <strong>Warning:</strong> This will also affect any trips this agent is associated with. Agents with existing trip associations cannot be deleted.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={handleDeleteAgent}
+                                className="bg-red-600 text-white hover:bg-red-700"
+                                disabled={saving}
+                              >
+                                {saving ? 'Deleting...' : 'Delete Agent'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     )}
 

@@ -1,7 +1,7 @@
 export interface User {
   id: string;
   username: string;
-  role: 'admin' | 'agent' | 'staff';
+  role: 'admin' | 'agent' | 'staff' | 'boss';
   email?: string;
   token?: string;
   agentId?: string;
@@ -249,6 +249,11 @@ export interface Trip {
   status: 'active' | 'in-progress' | 'completed' | 'cancelled';
   createdAt: string;
   attachments: FileAttachment[];
+  // Currency fields
+  currency?: string; // Selected currency for this trip (PESO, HKD, MYR)
+  exchange_rate_peso?: number; // Exchange rate for Philippine Peso
+  exchange_rate_hkd?: number; // Exchange rate for Hong Kong Dollar
+  exchange_rate_myr?: number; // Exchange rate for Malaysian Ringgit
   // Real-time metadata
   lastDataUpdate?: string;
   activeCustomersCount?: number;

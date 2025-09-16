@@ -15,6 +15,7 @@ import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Database, Save, Eye, UserPlus, Shield, Key, EyeOff, LogIn, LogOut, CheckCircle, Clock } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { apiClient } from '../utils/api/apiClient';
+import { isReadOnlyRole } from '../utils/permissions';
 
 interface StaffManagementProps extends WithErrorHandlerProps {
   user: User;
@@ -37,6 +38,7 @@ interface StaffWithUser {
 }
 
 function StaffManagementComponent({ user, showError, clearError }: StaffManagementProps) {
+  const isReadOnly = isReadOnlyRole(user.role);
   const [staff, setStaff] = useState<StaffWithUser[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
@@ -555,13 +557,14 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
             Manage casino staff, their login credentials, and shift tracking with photo verification
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setIsDialogOpen(true)} disabled={saving}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Staff
-            </Button>
-          </DialogTrigger>
+        {!isReadOnly && (
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setIsDialogOpen(true)} disabled={saving}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Staff
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>
@@ -708,10 +711,12 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
             </form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       {/* Login Management Dialog */}
-      <Dialog open={isLoginDialogOpen} onOpenChange={setIsLoginDialogOpen}>
+      {!isReadOnly && (
+        <Dialog open={isLoginDialogOpen} onOpenChange={setIsLoginDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
@@ -817,10 +822,12 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
             </div>
           </form>
         </DialogContent>
-      </Dialog>
+        </Dialog>
+      )}
 
       {/* Check-in Dialog */}
-      <Dialog open={isCheckInDialogOpen} onOpenChange={setIsCheckInDialogOpen}>
+      {!isReadOnly && (
+        <Dialog open={isCheckInDialogOpen} onOpenChange={setIsCheckInDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Check In: {checkingInStaff?.name}</DialogTitle>
@@ -878,9 +885,11 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Check-out Dialog */}
-      <Dialog open={isCheckOutDialogOpen} onOpenChange={setIsCheckOutDialogOpen}>
+      {!isReadOnly && (
+        <Dialog open={isCheckOutDialogOpen} onOpenChange={setIsCheckOutDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Check Out: {checkingOutStaff?.name}</DialogTitle>
@@ -938,6 +947,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       <div className="grid gap-6">
         {staff.length === 0 ? (
@@ -1014,29 +1024,35 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                     </div>
 
                     <div className="flex flex-wrap gap-2 mb-4">
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(staffMember)} disabled={saving}>
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit
-                      </Button>
-                      
-                      <Button variant="outline" size="sm" onClick={() => handleManageLogin(staffMember)} disabled={saving}>
-                        <Key className="w-4 h-4 mr-2" />
-                        {account ? 'Update Login' : 'Create Login'}
-                      </Button>
-
-                      {isCheckedIn ? (
-                        <Button variant="outline" size="sm" onClick={() => openCheckOutDialog(staffMember)} disabled={saving}>
-                          <LogOut className="w-4 h-4 mr-2" />
-                          Check Out
+                      {!isReadOnly && (
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(staffMember)} disabled={saving}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit
                         </Button>
-                      ) : (
-                        <Button variant="outline" size="sm" onClick={() => openCheckInDialog(staffMember)} disabled={saving}>
-                          <LogIn className="w-4 h-4 mr-2" />
-                          Check In
+                      )}
+                      
+                      {!isReadOnly && (
+                        <Button variant="outline" size="sm" onClick={() => handleManageLogin(staffMember)} disabled={saving}>
+                          <Key className="w-4 h-4 mr-2" />
+                          {account ? 'Update Login' : 'Create Login'}
                         </Button>
                       )}
 
-                      {staffMember.status === 'active' ? (
+                      {!isReadOnly && (
+                        isCheckedIn ? (
+                          <Button variant="outline" size="sm" onClick={() => openCheckOutDialog(staffMember)} disabled={saving}>
+                            <LogOut className="w-4 h-4 mr-2" />
+                            Check Out
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => openCheckInDialog(staffMember)} disabled={saving}>
+                            <LogIn className="w-4 h-4 mr-2" />
+                            Check In
+                          </Button>
+                        )
+                      )}
+
+                      {!isReadOnly && staffMember.status === 'active' ? (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button variant="destructive" size="sm" disabled={saving}>
@@ -1211,16 +1227,19 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                                 </div>
 
                                 <div className="flex space-x-2 mt-4">
-                                  <Button variant="outline" size="sm" onClick={() => handleManageLogin(staffMember)} disabled={saving}>
-                                    <Edit className="w-4 h-4 mr-2" />
-                                    Update Credentials
-                                  </Button>
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button variant="destructive" size="sm" disabled={saving}>
-                                        Delete Login
-                                      </Button>
-                                    </AlertDialogTrigger>
+                                  {!isReadOnly && (
+                                    <Button variant="outline" size="sm" onClick={() => handleManageLogin(staffMember)} disabled={saving}>
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Update Credentials
+                                    </Button>
+                                  )}
+                                  {!isReadOnly && (
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button variant="destructive" size="sm" disabled={saving}>
+                                          Delete Login
+                                        </Button>
+                                      </AlertDialogTrigger>
                                     <AlertDialogContent>
                                       <AlertDialogHeader>
                                         <AlertDialogTitle>Delete Login Account</AlertDialogTitle>
@@ -1239,7 +1258,8 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                                         </AlertDialogAction>
                                       </AlertDialogFooter>
                                     </AlertDialogContent>
-                                  </AlertDialog>
+                                    </AlertDialog>
+                                  )}
                                 </div>
                               </CardContent>
                             </Card>
@@ -1248,23 +1268,27 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                               <CardContent className="text-center py-12">
                                 <Key className="w-12 h-12 mx-auto text-gray-400 mb-4" />
                                 <p className="text-gray-500 mb-4">No login credentials set up for this staff member.</p>
-                                <Button onClick={() => handleManageLogin(staffMember)} disabled={saving}>
-                                  <UserPlus className="w-4 h-4 mr-2" />
-                                  Create Login Account
-                                </Button>
+                                {!isReadOnly && (
+                                  <Button onClick={() => handleManageLogin(staffMember)} disabled={saving}>
+                                    <UserPlus className="w-4 h-4 mr-2" />
+                                    Create Login Account
+                                  </Button>
+                                )}
                               </CardContent>
                             </Card>
                           )}
                         </TabsContent>
 
                         <TabsContent value="files" className="mt-6">
-                          <div className="mb-4">
-                            <FileUpload
-                              onUpload={(newAttachments) => updateStaffAttachments(staffMember.id, [...(staffMember.attachments || []), ...newAttachments])}
-                              onAttachmentsChange={() => {}}
-                              disabled={saving}
-                            />
-                          </div>
+                          {!isReadOnly && (
+                            <div className="mb-4">
+                              <FileUpload
+                                onUpload={(newAttachments) => updateStaffAttachments(staffMember.id, [...(staffMember.attachments || []), ...newAttachments])}
+                                onAttachmentsChange={() => {}}
+                                disabled={saving}
+                              />
+                            </div>
+                          )}
                           
                           {!staffMember.attachments || staffMember.attachments.length === 0 ? (
                             <Card>

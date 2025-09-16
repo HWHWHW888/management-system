@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { User, Agent, Customer, FileAttachment, Trip, TripCustomer, RollingRecord, BuyInOutRecord } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
+import { isReadOnlyRole } from '../utils/permissions';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { 
@@ -40,6 +41,7 @@ interface CustomerTripHistory {
 const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 function CustomerManagementComponent({ user, showError, clearError }: CustomerManagementProps) {
+  const isReadOnly = isReadOnlyRole(user.role);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -50,6 +52,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
+  const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -565,6 +568,38 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     }
   };
 
+  const handleDeleteCustomer = async () => {
+    if (!deletingCustomer) return;
+
+    try {
+      setSaving(true);
+      clearError();
+      
+      console.log('🗑️ Deleting customer:', deletingCustomer.name, deletingCustomer.id);
+      
+      // Call backend API to delete customer
+      const response = await apiClient.deleteCustomer(deletingCustomer.id);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to delete customer');
+      }
+      
+      console.log('✅ Customer deleted successfully');
+      
+      // Refresh data to get updated customer list
+      await loadRealTimeData();
+      
+      // Close dialog and reset state
+      setDeletingCustomer(null);
+      
+    } catch (error) {
+      console.error('❌ Error deleting customer:', error);
+      showError(`Failed to delete customer: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateCustomerAttachments = async (customerId: string, attachments: FileAttachment[]) => {
     try {
       console.log('🔍 Frontend - Updating customer attachments:', customerId, attachments.length);
@@ -797,7 +832,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
             }
           </p>
         </div>
-        {(isAdmin || isAgent) && (
+        {!isReadOnly && (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openNewCustomerDialog} disabled={saving}>
@@ -982,34 +1017,13 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                         <span className="text-sm text-gray-500">Phone:</span>
                         <span className="text-sm">{customer.phone}</span>
                       </div>
-                      {/* 客户详情摘要 - 添加调试信息 */}
-                      {(() => {
-                        const details = (customer as any).details;
-                        console.log(`🔍 UI Render - Customer ${customer.name} details:`, details);
-                        
-                        if (!details) {
-                          return (
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm text-gray-400">No details available</span>
-                            </div>
-                          );
-                        }
-                        
-                        return (
-                          <>
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm text-gray-500">Nationality:</span>
-                              <span className="text-sm">{details.nationality || 'Not provided'}</span>
-                            </div>
-                            {details.passport_number && (
-                              <div className="flex items-center space-x-2">
-                                <span className="text-sm text-gray-500">Passport:</span>
-                                <span className="text-sm">{details.passport_number}</span>
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
+                      {/* Customer details status */}
+                      <div className="flex items-center space-x-2">
+                        <FileText className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-500">
+                          {(customer as any).details ? 'Details available' : 'No details available'}
+                        </span>
+                      </div>
                       <div className="flex items-center space-x-2">
                         <DollarSign className="w-4 h-4 text-blue-600" />
                         <span className="text-sm font-medium">Rolling: ${(customer.totalRolling || 0).toLocaleString()}</span>
@@ -1023,7 +1037,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                         <span className={`text-sm font-medium ${
                           (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          W/L: ${(customer.totalWinLoss || 0).toLocaleString()}
+                          W/L: ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
                         </span>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -1040,7 +1054,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                       </div>
                     </div>
 
-                    {(isAdmin || isAgent) && (
+                    {!isReadOnly && (
                       <div className="flex space-x-2">
                         <Button variant="outline" size="sm" onClick={() => handleEdit(customer)} disabled={saving}>
                           <Edit className="w-4 h-4 mr-2" />
@@ -1050,41 +1064,40 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                           <FileText className="w-4 h-4 mr-2" />
                           Edit Details
                         </Button>
-                        {customer.isActive ? (
-                          <AlertDialog>
+                        {isAdmin && (
+                          <AlertDialog open={deletingCustomer?.id === customer.id} onOpenChange={(open) => !open && setDeletingCustomer(null)}>
                             <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="sm" disabled={saving}>
-                                Deactivate
+                              <Button 
+                                variant="destructive" 
+                                size="sm" 
+                                onClick={() => setDeletingCustomer(customer)}
+                                disabled={saving}
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                              >
+                                Delete
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Deactivate Customer</AlertDialogTitle>
+                                <AlertDialogTitle>Delete Customer</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Are you sure you want to deactivate "{customer.name}"? Deactivated customers will no longer be able to participate in new trips or transactions, but their existing data and trip history will be preserved.
+                                  Are you sure you want to permanently delete "{customer.name}"? This action cannot be undone and will remove all customer data, trip history, transactions, and associated records from the system.
+                                  <br /><br />
+                                  <strong>Warning:</strong> This will also affect any trips this customer participated in and may impact financial calculations.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
                                 <AlertDialogAction
-                                  onClick={() => toggleCustomerStatus(customer.id)}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={handleDeleteCustomer}
+                                  className="bg-red-600 text-white hover:bg-red-700"
                                   disabled={saving}
                                 >
-                                  {saving ? 'Saving...' : 'Deactivate Customer'}
+                                  {saving ? 'Deleting...' : 'Delete Customer'}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-                        ) : (
-                          <Button 
-                            variant="default"
-                            size="sm"
-                            onClick={() => toggleCustomerStatus(customer.id)}
-                            disabled={saving}
-                          >
-                            {saving ? 'Saving...' : 'Activate'}
-                          </Button>
                         )}
                       </div>
                     )}
@@ -1232,7 +1245,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                 <p className={`text-xl font-bold ${
                                   (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                 }`}>
-                                  ${(customer.totalWinLoss || 0).toLocaleString()}
+                                  ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
                                 </p>
                               </div>
                               <div>
@@ -1296,7 +1309,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                             <p className={`font-medium ${
                                               (trip.customerData.winLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                             }`}>
-                                              ${(trip.customerData.winLoss || 0).toLocaleString()}
+                                              ${Math.abs(trip.customerData.winLoss || 0).toLocaleString()}
                                             </p>
                                           </div>
                                           <div>
@@ -1360,7 +1373,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                             <p className={`font-medium ${
                                               (record.winLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                             }`}>
-                                              ${(record.winLoss || 0).toLocaleString()}
+                                              ${Math.abs(record.winLoss || 0).toLocaleString()}
                                             </p>
                                           </div>
                                           <div>
