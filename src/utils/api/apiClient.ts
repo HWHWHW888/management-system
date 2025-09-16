@@ -20,9 +20,19 @@ class ApiClient {
   }
 
   private async initializeToken() {
-    // Don't initialize token on construction - it causes async issues
-    // Token will be retrieved when needed in request()
-    console.log('🔧 ApiClient: Constructor completed, token will be loaded on first request');
+    // Load token from localStorage on initialization
+    try {
+      const savedUser = localStorage.getItem('casinoUser');
+      if (savedUser) {
+        const userData = JSON.parse(savedUser);
+        if (userData.token) {
+          this.token = userData.token;
+          console.log('🔑 ApiClient: Token loaded from localStorage on init');
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ ApiClient: Failed to load token from localStorage:', error);
+    }
   }
 
   setToken(token: string) {
@@ -43,6 +53,7 @@ class ApiClient {
     return false;
   }
 
+  // Request interceptor - automatically adds token to all requests
   private async request<T>(
     endpoint: string, 
     options: RequestInit = {},
@@ -50,43 +61,55 @@ class ApiClient {
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
     
+    // Prepare headers with interceptor logic
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
 
-    // Get token with priority: customToken > instance token > centralized token manager
+    // Token interceptor: automatically get and attach token
     let token = customToken || this.token;
     
+    // If no token in memory, try to get from localStorage
     if (!token) {
-      console.log('🔍 ApiClient: No token in instance, checking TokenManager...');
-      console.log('🔍 ApiClient: Current instance token:', this.token);
+      try {
+        const savedUser = localStorage.getItem('casinoUser');
+        if (savedUser) {
+          const userData = JSON.parse(savedUser);
+          if (userData.token) {
+            token = userData.token;
+            this.token = token; // Cache in memory
+            console.log('🔑 ApiClient Interceptor: Token retrieved from localStorage');
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ ApiClient Interceptor: Failed to parse localStorage user data');
+      }
+    }
+
+    // If still no token, try TokenManager as fallback
+    if (!token) {
       token = await tokenManager.getToken() || null;
       if (token) {
         this.token = token;
-        console.log('🔑 ApiClient: Got token from TokenManager and cached it');
-      } else {
-        console.log('❌ ApiClient: TokenManager returned no token');
+        console.log('🔑 ApiClient Interceptor: Token retrieved from TokenManager');
       }
-    } else {
-      console.log('🔑 ApiClient: Using existing token (custom or instance)');
     }
 
-    if (!token) {
-      console.error('❌ ApiClient: No authentication token available from any source');
-      console.log('🔍 Debug info:', {
-        customToken: !!customToken,
-        instanceToken: !!this.token,
-        localStorage: !!localStorage.getItem('casinoUser')
-      });
+    // Skip auth for login endpoint
+    if (endpoint === '/auth/login') {
+      console.log('🔓 ApiClient: Skipping auth for login endpoint');
+    } else if (!token) {
+      console.error('❌ ApiClient Interceptor: No authentication token available');
       return {
         success: false,
         error: 'Authentication required - please login first'
       };
+    } else {
+      // Add Authorization header with token
+      headers['Authorization'] = `Bearer ${token}`;
+      console.log(`🔑 ApiClient Interceptor: Added auth header for ${endpoint}`);
     }
-
-    headers['Authorization'] = `Bearer ${token}`;
-    console.log(`🔑 Making request to ${endpoint} with token:`, token.substring(0, 20) + '...');
 
     try {
       const response = await fetch(url, {
@@ -98,18 +121,15 @@ class ApiClient {
 
       if (!response.ok) {
         // Handle 401 Unauthorized - token might be expired
-        if (response.status === 401) {
-          console.warn('🔄 Token expired, attempting refresh...');
-          const refreshed = await this.refreshToken();
-          if (refreshed && this.token !== token) {
-            // Retry with new token
-            headers['Authorization'] = `Bearer ${this.token}`;
-            const retryResponse = await fetch(url, { ...options, headers });
-            const retryData = await retryResponse.json();
-            if (retryResponse.ok) {
-              return retryData;
-            }
-          }
+        if (response.status === 401 && token) {
+          console.warn('🔄 Token expired, clearing stored tokens...');
+          this.token = null;
+          localStorage.removeItem('casinoUser');
+          tokenManager.clearToken();
+          return {
+            success: false,
+            error: 'Session expired - please login again'
+          };
         }
         throw new Error(data.message || `HTTP error! status: ${response.status}`);
       }
@@ -126,41 +146,73 @@ class ApiClient {
 
   // Auth endpoints - login doesn't need token
   async login(username: string, password: string) {
-    const url = `${this.baseUrl}/auth/login`;
-    
     try {
-      console.log('🔐 ApiClient: Making login request to:', url);
-      console.log('🔐 ApiClient: Login data:', { username, password: '***' });
+      console.log('🔐 ApiClient: Making login request...');
       
-      const response = await fetch(url, {
+      // Use the request method but it will skip auth for /auth/login
+      const response = await this.request('/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ username, password }),
       });
 
-      console.log('🔐 ApiClient: Response status:', response.status);
-      const data = await response.json();
-      console.log('🔐 ApiClient: Response data:', data);
+      console.log('🔐 ApiClient: Login response:', response);
 
-      if (!response.ok) {
-        throw new Error(data.message || `HTTP error! status: ${response.status}`);
+      if (!response.success) {
+        throw new Error(response.error || 'Login failed');
       }
 
-      // Store token after successful login
-      if (data.success && data.data?.token) {
+      // Extract and store token after successful login
+      let token = null;
+      let user = null;
+      
+      // Handle nested response structure with proper type checking
+      const responseData = response.data as any;
+      if (responseData?.data?.token) {
+        token = responseData.data.token;
+        user = responseData.data.user || {};
+      } else if (responseData?.token) {
+        token = responseData.token;
+        user = responseData.user || {};
+      }
+
+      if (token) {
         console.log('🔑 ApiClient: Storing token after successful login');
-        this.setToken(data.data.token);
-        tokenManager.setToken(data.data.token);
+        
+        // Store token in memory
+        this.setToken(token);
+        
+        // Create complete user object with token
+        const userWithToken = {
+          ...user,
+          token: token,
+          id: user.id || 'admin-1',
+          username: user.username || username,
+          role: user.role || 'admin'
+        };
+        
+        // Store in localStorage
+        localStorage.setItem('casinoUser', JSON.stringify(userWithToken));
+        console.log('🔑 ApiClient: Saved user with token to localStorage');
+        
+        // Store in TokenManager
+        tokenManager.setToken(token);
+        
+        // Return response with complete user data
+        return {
+          success: true,
+          data: {
+            ...(responseData || {}),
+            data: {
+              token: token,
+              user: userWithToken
+            }
+          }
+        };
       }
 
-      return {
-        success: true,
-        data: data
-      };
+      return response;
     } catch (error) {
-      console.error(`Login request failed:`, error);
+      console.error('Login request failed:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
