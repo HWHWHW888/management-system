@@ -763,7 +763,6 @@ export function Dashboard({ user }: DashboardProps) {
                 .map((customer) => {
                   const indicator = getWinLossStatus(customer.totalWinLoss || 0);
                   const Icon = indicator.icon;
-                  const commission = (customer.totalRolling || 0) * ((customer.rollingPercentage || 0) / 100);
                   
                   return (
                     <div key={customer.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">

@@ -6,7 +6,6 @@ import { AgentManagement } from './components/AgentManagement';
 import { StaffManagement } from './components/StaffManagement';
 import { StaffPortal } from './components/StaffPortal';
 import ProjectManagement from './components/ProjectManagement';
-import { Reports } from './components/Reports';
 import { DataManagement } from './components/DataManagement';
 import { Button } from './components/ui/button';
 import { Alert, AlertDescription } from './components/ui/alert';

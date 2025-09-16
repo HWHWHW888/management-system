@@ -1,11 +1,10 @@
 import React from 'react';
-import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { useLanguage, Language } from '../contexts/LanguageContext';
 import { Globe } from 'lucide-react';
 
 export const LanguageToggle: React.FC = () => {
-  const { language, setLanguage, t } = useLanguage();
+  const { language, setLanguage } = useLanguage();
 
   return (
     <div className="flex items-center gap-2">

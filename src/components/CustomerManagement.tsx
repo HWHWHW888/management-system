@@ -241,28 +241,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
 
   const filteredCustomers = getFilteredCustomers();
 
-  const saveCustomersToSupabase = async (updatedCustomers: Customer[]) => {
-    try {
-      setSaving(true);
-      clearError();
-      
-      console.log('💾 Saving customers to Supabase...');
-      await db.save('customers', updatedCustomers);
-      
-      setCustomers(updatedCustomers);
-      console.log('✅ Successfully saved customers to Supabase');
-      
-      // Refresh data immediately after saving
-      await loadRealTimeData();
-      
-    } catch (error) {
-      console.error('❌ Error saving customers:', error);
-      showError(`Failed to save customer data: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
-      throw error;
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const getCustomerTripHistory = (customerId: string): CustomerTripHistory[] => {
     const customerTrips: CustomerTripHistory[] = [];
@@ -554,19 +532,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     setExpandedCustomer(expandedCustomer === customerId ? null : customerId);
   };
 
-  const toggleCustomerStatus = async (customerId: string) => {
-    try {
-      const updatedCustomers = customers.map(customer =>
-        customer.id === customerId
-          ? { ...customer, isActive: !customer.isActive }
-          : customer
-      );
-      
-      await saveCustomersToSupabase(updatedCustomers);
-    } catch (error) {
-      // Error already handled in saveCustomersToSupabase
-    }
-  };
 
   const handleDeleteCustomer = async () => {
     if (!deletingCustomer) return;

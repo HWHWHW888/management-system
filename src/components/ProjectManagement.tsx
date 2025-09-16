@@ -21,9 +21,7 @@ import {
   SUPPORTED_CURRENCIES, 
   formatCurrency, 
   formatCurrencyWithSign, 
-  getCurrencySymbol,
-  convertAmount,
-  getDefaultExchangeRates
+  getCurrencySymbol
 } from '../utils/currency';
 import { 
   MapPin, RefreshCw, Activity, AlertTriangle, Zap,
@@ -41,8 +39,8 @@ interface ProjectManagementProps {
 function ProjectManagementComponent({ user }: ProjectManagementProps) {
   // Default user if not provided
   const currentUser = user || { role: 'admin', agentId: null, username: 'admin' };
-  const clearError = () => {};
-  const showError = (message: string) => console.error(message);
+  const clearError = useCallback(() => {}, []);
+  const showError = useCallback((message: string) => console.error(message), []);
   const { t } = useLanguage();
   const isReadOnly = isReadOnlyRole(currentUser.role);
   
@@ -201,7 +199,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       showError('Failed to load agent profits');
       setAgentProfits([]);
     }
-  }, []);
+  }, [showError]);
 
   const updateCommissionRate = async (agentId: string, customerId: string, commissionRate: number) => {
     try {
@@ -449,12 +447,12 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     } finally {
       setLoading(false);
     }
-  }, [selectedTrip, dataLoaded, trips.length]);
+  }, [dataLoaded, trips.length, showError, clearError, currentUser.role]);
 
   // Initial data load only
   useEffect(() => {
     loadAllRealTimeData(true);
-  }, []);
+  }, [loadAllRealTimeData]);
 
   // Separate effect for real-time updates (less frequent)
   useEffect(() => {
@@ -467,14 +465,16 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     }
 
     return () => {
-      if (refreshInterval) clearInterval(refreshInterval);
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
     };
-  }, [isRealTimeEnabled, dataLoaded]);
+  }, [isRealTimeEnabled, dataLoaded, loadAllRealTimeData]);
 
-  // Load agent profits when switching to agents tab
+  // Load detailed data when trip is selected
   useEffect(() => {
-    if (selectedTrip && selectedTripTab === 'agents') {
-      console.log('🎯 Loading agent profits for selected trip:', {
+    if (selectedTrip) {
+      console.log('🎯 Loading detailed data for selected trip:', {
         tripId: selectedTrip.id,
         tripName: selectedTrip.name,
         customers: selectedTrip.customers,
@@ -623,7 +623,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
           totalCashOut: statisticsResponse.success ? statisticsResponse.data?.statistics?.total_cash_out || 0 : 0,
           totalWin: statisticsResponse.success ? statisticsResponse.data?.statistics?.total_win || 0 : 0,
           totalLoss: statisticsResponse.success ? statisticsResponse.data?.statistics?.total_loss || 0 : 0,
-          netProfit: statisticsResponse.success ? statisticsResponse.data?.statistics?.net_profit || 0 : 0,
           profitMargin: statisticsResponse.success ? statisticsResponse.data?.statistics?.profit_margin || 0 : 0,
           customerStatsLoaded: customersResponse.success,
           expensesLoaded: expensesResponse.success,
@@ -1394,7 +1393,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               })()}
               {(filteredTrips || []).map((trip) => {
                 // Use loaded statistics data
-                const netProfit = trip.totalWinLoss || 0;
                 
                 return (
                   <Card key={trip.id} className="overflow-hidden hover:shadow-md transition-shadow">
