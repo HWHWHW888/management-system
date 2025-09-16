@@ -207,7 +207,7 @@ export class DatabaseWrapper {
       console.log('🔐 DatabaseWrapper: Login response:', response);
       
       if (!response.success) {
-        throw new Error(response.error || 'Login failed');
+        throw new Error((response as any).error || 'Login failed');
       }
       
       // ApiClient now handles token storage automatically
