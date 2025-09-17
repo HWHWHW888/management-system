@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -43,11 +43,7 @@ function AdminManagementComponent({ user, showError, clearError }: AdminManageme
     confirmPassword: ''
   });
 
-  useEffect(() => {
-    loadAdminData();
-  }, []);
-
-  const loadAdminData = async () => {
+  const loadAdminData = useCallback(async () => {
     try {
       setLoading(true);
       clearError();
@@ -80,7 +76,11 @@ function AdminManagementComponent({ user, showError, clearError }: AdminManageme
     } finally {
       setLoading(false);
     }
-  };
+  }, [clearError, showError]);
+
+  useEffect(() => {
+    loadAdminData();
+  }, [loadAdminData]);
 
   const saveAdminsToSupabase = async (updatedAdmins: AdminAccount[]) => {
     try {

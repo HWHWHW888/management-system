@@ -247,6 +247,137 @@ router.get('/', authenticateToken, async (req, res) => {
   });
   
   /**
+   * DELETE /customers/:id
+   * Only admin can delete customers
+   * Comprehensive deletion that removes customer from all related tables
+   */
+  router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const customerId = req.params.id;
+      
+      console.log('🗑️ Backend - Starting customer deletion:', customerId);
+      
+      // Check if customer exists
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .select('id, name')
+        .eq('id', customerId)
+        .single();
+
+      if (customerError || !customer) {
+        return res.status(404).json({ 
+          error: 'Customer not found' 
+        });
+      }
+
+      console.log('🗑️ Backend - Deleting customer:', customer.name);
+
+      // Start transaction-like deletion process
+      // Delete from related tables first to maintain referential integrity
+      
+      // 1. Delete customer details
+      const { error: detailsError } = await supabase
+        .from('customer_details')
+        .delete()
+        .eq('customer_id', customerId);
+      
+      if (detailsError) {
+        console.error('⚠️ Error deleting customer details:', detailsError);
+      } else {
+        console.log('✅ Deleted customer details');
+      }
+
+      // 2. Delete from trip_customer_stats
+      const { error: statsError } = await supabase
+        .from('trip_customer_stats')
+        .delete()
+        .eq('customer_id', customerId);
+      
+      if (statsError) {
+        console.error('⚠️ Error deleting trip customer stats:', statsError);
+      } else {
+        console.log('✅ Deleted trip customer stats');
+      }
+
+      // 3. Delete from trip_customers
+      const { error: tripCustomersError } = await supabase
+        .from('trip_customers')
+        .delete()
+        .eq('customer_id', customerId);
+      
+      if (tripCustomersError) {
+        console.error('⚠️ Error deleting trip customers:', tripCustomersError);
+      } else {
+        console.log('✅ Deleted trip customers');
+      }
+
+      // 4. Delete transactions
+      const { error: transactionsError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('customer_id', customerId);
+      
+      if (transactionsError) {
+        console.error('⚠️ Error deleting transactions:', transactionsError);
+      } else {
+        console.log('✅ Deleted transactions');
+      }
+
+      // 5. Delete rolling records
+      const { error: rollingError } = await supabase
+        .from('rolling_records')
+        .delete()
+        .eq('customer_id', customerId);
+      
+      if (rollingError) {
+        console.error('⚠️ Error deleting rolling records:', rollingError);
+      } else {
+        console.log('✅ Deleted rolling records');
+      }
+
+      // 6. Delete buy-in/out records
+      const { error: buyInOutError } = await supabase
+        .from('buy_in_out_records')
+        .delete()
+        .eq('customer_id', customerId);
+      
+      if (buyInOutError) {
+        console.error('⚠️ Error deleting buy-in/out records:', buyInOutError);
+      } else {
+        console.log('✅ Deleted buy-in/out records');
+      }
+
+      // 7. Finally, delete the customer record itself
+      const { error: customerDeleteError } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customerId);
+
+      if (customerDeleteError) {
+        console.error('❌ Failed to delete customer:', customerDeleteError);
+        return res.status(500).json({ 
+          error: 'Failed to delete customer', 
+          details: customerDeleteError.message 
+        });
+      }
+
+      console.log('✅ Customer deleted successfully:', customer.name);
+
+      res.json({
+        success: true,
+        message: `Customer "${customer.name}" deleted successfully`,
+        data: { deletedCustomerId: customerId }
+      });
+    } catch (error) {
+      console.error('❌ Error in customer deletion:', error);
+      res.status(500).json({ 
+        error: 'Internal server error', 
+        details: error.message 
+      });
+    }
+  });
+
+  /**
    * GET /customers/vip/:level
    */
   router.get('/vip/:level', authenticateToken, async (req, res) => {

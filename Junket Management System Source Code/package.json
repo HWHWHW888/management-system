@@ -47,7 +47,7 @@
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.54.0",
     "react-resizable-panels": "^2.1.7",
-    "react-scripts": "5.0.1",
+    "react-scripts": "^5.0.1",
     "recharts": "^2.15.0",
     "sonner": "^2.0.3",
     "tailwind-merge": "^2.5.5",
@@ -57,10 +57,13 @@
     "web-vitals": "^3.0.0"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "PORT=3000 react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "dev": "./dev-start.sh",
+    "dev:frontend": "react-scripts start",
+    "dev:backend": "cd supabase/functions/server && npm run dev"
   },
   "eslintConfig": {
     "extends": [
@@ -85,5 +88,16 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15"
+  },
+  "overrides": {
+    "rimraf": "^5.0.0",
+    "glob": "^10.0.0",
+    "svgo": "^3.0.0",
+    "@rollup/plugin-terser": "^0.4.0"
+  },
+  "homepage": ".",
+  "proxy": "http://localhost:3001",
+  "build": {
+    "generateSW": false
   }
 }

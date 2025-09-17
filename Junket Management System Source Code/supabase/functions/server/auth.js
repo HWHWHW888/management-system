@@ -73,13 +73,20 @@ export async function authenticateToken(req, res, next) {
         let user = null;
         let error = null;
         
-        // Use hardcoded admin for token verification (same as login)
+        // Use hardcoded admin and boss for token verification (same as login)
         if (decoded.id === '80709c8d-8bca-4e4b-817f-c6219d8af871' && decoded.username === 'admin') {
             user = {
                 id: '80709c8d-8bca-4e4b-817f-c6219d8af871',
                 username: 'admin',
                 role: 'admin',
                 email: 'admin@casino.com'
+            };
+        } else if (decoded.id === '90709c8d-8bca-4e4b-817f-c6219d8af872' && decoded.username === 'boss') {
+            user = {
+                id: '90709c8d-8bca-4e4b-817f-c6219d8af872',
+                username: 'boss',
+                role: 'boss',
+                email: 'boss@casino.com'
             };
         } else {
             // Look up user in users table
@@ -166,7 +173,7 @@ export function requireStaff(req, res, next) {
 /**
  * Check if user can access specific trip
  * Staff can only access their assigned trips
- * Admin can access all trips
+ * Admin and Boss can access all trips
  */
 export async function canAccessTrip(req, res, next) {
     if (!req.user) {
@@ -176,8 +183,8 @@ export async function canAccessTrip(req, res, next) {
         });
         return;
     }
-    // Admin can access everything
-    if (req.user.role === 'admin') {
+    // Admin and Boss can access everything
+    if (req.user.role === 'admin' || req.user.role === 'boss') {
         next();
         return;
     }
@@ -223,7 +230,7 @@ export async function canAccessTrip(req, res, next) {
 /**
  * Check if user can access specific transaction
  * Staff can only access transactions linked to their trips
- * Admin can access all transactions
+ * Admin and Boss can access all transactions
  */
 export async function canAccessTransaction(req, res, next) {
     if (!req.user) {
@@ -233,8 +240,8 @@ export async function canAccessTransaction(req, res, next) {
         });
         return;
     }
-    // Admin can access everything
-    if (req.user.role === 'admin') {
+    // Admin and Boss can access everything
+    if (req.user.role === 'admin' || req.user.role === 'boss') {
         next();
         return;
     }
@@ -283,7 +290,7 @@ export async function canAccessTransaction(req, res, next) {
 /**
  * Check if user can access specific expense
  * Staff can only access expenses linked to their trips
- * Admin can access all expenses
+ * Admin and Boss can access all expenses
  */
 export async function canAccessExpense(req, res, next) {
     if (!req.user) {
@@ -293,8 +300,8 @@ export async function canAccessExpense(req, res, next) {
         });
         return;
     }
-    // Admin can access everything
-    if (req.user.role === 'admin') {
+    // Admin and Boss can access everything
+    if (req.user.role === 'admin' || req.user.role === 'boss') {
         next();
         return;
     }
@@ -346,10 +353,10 @@ export async function canAccessExpense(req, res, next) {
 /**
  * Filter query by user role
  * Staff queries are automatically filtered to their assigned trips
- * Admin queries return all data
+ * Admin and Boss queries return all data
  */
 export function filterByUserRole(req, baseQuery, tableName) {
-    if (req.user?.role === 'admin') {
+    if (req.user?.role === 'admin' || req.user?.role === 'boss') {
         return baseQuery;
     }
     // Staff can only see data related to their assigned trips
@@ -493,7 +500,7 @@ router.post('/login', async (req, res) => {
         let user = null;
         let error = null;
         
-        // Hardcoded admin login as temporary solution for RLS issues
+        // Hardcoded admin and boss login as temporary solution for RLS issues
         if ((loginIdentifier === 'admin' || loginIdentifier === 'admin@casino.com') && password === 'admin123') {
             user = {
                 id: '80709c8d-8bca-4e4b-817f-c6219d8af871',
@@ -503,6 +510,15 @@ router.post('/login', async (req, res) => {
                 email: 'admin@casino.com'
             };
             console.log('✅ Using hardcoded admin credentials');
+        } else if ((loginIdentifier === 'boss' || loginIdentifier === 'boss@casino.com') && password === 'boss123') {
+            user = {
+                id: '90709c8d-8bca-4e4b-817f-c6219d8af872',
+                username: 'boss',
+                password: 'boss123',
+                role: 'boss',
+                email: 'boss@casino.com'
+            };
+            console.log('✅ Using hardcoded boss credentials');
         } else {
             // Try direct query for users table first
             try {
@@ -535,7 +551,7 @@ router.post('/login', async (req, res) => {
                             role: 'staff',
                             name: staffUser.name,
                             position: staffUser.position,
-                            staffId: staffUser.id
+                            staff_id: staffUser.id  // Use staff_id instead of staffId for consistency
                         };
                         error = null;
                         console.log('✅ Found staff user:', staffUser.username);
@@ -573,7 +589,10 @@ router.post('/login', async (req, res) => {
                     id: user.id,
                     username: user.username,
                     email: user.email,
-                    role: user.role
+                    role: user.role,
+                    staff_id: user.staff_id,  // Include staff_id for staff users
+                    name: user.name,
+                    position: user.position
                 },
                 token: token
             }

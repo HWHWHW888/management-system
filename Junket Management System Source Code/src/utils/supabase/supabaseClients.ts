@@ -623,7 +623,7 @@ class DatabaseWrapper {
   async isHealthy() {
     try {
       // Test basic connection first
-      const { data, error } = await this.client
+      const { error } = await this.client
       .from('users')
       .select('id')
       .limit(1);
@@ -640,7 +640,7 @@ class DatabaseWrapper {
       }
       
       // Test if users table exists
-      const { data: usersTest, error: usersError } = await this.client
+      const { error: usersError } = await this.client
         .from('users')
         .select('id')
         .limit(1);
@@ -693,7 +693,7 @@ class DatabaseWrapper {
       console.log('🔄 Attempting to initialize database tables...');
       
       // First, try to check if we have basic read access
-      const { data: testRead, error: readError } = await this.client
+      const { error: readError } = await this.client
         .from('users')
         .select('id')
         .limit(1);

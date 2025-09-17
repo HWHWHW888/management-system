@@ -8,7 +8,8 @@ export class DatabaseWrapper {
   async testConnection() {
     try {
       // Test backend API health
-      const response = await fetch('http://localhost:3001/health');
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${apiUrl?.replace('/api', '')}/health`);
       const data = await response.json();
       
       if (response.ok && data.status === 'OK') {
@@ -206,93 +207,37 @@ export class DatabaseWrapper {
       console.log('🔐 DatabaseWrapper: Login response:', response);
       
       if (!response.success) {
-        throw new Error(response.error || 'Login failed');
+        throw new Error((response as any).error || 'Login failed');
       }
       
-      // Extract token from nested response structure
+      // ApiClient now handles token storage automatically
+      // Just extract the user data from the response
+      const responseData = response.data as any;
+      let user = null;
       let token = null;
       
-      // Check response.data.data.token (nested structure from apiClient)
-      if (response.data && response.data.data && typeof response.data.data === 'object' && 'token' in response.data.data) {
-        token = response.data.data.token;
-        console.log('🔑 DatabaseWrapper: Found token in response.data.data:', token ? 'YES' : 'NO');
-      }
-      // Fallback: check response.data.token (direct structure)
-      else if (response.data && typeof response.data === 'object' && 'token' in response.data) {
-        token = (response.data as any).token;
-        console.log('🔑 DatabaseWrapper: Found token in response.data:', token ? 'YES' : 'NO');
+      if (responseData?.data?.user) {
+        user = responseData.data.user;
+        token = responseData.data.token;
+      } else if (responseData?.user) {
+        user = responseData.user;
+        token = responseData.token;
       } else {
-        console.log('❌ DatabaseWrapper: No token found in either location');
-        console.log('🔍 DatabaseWrapper: response.data structure:', response.data);
-        console.log('🔍 DatabaseWrapper: response.data.data structure:', response.data?.data);
+        // Fallback - create user from response data
+        user = {
+          id: responseData?.id || 'admin-1',
+          username: responseData?.username || username,
+          role: responseData?.role || 'admin'
+        };
       }
       
-      console.log('🔍 DatabaseWrapper: Login response data:', response.data);
-      console.log('🔍 DatabaseWrapper: Extracted token:', token ? 'YES' : 'NO');
+      console.log('🔑 DatabaseWrapper: User extracted:', user);
+      console.log('🔑 DatabaseWrapper: Token present:', token ? 'YES' : 'NO');
       
-      if (token) {
-        console.log('🔑 DatabaseWrapper: Found token in login response');
-        
-        // Get user data from nested response structure
-        const user = response.data && response.data.data && typeof response.data.data === 'object' && 'user' in response.data.data 
-          ? response.data.data.user 
-          : (response.data && typeof response.data === 'object' && 'user' in response.data 
-            ? (response.data as any).user 
-            : {});
-        
-        // Create user object with token - ensure all fields are included
-        const userWithToken = { 
-          ...user, 
-          token: token,  // JWT token
-          id: user.id || '80709c8d-8bca-4e4b-817f-c6219d8af871',
-          username: user.username || 'admin',
-          role: user.role || 'admin'
-        };
-        
-        console.log('🔍 DatabaseWrapper: Final user object being returned:', userWithToken);
-        
-        // Save to localStorage
-        localStorage.setItem('casinoUser', JSON.stringify(userWithToken));
-        console.log('🔑 DatabaseWrapper: Saved user with token to localStorage:', userWithToken);
-        
-        // Verify localStorage save
-        const savedData = localStorage.getItem('casinoUser');
-        console.log('🔍 DatabaseWrapper: Verified localStorage data:', savedData);
-        
-        // Set token in TokenManager
-        const { tokenManager } = await import('../auth/tokenManager');
-        tokenManager.setToken(token);
-        console.log('🔑 DatabaseWrapper: Set token in tokenManager');
-        
-        // Set token in API client
-        apiClient.setToken(token);
-        console.log('🔑 DatabaseWrapper: Set token in apiClient');
-        
-          console.log('🔑 DatabaseWrapper: All token operations completed');
-        
-        // Return the complete user object with all fields
-        return userWithToken;
-      } else {
-        console.log('❌ DatabaseWrapper: No token found in login response');
-        console.log('🔍 DatabaseWrapper: Full response:', response);
-        
-        // Even without token, create a complete user object with role from nested structure
-        const user = response.data && response.data.data && typeof response.data.data === 'object' && 'user' in response.data.data 
-          ? response.data.data.user 
-          : (response.data && typeof response.data === 'object' && 'user' in response.data 
-            ? (response.data as any).user 
-            : (response.data && typeof response.data === 'object' ? response.data : {}));
-        
-        const userWithoutToken = {
-          ...user,
-          id: user.id || '80709c8d-8bca-4e4b-817f-c6219d8af871',
-          username: user.username || 'admin',
-          role: user.role || 'admin'
-        };
-        
-        console.log('🔍 DatabaseWrapper: User object without token:', userWithoutToken);
-        return userWithoutToken;
-      }
+      // ApiClient already saved to localStorage and set tokens
+      // Just return the user object
+      return user;
+      
     } catch (error) {
       console.error('Login error:', error);
       throw error;

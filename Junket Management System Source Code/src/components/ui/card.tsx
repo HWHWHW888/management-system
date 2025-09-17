@@ -37,13 +37,15 @@ CardHeader.displayName = "CardHeader";
 const CardTitle = React.forwardRef<
   HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <h4
     ref={ref}
     data-slot="card-title"
     className={cn("leading-none", className)}
     {...props}
-  />
+  >
+    {children}
+  </h4>
 ));
 CardTitle.displayName = "CardTitle";
 

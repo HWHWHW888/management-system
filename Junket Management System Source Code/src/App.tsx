@@ -4,9 +4,8 @@ import { Dashboard } from './components/Dashboard';
 import { CustomerManagement } from './components/CustomerManagement';
 import { AgentManagement } from './components/AgentManagement';
 import { StaffManagement } from './components/StaffManagement';
-import { StaffPortal } from './components/StaffPortal';
+import { StaffSelfService } from './components/StaffSelfService';
 import ProjectManagement from './components/ProjectManagement';
-import { Reports } from './components/Reports';
 import { DataManagement } from './components/DataManagement';
 import { Button } from './components/ui/button';
 import { Alert, AlertDescription } from './components/ui/alert';
@@ -14,8 +13,11 @@ import { LogOut, Users, UserCheck, BarChart3, MapPin, ShieldCheck, Clock, Databa
 import { User } from './types';
 import { db } from './utils/api/databaseWrapper';
 import { Badge } from './components/ui/badge';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
+import { LanguageToggle } from './components/LanguageToggle';
 
-function App() {
+function AppContent() {
+  const { t } = useLanguage();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isDatabaseHealthy, setIsDatabaseHealthy] = useState(true);
@@ -27,6 +29,16 @@ function App() {
 
   useEffect(() => {
     initializeApplication();
+    
+    // Test API connection for Cloudflare Pages deployment
+    fetch(`${process.env.REACT_APP_API_URL?.replace('/api', '')}/health`)
+      .then(res => res.json())
+      .then(data => {
+        console.log('✅ Backend health check:', data);
+      })
+      .catch(error => {
+        console.error('❌ Backend health check failed:', error);
+      });
   }, []);
 
   const initializeApplication = async () => {
@@ -283,6 +295,7 @@ function App() {
   const isAdmin = currentUser?.role === 'admin';
   const isAgent = currentUser?.role === 'agent';
   const isStaff = currentUser?.role === 'staff';
+  const isBoss = currentUser?.role === 'boss';
 
   // Helper function to get display role
   const getDisplayRole = () => {
@@ -330,6 +343,7 @@ function App() {
               </Badge>
             </div>
             <div className="flex items-center space-x-4">
+              <LanguageToggle />
               {!isDatabaseHealthy && (
                 <Button
                   variant="outline"
@@ -352,91 +366,11 @@ function App() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Error Banner */}
-        {errorMessage && (
-          <Alert className="mb-6 border-red-200 bg-red-50">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            <AlertDescription className="text-red-800">
-              <strong>Database Error:</strong> {errorMessage}
-              <div className="mt-2">
-                <Button
-                  onClick={refreshDatabaseHealth}
-                  size="sm"
-                  variant="outline"
-                  className="text-red-800 border-red-300 hover:bg-red-100"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Try Again
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Data Preservation Status */}
-        {dataPreservationMessage && (
-          <Alert className="mb-6 border-green-200 bg-green-50">
-            <Shield className="w-5 h-5 text-green-600" />
-            <AlertDescription className="text-green-800">
-              <strong>Data Preserved:</strong> {dataPreservationMessage}
-              <p className="text-xs text-green-600 mt-1">
-                Your keyed-in data is safe and will persist across system refreshes and upgrades.
-              </p>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Database Status Banner */}
-        {isDatabaseHealthy && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Database className="w-5 h-5 text-green-600 mr-2" />
-                <div>
-                  <p className="text-sm font-medium text-green-800">
-                    ✅ Supabase Database Connected with Data Protection
-                  </p>
-                  <p className="text-xs text-green-600">
-                    All data is securely stored and synced with cloud database. Your entered data is preserved across refreshes.
-                    {connectionDetails?.details && ` ${connectionDetails.details}`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Badge variant="outline" className="text-xs bg-green-100 text-green-700">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  Live
-                </Badge>
-                <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700">
-                  <Shield className="w-3 h-3 mr-1" />
-                  Protected
-                </Badge>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Staff Welcome Message */}
-        {isStaff && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center">
-              <Clock className="w-5 h-5 text-blue-600 mr-2" />
-              <div>
-                <p className="text-sm font-medium text-blue-800">
-                  Welcome to the Staff Portal
-                </p>
-                <p className="text-xs text-blue-600">
-                  You have access to customer information, agent details, check-in/out functions, and reports.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Navigation Tabs */}
         <div className="flex flex-wrap space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
-          {/* Dashboard - Only for admin and agent */}
-          {(isAdmin || isAgent) && (
+          {/* Dashboard - For admin, agent, and boss */}
+          {(isAdmin || isAgent || isBoss) && (
             <button
               onClick={() => setActiveTab('dashboard')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -446,7 +380,7 @@ function App() {
               }`}
             >
               <BarChart3 className="w-4 h-4 mr-2" />
-              Dashboard
+              {t('dashboard')}
             </button>
           )}
 
@@ -461,12 +395,12 @@ function App() {
               }`}
             >
               <Clock className="w-4 h-4 mr-2" />
-              Check-in/Out
+              {t('checkinout')}
             </button>
           )}
 
-          {/* Customers - For admin, agent, and staff */}
-          {(isAdmin || isAgent || isStaff) && (
+          {/* Customers - For admin, agent, staff, and boss */}
+          {(isAdmin || isAgent || isStaff || isBoss) && (
             <button
               onClick={() => setActiveTab('customers')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -476,12 +410,12 @@ function App() {
               }`}
             >
               <Users className="w-4 h-4 mr-2" />
-              Customers {isStaff && <span className="ml-1 text-xs text-gray-500">(View)</span>}
+              {t('customers')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}
             </button>
           )}
 
-          {/* Agents - For admin and staff */}
-          {(isAdmin || isStaff) && (
+          {/* Agents - For admin, staff, and boss */}
+          {(isAdmin || isStaff || isBoss) && (
             <button
               onClick={() => setActiveTab('agents')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -491,12 +425,12 @@ function App() {
               }`}
             >
               <UserCheck className="w-4 h-4 mr-2" />
-              Agents {isStaff && <span className="ml-1 text-xs text-gray-500">(View)</span>}
+              {t('agents')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}
             </button>
           )}
 
-          {/* Staff Management - Admin only */}
-          {isAdmin && (
+          {/* Staff Management - Admin and boss */}
+          {(isAdmin || isBoss) && (
             <button
               onClick={() => setActiveTab('staff')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -506,12 +440,12 @@ function App() {
               }`}
             >
               <ShieldCheck className="w-4 h-4 mr-2" />
-              Staff
+              {t('staff')}
             </button>
           )}
 
-          {/* Projects - Admin and agent only */}
-          {(isAdmin || isAgent) && (
+          {/* Projects - Admin, agent, and boss */}
+          {(isAdmin || isAgent || isBoss) && (
             <button
               onClick={() => setActiveTab('projects')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -521,12 +455,12 @@ function App() {
               }`}
             >
               <MapPin className="w-4 h-4 mr-2" />
-              Projects
+              {t('projects')}
             </button>
           )}
 
-          {/* Data Management - Admin only */}
-          {isAdmin && (
+          {/* Data Management - Admin and boss */}
+          {(isAdmin || isBoss) && (
             <button
               onClick={() => setActiveTab('data')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -536,12 +470,12 @@ function App() {
               }`}
             >
               <Settings className="w-4 h-4 mr-2" />
-              Data
+              {t('data')}
             </button>
           )}
 
-          {/* Reports - For all users */}
-          <button
+          {/* Reports - For all users - TEMPORARILY HIDDEN */}
+          {/* <button
             onClick={() => setActiveTab('reports')}
             className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'reports'
@@ -551,20 +485,28 @@ function App() {
           >
             <BarChart3 className="w-4 h-4 mr-2" />
             Reports
-          </button>
+          </button> */}
         </div>
 
         {/* Content */}
         {activeTab === 'dashboard' && <Dashboard user={currentUser} />}
-        {activeTab === 'customers' && (isAdmin || isAgent || isStaff) && <CustomerManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
-        {activeTab === 'agents' && (isAdmin || isStaff) && <AgentManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
-        {activeTab === 'staff' && isAdmin && <StaffManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
-        {activeTab === 'checkinout' && isStaff && <StaffPortal user={currentUser} showError={() => {}} clearError={() => {}} />}
-        {activeTab === 'projects' && (isAdmin || isAgent) && <ProjectManagement />}
-        {activeTab === 'data' && isAdmin && <DataManagement user={currentUser} />}
-        {activeTab === 'reports' && <Reports user={currentUser} />}
+        {activeTab === 'customers' && (isAdmin || isAgent || isStaff || isBoss) && <CustomerManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
+        {activeTab === 'agents' && (isAdmin || isStaff || isBoss) && <AgentManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
+        {activeTab === 'staff' && (isAdmin || isBoss) && <StaffManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
+        {activeTab === 'checkinout' && isStaff && <StaffSelfService user={currentUser} showError={() => {}} clearError={() => {}} />}
+        {activeTab === 'projects' && (isAdmin || isAgent || isBoss) && <ProjectManagement user={currentUser} />}
+        {activeTab === 'data' && (isAdmin || isBoss) && <DataManagement user={currentUser} />}
+        {/* {activeTab === 'reports' && <Reports user={currentUser} />} */}
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }
 
