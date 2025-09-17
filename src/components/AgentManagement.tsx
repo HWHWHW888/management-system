@@ -70,7 +70,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
 
   useEffect(() => {
     loadAllData();
-  }, []);
+  }, [loadAllData]);
 
   // Note: Direct agent saving removed - now using backend API endpoints
 

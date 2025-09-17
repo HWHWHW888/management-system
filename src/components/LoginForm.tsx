@@ -4,11 +4,10 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
-import { Badge } from './ui/badge';
 import { User } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { db as databaseWrapper } from '../utils/api/databaseWrapper';
-import { Database, Shield, Info, AlertTriangle, CheckCircle, Key, Users, RefreshCw, Bug } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 interface LoginFormProps {
   onLogin: (user: User) => void;
@@ -19,9 +18,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showTestCredentials, setShowTestCredentials] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
-  const [connectionTest, setConnectionTest] = useState<any>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,60 +77,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           console.error('Connection test failed:', testError);
         }
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fillTestCredentials = (role: string) => {
-    switch (role) {
-      case 'admin':
-        setUsername('admin');
-        setPassword('admin123');
-        break;
-      case 'agent':
-        setUsername('agent1');
-        setPassword('agent123');
-        break;
-      case 'staff':
-        setUsername('staff1');
-        setPassword('staff123');
-        break;
-    }
-    setError('');
-  };
-
-  const testDatabaseConnection = async () => {
-    setIsLoading(true);
-    try {
-      const testResult = await db.testConnection();
-      setConnectionTest(testResult);
-      
-      if (testResult.success) {
-        setError('');
-        console.log('✅ Database connection test successful');
-      } else {
-        setError(`Connection test failed: ${testResult.message}`);
-        console.error('❌ Database connection test failed:', testResult);
-      }
-    } catch (error: any) {
-      setError(`Connection test error: ${error.message}`);
-      console.error('❌ Connection test error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const initializeAdminAccount = async () => {
-    setIsLoading(true);
-    try {
-      console.log('🔧 Manually initializing admin account...');
-      await db.initializeSampleDataIfNeeded();
-      setError('');
-      alert('Admin account initialized successfully! Try logging in with admin/admin123');
-    } catch (error: any) {
-      setError(`Initialization failed: ${error.message}`);
-      console.error('❌ Admin initialization error:', error);
     } finally {
       setIsLoading(false);
     }

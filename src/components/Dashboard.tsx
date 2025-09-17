@@ -215,7 +215,7 @@ export function Dashboard({ user }: DashboardProps) {
   // Load data on component mount
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   // Filter data based on user role
   const getFilteredData = () => {

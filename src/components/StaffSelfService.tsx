@@ -64,7 +64,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
     } finally {
       setIsLoading(false);
     }
-  }, [user.id, clearError, showError]);
+  }, [user, clearError, showError]);
 
   useEffect(() => {
     loadStaffData();

@@ -135,7 +135,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
 
   useEffect(() => {
     loadAllData();
-  }, []);
+  }, [loadAllData]);
 
   // Remove syncStaffWithUsers as it's no longer needed with new API architecture
 

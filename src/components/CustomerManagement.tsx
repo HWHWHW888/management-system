@@ -210,7 +210,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   // Load data on component mount
   useEffect(() => {
     loadRealTimeData();
-  }, []);
+  }, [loadRealTimeData]);
 
   // Filter customers based on user role
   const getFilteredCustomers = () => {

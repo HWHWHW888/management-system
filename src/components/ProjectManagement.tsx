@@ -25,7 +25,7 @@ import {
 } from '../utils/currency';
 import { 
   MapPin, RefreshCw, Users, DollarSign, Settings, Plus, Trash2, Eye,
-  BarChart, UserCheck, X, CheckCircle, Share2, AlertTriangle
+  BarChart, UserCheck, X, Share2, AlertTriangle
 } from 'lucide-react';
 
 
@@ -57,7 +57,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [selectedTripTab, setSelectedTripTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [dataLoaded, setDataLoaded] = useState(false);
   
@@ -372,7 +371,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       setCustomers(customersData || []);
       setAgents(agentsData || []);
       setStaff(staffData || []);
-      setLastSyncTime(new Date());
       setDataLoaded(true);
       
       console.log(`✅ Basic project data loaded quickly: ${transformedTrips.length} trips`);
@@ -449,7 +447,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   // Initial data load only
   useEffect(() => {
     loadAllRealTimeData(true);
-  }, []);
+  }, [loadAllRealTimeData]);
 
 
   // Load detailed data when trip is selected
@@ -465,7 +463,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       loadTripSharing(selectedTrip.id);
       loadAgentProfits(selectedTrip.id);
     }
-  }, [selectedTrip?.id]);
+  }, [selectedTrip, loadTripExpenses, loadTripSharing, loadAgentProfits]);
 
   // Filter trips based on user role
   const getFilteredTrips = () => {
@@ -484,7 +482,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       setSaving(true);
       await db.save('trips', updatedTrips);
       setTrips(updatedTrips);
-      setLastSyncTime(new Date());
       console.log('✅ Trips saved to Supabase');
     } catch (error) {
       console.error('❌ Error saving trips:', error);
