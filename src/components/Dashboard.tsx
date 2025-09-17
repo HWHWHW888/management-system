@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
-import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
-import { Button } from './ui/button';
 import { 
   Users, UserCheck, TrendingDown, DollarSign, Receipt, Trophy, Target, 
-  MapPin, Activity, Database, 
-  RefreshCw, AlertTriangle, Zap
+  MapPin, Activity
 } from 'lucide-react';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
@@ -122,8 +119,6 @@ interface DashboardProps {
   user: User;
 }
 
-// Real-time refresh interval (30 seconds)
-const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 export function Dashboard({ user }: DashboardProps) {
   // Data states with real-time updates
@@ -135,11 +130,6 @@ export function Dashboard({ user }: DashboardProps) {
   
   // Loading and sync states
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'error'>('connected');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [isRealTimeEnabled, setIsRealTimeEnabled] = useState(true);
 
   // Helper functions
   const safeFormatNumber = (value: number | undefined | null): string => {
@@ -156,13 +146,10 @@ export function Dashboard({ user }: DashboardProps) {
     return value;
   };
 
-  // Real-time data loading from Supabase with API integration
-  const loadRealTimeData = useCallback(async () => {
+  // Data loading from API
+  const loadData = useCallback(async () => {
     try {
-      setRefreshing(true);
-      setErrorMessage('');
-      
-      console.log('🔄 Loading real-time dashboard data from API...');
+      console.log('🔄 Loading dashboard data from API...');
       
       // Load all required data from API in parallel
       const [agentsData, customersData, transactionsData, tripsApiResponse] = await Promise.all([
@@ -180,17 +167,6 @@ export function Dashboard({ user }: DashboardProps) {
         trips: Array.isArray(tripsData) ? tripsData.length : 0,
         transactions: Array.isArray(transactionsData) ? transactionsData.length : 0
       });
-
-      // Debug: Log sample data
-      if (Array.isArray(customersData) && customersData.length > 0) {
-        console.log('🔍 Sample customer data:', customersData[0]);
-      }
-      if (Array.isArray(tripsData) && tripsData.length > 0) {
-        console.log('🔍 Sample trip data with sharing:', tripsData[0]);
-      }
-      if (Array.isArray(transactionsData) && transactionsData.length > 0) {
-        console.log('🔍 Sample transaction data:', transactionsData[0]);
-      }
 
       // Process customers - use database totals directly
       const processedCustomers = (Array.isArray(customersData) ? customersData : []).map((customer: any) => {
@@ -214,11 +190,9 @@ export function Dashboard({ user }: DashboardProps) {
 
       // Process trips - preserve sharing data from API directly
       const processedTrips = (Array.isArray(tripsData) ? tripsData : []).map((trip: any) => {
-        console.log('🔍 Processing trip:', trip.trip_name, 'sharing data:', trip.sharing);
         return {
           ...trip,
           attachments: trip.attachments || []
-          // Don't override sharing - keep original API data
         };
       });
 
@@ -226,51 +200,22 @@ export function Dashboard({ user }: DashboardProps) {
       setAgents(agentsData);
       setCustomers(processedCustomers);
       setTrips(processedTrips);
-      setRollingRecords([]); // No longer extracting from trips
+      setRollingRecords([]);
       setBuyInOutRecords(transactionsData || []);
-      setLastSyncTime(new Date());
-      setConnectionStatus('connected');
       
-      console.log(`✅ Real-time dashboard data loaded: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips with sharing data`);
+      console.log(`✅ Dashboard data loaded: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips`);
       
     } catch (error) {
-      console.error('❌ Error loading real-time dashboard data:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      setErrorMessage(`Failed to load dashboard data: ${errorMessage}`);
-      setConnectionStatus('error');
+      console.error('❌ Error loading dashboard data:', error);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
-  // Real-time data sync with automatic refresh
+  // Load data on component mount
   useEffect(() => {
-    loadRealTimeData();
-    
-    // Set up real-time refresh interval
-    let refreshInterval: NodeJS.Timeout;
-    if (isRealTimeEnabled) {
-      refreshInterval = setInterval(() => {
-        console.log('🔄 Real-time dashboard refresh triggered');
-        loadRealTimeData();
-      }, REAL_TIME_REFRESH_INTERVAL);
-    }
-
-    return () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-      }
-    };
-  }, [loadRealTimeData, isRealTimeEnabled]);
-
-  // Toggle real-time updates
-  const toggleRealTime = () => {
-    setIsRealTimeEnabled(!isRealTimeEnabled);
-    if (!isRealTimeEnabled) {
-      loadRealTimeData(); // Refresh immediately when re-enabling
-    }
-  };
+    loadData();
+  }, []);
 
   // Filter data based on user role
   const getFilteredData = () => {

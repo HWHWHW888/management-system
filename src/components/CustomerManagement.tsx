@@ -10,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import { Alert, AlertDescription } from './ui/alert';
 import { User, Agent, Customer, FileAttachment, Trip, TripCustomer, RollingRecord, BuyInOutRecord } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
@@ -19,9 +18,9 @@ import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { 
   Plus, Edit, Mail, DollarSign, TrendingUp, TrendingDown, Paperclip, MapPin, Target, 
-  ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, Database, Save, RefreshCw, Activity, 
-  IdCard, Heart, FileText, CheckCircle, ArrowUpCircle, ArrowDownCircle, 
-  Building2, Receipt, Wallet
+  ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, 
+  IdCard, Heart, FileText, ArrowUpCircle, ArrowDownCircle, 
+  Building2, Receipt, Wallet, Save, Activity, CheckCircle
 } from 'lucide-react';
 
 interface CustomerManagementProps extends WithErrorHandlerProps {
@@ -37,8 +36,6 @@ interface CustomerTripHistory {
   customerData: TripCustomer;
 }
 
-// Real-time refresh interval (30 seconds)
-const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 function CustomerManagementComponent({ user, showError, clearError }: CustomerManagementProps) {
   const isReadOnly = isReadOnlyRole(user.role);
@@ -54,9 +51,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [lastDataUpdate, setLastDataUpdate] = useState<Date | null>(null);
   
   // Basic customer form data
   const [formData, setFormData] = useState({
@@ -96,7 +91,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   // Load real-time data from Supabase
   const loadRealTimeData = useCallback(async () => {
     try {
-      setIsRefreshing(true);
       clearError();
       
       console.log('🔄 Loading real-time customer data from Supabase...');
@@ -203,8 +197,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       setTrips(processedTrips);
       setRollingRecords(rollingData);
       setBuyInOutRecords(buyInOutData);
-      setLastDataUpdate(new Date());
-      
       console.log(`✅ Loaded real-time data: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips, ${rollingData.length} rolling records`);
       
     } catch (error) {
@@ -212,24 +204,13 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       showError(`Failed to load customer data: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     } finally {
       setLoading(false);
-      setIsRefreshing(false);
     }
   }, [clearError, showError]);
 
-  // Real-time data sync
+  // Load data on component mount
   useEffect(() => {
     loadRealTimeData();
-    
-    // Set up real-time refresh interval
-    const refreshInterval = setInterval(() => {
-      console.log('🔄 Real-time customer data refresh triggered');
-      loadRealTimeData();
-    }, REAL_TIME_REFRESH_INTERVAL);
-
-    return () => {
-      clearInterval(refreshInterval);
-    };
-  }, [loadRealTimeData]);
+  }, []);
 
   // Filter customers based on user role
   const getFilteredCustomers = () => {

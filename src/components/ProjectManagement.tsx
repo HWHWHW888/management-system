@@ -24,13 +24,11 @@ import {
   getCurrencySymbol
 } from '../utils/currency';
 import { 
-  MapPin, RefreshCw, Activity, AlertTriangle, Zap,
-  Users, DollarSign, Settings, Plus, Trash2, Eye,
-  BarChart, UserCheck, X, CheckCircle, Share2
+  MapPin, RefreshCw, Users, DollarSign, Settings, Plus, Trash2, Eye,
+  BarChart, UserCheck, X, CheckCircle, Share2, AlertTriangle
 } from 'lucide-react';
 
 
-const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 interface ProjectManagementProps {
   user?: { role: string; agentId?: string | null; username: string };
@@ -60,7 +58,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [isRealTimeEnabled, setIsRealTimeEnabled] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [dataLoaded, setDataLoaded] = useState(false);
   
@@ -452,24 +449,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   // Initial data load only
   useEffect(() => {
     loadAllRealTimeData(true);
-  }, [loadAllRealTimeData]);
+  }, []);
 
-  // Separate effect for real-time updates (less frequent)
-  useEffect(() => {
-    let refreshInterval: NodeJS.Timeout;
-    if (isRealTimeEnabled && dataLoaded) {
-      refreshInterval = setInterval(() => {
-        console.log('🔄 Real-time refresh triggered');
-        loadAllRealTimeData(true);
-      }, REAL_TIME_REFRESH_INTERVAL * 2); // Double the interval to reduce load
-    }
-
-    return () => {
-      if (refreshInterval) {
-        clearInterval(refreshInterval);
-      }
-    };
-  }, [isRealTimeEnabled, dataLoaded, loadAllRealTimeData]);
 
   // Load detailed data when trip is selected
   useEffect(() => {
@@ -480,16 +461,17 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         customers: selectedTrip.customers,
         agents: selectedTrip.agents
       });
+      loadTripExpenses(selectedTrip.id);
+      loadTripSharing(selectedTrip.id);
       loadAgentProfits(selectedTrip.id);
     }
-  }, [selectedTrip, selectedTripTab, loadAgentProfits]);
+  }, [selectedTrip?.id]);
 
-  // Get filtered trips based on user role
+  // Filter trips based on user role
   const getFilteredTrips = () => {
     if (currentUser.role === 'agent' && currentUser.agentId) {
       return trips.filter(trip => 
-        trip.agents?.some(agent => agent.agentId === currentUser.agentId) || 
-        trip.agentId === currentUser.agentId
+        trip.agents && trip.agents.some(agent => agent.agentId === currentUser.agentId)
       );
     }
     // Boss and admin roles can see all trips
@@ -1007,32 +989,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
 
   const filteredTrips = getFilteredTrips();
   
-  // Debug logging
-  useEffect(() => {
-    const debugInfo = async () => {
-      const hasToken = await tokenManager.getToken();
-      console.log('📊 Debug info:', {
-        trips: trips?.length,
-        filteredTrips: filteredTrips?.length,
-        dataLoaded,
-        loading,
-        userRole: currentUser.role,
-        agentId: currentUser.agentId,
-        hasToken: hasToken ? 'YES' : 'NO',
-        tripsData: trips.map(t => ({ id: t.id, name: t.name, status: t.status }))
-      });
-      
-      // Special debug for boss role
-      if (currentUser.role === 'boss') {
-        console.log('🔍 Boss role debug - should see all trips:', {
-          totalTrips: trips.length,
-          filteredTrips: filteredTrips.length,
-          tripsVisible: filteredTrips.map(t => t.name)
-        });
-      }
-    };
-    debugInfo();
-  }, [trips, filteredTrips, dataLoaded, loading, currentUser.role, currentUser.agentId]);
 
   // Loading state
   if (loading && !dataLoaded) {

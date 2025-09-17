@@ -13,7 +13,7 @@ import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { isReadOnlyRole } from '../utils/permissions';
 import { apiClient } from '../utils/api/apiClient';
-import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Database, Save, Eye } from 'lucide-react';
+import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Save, Eye } from 'lucide-react';
 
 interface AgentManagementProps extends WithErrorHandlerProps {
   user: User;
@@ -70,7 +70,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
 
   useEffect(() => {
     loadAllData();
-  }, [loadAllData]);
+  }, []);
 
   // Note: Direct agent saving removed - now using backend API endpoints
 

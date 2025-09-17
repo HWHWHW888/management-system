@@ -12,7 +12,7 @@ import { Textarea } from './ui/textarea';
 import { User, StaffShift, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Database, Save, Eye, UserPlus, Shield, Key, EyeOff, LogIn, LogOut, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Save, Eye, UserPlus, Key, EyeOff, LogIn, LogOut, Clock, RefreshCw, CheckCircle, Shield } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { apiClient } from '../utils/api/apiClient';
 import { isReadOnlyRole } from '../utils/permissions';
@@ -135,7 +135,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
 
   useEffect(() => {
     loadAllData();
-  }, [loadAllData]);
+  }, []);
 
   // Remove syncStaffWithUsers as it's no longer needed with new API architecture
 

@@ -8,7 +8,6 @@ import { StaffSelfService } from './components/StaffSelfService';
 import ProjectManagement from './components/ProjectManagement';
 import { DataManagement } from './components/DataManagement';
 import { Button } from './components/ui/button';
-import { Alert, AlertDescription } from './components/ui/alert';
 import { LogOut, Users, UserCheck, BarChart3, MapPin, ShieldCheck, Clock, Database, Settings, AlertTriangle, CheckCircle, Wifi, RefreshCw, Bug, Shield } from 'lucide-react';
 import { User } from './types';
 import { db } from './utils/api/databaseWrapper';
@@ -25,7 +24,6 @@ function AppContent() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [connectionDetails, setConnectionDetails] = useState<any>(null);
   const [debugMode, setDebugMode] = useState(false);
-  const [dataPreservationMessage, setDataPreservationMessage] = useState('');
 
   useEffect(() => {
     initializeApplication();
@@ -44,10 +42,9 @@ function AppContent() {
   const initializeApplication = async () => {
     setIsInitializing(true);
     setErrorMessage('');
-    setDataPreservationMessage('');
 
     try {
-      console.log('🚀 Initializing Casino Management System with data preservation...');
+      console.log('🚀 Initializing Casino Management System...');
       
       // Test connection with detailed feedback
       const connectionTest = await db.testConnection();
@@ -66,26 +63,9 @@ function AppContent() {
         throw new Error('Supabase database health check failed. The server may be temporarily unavailable.');
       }
 
-      // UPDATED: Safe initialization that preserves existing data
-      console.log('🛡️ Performing safe database initialization (preserving existing data)...');
+      // Safe initialization that preserves existing data
+      console.log('🛡️ Performing safe database initialization...');
       await db.initializeSampleDataIfNeeded();
-      
-      // Get data count after initialization to show preservation message
-      try {
-        const usersCount = (await db.get('users', [])).length;
-        const customersCount = (await db.get('customers', [])).length;
-        const agentsCount = (await db.get('agents', [])).length;
-        const tripsCount = (await db.get('trips', [])).length;
-        
-        const totalRecords = usersCount + customersCount + agentsCount + tripsCount;
-        if (totalRecords > 1) { // More than just the admin user
-          setDataPreservationMessage(
-            `✅ Data preserved: ${usersCount} users, ${customersCount} customers, ${agentsCount} agents, ${tripsCount} trips`
-          );
-        }
-      } catch (error) {
-        console.warn('Could not get data counts:', error);
-      }
 
       // Check for saved user session
       const savedUser = localStorage.getItem('casinoUser');
@@ -114,7 +94,7 @@ function AppContent() {
         }
       }
 
-      console.log('✅ Application initialization completed with data preservation');
+      console.log('✅ Application initialization completed');
 
     } catch (error) {
       console.error('❌ Application initialization failed:', error);
