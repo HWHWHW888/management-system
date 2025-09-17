@@ -68,15 +68,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       
       setError(error.message || 'Login failed');
       
-      // If login fails, run a connection test for debugging
-      if (debugMode) {
-        try {
-          const testResult = await db.testConnection();
-          setConnectionTest(testResult);
-        } catch (testError) {
-          console.error('Connection test failed:', testError);
-        }
-      }
     } finally {
       setIsLoading(false);
     }
