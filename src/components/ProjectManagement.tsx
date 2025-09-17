@@ -1340,7 +1340,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                         </div>
                         <div className="text-center">
                           <div className="text-gray-500 text-xs">Profit</div>
-                          <div className={`font-medium ${(trip.sharing?.net_result || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <div className={`font-medium ${(trip.sharing?.net_result || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
                             HK${safeFormatNumber(Math.abs(trip.sharing?.net_result || 0))}
                           </div>
                         </div>
@@ -1482,12 +1482,12 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                               </CardHeader>
                               <CardContent>
                                 <div className={`text-2xl font-bold ${
-                                  ((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                                  ((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) > 0 ? 'text-green-600' : 'text-red-600'
                                 }`}>
                                   {formatCurrency(Math.abs((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0), viewingCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">House perspective</p>
-                                <p className={`text-xs ${((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>After all expenses</p>
+                                <p className={`text-xs ${((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>After all expenses</p>
                               </CardContent>
                             </Card>
                           </div>
@@ -1666,7 +1666,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                   <div>
                                     <span className="text-sm text-gray-500">Win/Loss:</span>
                                     <div className={`font-medium ${
-                                      (tripCustomer.total_buy_in || 0) > (tripCustomer.total_cash_out || 0) ? 'text-green-600' : 'text-red-600'
+                                      (tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) > 0 ? 'text-green-600' : 'text-red-600'
                                     }`}>
                                       {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0)), viewingCurrency, selectedTrip)}
                                     </div>
@@ -1674,7 +1674,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                   <div>
                                     <span className="text-sm text-gray-500">Net Result:</span>
                                     <div className={`font-medium ${
-                                      ((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) - (tripCustomer.rolling_amount || 0)) >= 0 ? 'text-green-600' : 'text-red-600'
+                                      ((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) - (tripCustomer.rolling_amount || 0)) > 0 ? 'text-green-600' : 'text-red-600'
                                     }`}>
                                       {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) - (tripCustomer.rolling_amount || 0)), viewingCurrency, selectedTrip)}
                                     </div>
@@ -1842,9 +1842,9 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                         </div>
                                         <div className="text-right">
                                           <div className={`font-bold ${
-                                            customer.net_result >= 0 ? 'text-green-600' : 'text-red-600'
+                                            customer.net_result > 0 ? 'text-green-600' : 'text-red-600'
                                           }`}>
-                                            HK${safeFormatNumber(customer.net_result)}
+                                            HK${safeFormatNumber(Math.abs(customer.net_result))}
                                           </div>
                                           <div className="text-sm text-gray-500">Net Result</div>
                                         </div>
@@ -2320,7 +2320,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                             <div className="flex justify-between items-center p-3 bg-gray-100 rounded">
                               <span className="font-medium">Gross Profit</span>
                               <span className={`font-bold ${
-                                tripSharing.total_win_loss >= 0 ? 'text-red-600' : 'text-green-600'
+                                tripSharing.total_win_loss > 0 ? 'text-green-600' : 'text-red-600'
                               }`}>
                                 {formatCurrency(Math.abs(tripSharing.total_win_loss), viewingCurrency, selectedTrip)}
                               </span>

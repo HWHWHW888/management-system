@@ -15,6 +15,8 @@ router.get('/', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
+        const { trip_id, customer_id } = req.query;
+        
         let query = supabase
             .from('transactions')
             .select(`
@@ -29,12 +31,83 @@ router.get('/', authenticateToken, async (req, res) => {
           trip:trips(id, trip_name, destination, start_date, end_date)
         `)
             .order('created_at', { ascending: false });
+        
+        // Apply filters if provided
+        if (trip_id) {
+            query = query.eq('trip_id', trip_id);
+        }
+        if (customer_id) {
+            query = query.eq('customer_id', customer_id);
+        }
         // Staff can only see transactions for their trips
         if (userRole === 'staff') {
-            query = query.in('trip_id', supabase.from('trips').select('id').eq('staff_id', userId));
+            console.log('Staff user accessing transactions, userId:', userId, 'staffId:', req.user.staff_id, 'trip_id:', trip_id);
+            
+            const staffId = req.user.staff_id;
+            if (!staffId) {
+                console.error('Staff user has no staff_id:', userId);
+                return res.status(403).json({
+                    error: 'Staff record not found'
+                });
+            }
+            
+            // If trip_id is provided in query, check if staff has access to that specific trip
+            if (trip_id) {
+                const { data: trip, error: tripError } = await supabase
+                    .from('trips')
+                    .select('id, staff_id')
+                    .eq('id', trip_id)
+                    .single();
+                
+                if (tripError || !trip) {
+                    console.error('Trip not found:', trip_id, tripError);
+                    return res.status(404).json({
+                        error: 'Trip not found',
+                        details: tripError?.message
+                    });
+                }
+                
+                console.log('Trip staff_id:', trip.staff_id, 'User staff_id:', staffId);
+                if (trip.staff_id !== staffId) {
+                    return res.status(403).json({
+                        error: 'Access denied to this trip'
+                    });
+                }
+                // Trip access verified, query will already be filtered by trip_id
+            } else {
+                // Get all trip IDs for this staff member
+                const { data: staffTrips, error: tripError } = await supabase
+                    .from('trips')
+                    .select('id')
+                    .eq('staff_id', staffId);
+                
+                if (tripError) {
+                    console.error('Failed to fetch staff trips:', tripError);
+                    return res.status(500).json({
+                        error: 'Failed to fetch staff trips',
+                        details: tripError.message
+                    });
+                }
+                
+                const tripIds = staffTrips?.map(trip => trip.id) || [];
+                console.log('Staff trip IDs:', tripIds);
+                
+                if (tripIds.length === 0) {
+                    // Staff has no trips, return empty result
+                    return res.json({
+                        success: true,
+                        data: [],
+                        userRole,
+                        total: 0
+                    });
+                }
+                
+                query = query.in('trip_id', tripIds);
+            }
         }
         const { data: transactions, error } = await query;
         if (error) {
+            console.error('Transaction query error:', error);
             return res.status(500).json({
                 error: 'Failed to fetch transactions',
                 details: error.message
@@ -48,6 +121,8 @@ router.get('/', authenticateToken, async (req, res) => {
         });
     }
     catch (error) {
+        console.error('❌ GET /transactions endpoint error:', error);
+        console.error('Error stack:', error.stack);
         res.status(500).json({
             error: 'Internal server error',
             details: error.message
@@ -376,7 +451,31 @@ router.get('/customer/:customerId', authenticateToken, async (req, res) => {
             .order('created_at', { ascending: false });
         // Staff can only see transactions for their trips
         if (userRole === 'staff') {
-            query = query.in('trip_id', supabase.from('trips').select('id').eq('staff_id', req.user.id));
+            // First get the trip IDs for this staff member
+            const { data: staffTrips, error: tripError } = await supabase
+                .from('trips')
+                .select('id')
+                .eq('staff_id', req.user.id);
+            
+            if (tripError) {
+                return res.status(500).json({
+                    error: 'Failed to fetch staff trips',
+                    details: tripError.message
+                });
+            }
+            
+            const tripIds = staffTrips?.map(trip => trip.id) || [];
+            if (tripIds.length === 0) {
+                // Staff has no trips, return empty result
+                return res.json({
+                    success: true,
+                    data: [],
+                    totals: {},
+                    totalTransactions: 0
+                });
+            }
+            
+            query = query.in('trip_id', tripIds);
         }
         const { data: transactions, error } = await query;
         if (error) {

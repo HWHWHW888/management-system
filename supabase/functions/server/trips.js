@@ -845,25 +845,23 @@ router.get('/my-schedule', authenticateToken, async (req, res) => {
                 });
             }
             
-            // For staff, get trips through trip_staff junction table using staff_id
+            // For staff, get trips where they are assigned as staff_id
             const { data: staffTrips, error: staffError } = await supabase
-                .from('trip_staff')
+                .from('trips')
                 .select(`
-                    trip_id,
-                    trips!inner(
-                        id,
-                        trip_name,
-                        destination,
-                        start_date,
-                        end_date,
-                        status,
-                        total_budget,
-                        created_at,
-                        updated_at,
-                        activecustomerscount
-                    )
+                    id,
+                    trip_name,
+                    destination,
+                    start_date,
+                    end_date,
+                    status,
+                    total_budget,
+                    created_at,
+                    updated_at,
+                    activecustomerscount
                 `)
-                .eq('staff_id', userRecord.staff_id);
+                .eq('staff_id', userRecord.staff_id)
+                .eq('status', 'active');
                 
             if (staffError) {
                 return res.status(500).json({
@@ -872,10 +870,8 @@ router.get('/my-schedule', authenticateToken, async (req, res) => {
                 });
             }
             
-            // Extract trips from the junction table results and filter for active trips
-            trips = staffTrips
-                ?.map(st => st.trips)
-                ?.filter(trip => trip.status === 'active') || [];
+            // Use trips directly since we already filtered by status
+            trips = staffTrips || [];
         } else {
             // For admin/other roles, get all active trips
             const { data: allTrips, error } = await supabase
@@ -3153,6 +3149,8 @@ router.get('/:id/customer-stats', authenticateToken, canAccessTrip, async (req, 
   try {
     const tripId = req.params.id;
 
+    console.log('🔍 Fetching customer stats for trip:', tripId);
+    
     const { data: customerStats, error } = await supabase
       .from('trip_customer_stats')
       .select(`
@@ -3161,6 +3159,8 @@ router.get('/:id/customer-stats', authenticateToken, canAccessTrip, async (req, 
       `)
       .eq('trip_id', tripId)
       .order('net_result', { ascending: false });
+      
+    console.log('📊 Customer stats result:', { count: customerStats?.length, error });
 
     if (error) {
       return res.status(500).json({
