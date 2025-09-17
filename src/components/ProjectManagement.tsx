@@ -146,7 +146,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const isAdmin = currentUser.role === 'admin';
   const isAgent = currentUser.role === 'agent' && currentUser.agentId;
 
-  const loadTripExpenses = async (tripId: string) => {
+  const loadTripExpenses = useCallback(async (tripId: string) => {
     try {
       setExpensesLoading(true);
       const response = await apiClient.get(`/trips/${tripId}/expenses`);
@@ -159,9 +159,9 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     } finally {
       setExpensesLoading(false);
     }
-  };
+  }, [showError]);
 
-  const loadTripSharing = async (tripId: string) => {
+  const loadTripSharing = useCallback(async (tripId: string) => {
     try {
       setSharingLoading(true);
       const response = await apiClient.get(`/trips/${tripId}/sharing`);
@@ -174,7 +174,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     } finally {
       setSharingLoading(false);
     }
-  };
+  }, [showError]);
 
   const loadAgentProfits = useCallback(async (tripId: string) => {
     try {
