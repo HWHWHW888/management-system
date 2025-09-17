@@ -551,7 +551,7 @@ router.post('/login', async (req, res) => {
                             role: 'staff',
                             name: staffUser.name,
                             position: staffUser.position,
-                            staffId: staffUser.id
+                            staff_id: staffUser.id  // Use staff_id instead of staffId for consistency
                         };
                         error = null;
                         console.log('✅ Found staff user:', staffUser.username);
@@ -589,7 +589,10 @@ router.post('/login', async (req, res) => {
                     id: user.id,
                     username: user.username,
                     email: user.email,
-                    role: user.role
+                    role: user.role,
+                    staff_id: user.staff_id,  // Include staff_id for staff users
+                    name: user.name,
+                    position: user.position
                 },
                 token: token
             }

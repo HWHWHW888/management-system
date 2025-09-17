@@ -4,7 +4,7 @@ import { Dashboard } from './components/Dashboard';
 import { CustomerManagement } from './components/CustomerManagement';
 import { AgentManagement } from './components/AgentManagement';
 import { StaffManagement } from './components/StaffManagement';
-import { StaffPortal } from './components/StaffPortal';
+import { StaffSelfService } from './components/StaffSelfService';
 import ProjectManagement from './components/ProjectManagement';
 import { DataManagement } from './components/DataManagement';
 import { Button } from './components/ui/button';
@@ -366,86 +366,6 @@ function AppContent() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Error Banner */}
-        {errorMessage && (
-          <Alert className="mb-6 border-red-200 bg-red-50">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            <AlertDescription className="text-red-800">
-              <strong>Database Error:</strong> {errorMessage}
-              <div className="mt-2">
-                <Button
-                  onClick={refreshDatabaseHealth}
-                  size="sm"
-                  variant="outline"
-                  className="text-red-800 border-red-300 hover:bg-red-100"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Try Again
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Data Preservation Status */}
-        {dataPreservationMessage && (
-          <Alert className="mb-6 border-green-200 bg-green-50">
-            <Shield className="w-5 h-5 text-green-600" />
-            <AlertDescription className="text-green-800">
-              <strong>Data Preserved:</strong> {dataPreservationMessage}
-              <p className="text-xs text-green-600 mt-1">
-                Your keyed-in data is safe and will persist across system refreshes and upgrades.
-              </p>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Database Status Banner */}
-        {isDatabaseHealthy && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Database className="w-5 h-5 text-green-600 mr-2" />
-                <div>
-                  <p className="text-sm font-medium text-green-800">
-                    ✅ Supabase Database Connected with Data Protection
-                  </p>
-                  <p className="text-xs text-green-600">
-                    All data is securely stored and synced with cloud database. Your entered data is preserved across refreshes.
-                    {connectionDetails?.details && ` ${connectionDetails.details}`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Badge variant="outline" className="text-xs bg-green-100 text-green-700">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  Live
-                </Badge>
-                <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700">
-                  <Shield className="w-3 h-3 mr-1" />
-                  Protected
-                </Badge>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Staff Welcome Message */}
-        {isStaff && (
-          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center">
-              <Clock className="w-5 h-5 text-blue-600 mr-2" />
-              <div>
-                <p className="text-sm font-medium text-blue-800">
-                  Welcome to the Staff Portal
-                </p>
-                <p className="text-xs text-blue-600">
-                  You have access to customer information, agent details, check-in/out functions, and reports.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Navigation Tabs */}
         <div className="flex flex-wrap space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
@@ -573,7 +493,7 @@ function AppContent() {
         {activeTab === 'customers' && (isAdmin || isAgent || isStaff || isBoss) && <CustomerManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'agents' && (isAdmin || isStaff || isBoss) && <AgentManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'staff' && (isAdmin || isBoss) && <StaffManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
-        {activeTab === 'checkinout' && isStaff && <StaffPortal user={currentUser} showError={() => {}} clearError={() => {}} />}
+        {activeTab === 'checkinout' && isStaff && <StaffSelfService user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'projects' && (isAdmin || isAgent || isBoss) && <ProjectManagement user={currentUser} />}
         {activeTab === 'data' && (isAdmin || isBoss) && <DataManagement user={currentUser} />}
         {/* {activeTab === 'reports' && <Reports user={currentUser} />} */}

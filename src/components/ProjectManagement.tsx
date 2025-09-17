@@ -1052,54 +1052,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
 
   return (
     <div className="space-y-6">
-      {/* Status Header */}
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <MapPin className="w-5 h-5 text-blue-600 mr-3" />
-            <div>
-              <p className="text-sm font-medium text-blue-800">
-                🎯 Project Management - Agent Share CRUD Added
-              </p>
-              <p className="text-xs text-blue-600">
-                Full CRUD functionality for agent shares now available in trip details
-                {lastSyncTime && ` • Last sync: ${lastSyncTime.toLocaleTimeString()}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            {saving && (
-              <div className="flex items-center text-blue-600">
-                <Activity className="w-4 h-4 mr-1 animate-pulse" />
-                <span className="text-xs">Saving...</span>
-              </div>
-            )}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => loadAllRealTimeData(true)}
-              disabled={loading}
-              className="text-xs"
-            >
-              <RefreshCw className="w-3 h-3 mr-1" />
-              Refresh
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setIsRealTimeEnabled(!isRealTimeEnabled)}
-              className="text-xs"
-            >
-              <Zap className={`w-3 h-3 mr-1 ${isRealTimeEnabled ? 'text-green-500' : 'text-gray-500'}`} />
-              {isRealTimeEnabled ? 'Live' : 'Manual'}
-            </Button>
-            <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
-              <CheckCircle className="w-2 h-2 mr-1" />
-              CRUD Ready
-            </Badge>
-          </div>
-        </div>
-      </div>
 
       {/* Data Loading Status */}
       <div className="grid grid-cols-3 gap-4">

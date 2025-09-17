@@ -827,38 +827,83 @@ router.get('/my-schedule', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.role;
-        let query = supabase
-            .from('trips')
-            .select(`
-          id,
-          trip_name,
-          destination,
-          start_date,
-          end_date,
-          status,
-          total_budget,
-          created_at,
-          updated_at,
-          activecustomerscount,
-          staff!staff_id(id, name, email),
-          customers:trip_customers(
-            customer:customers(id, name, email, vip_level)
-          ),
-          expenses:trip_expenses(id, expense_type, amount, description, expense_date)
-        `);
-        // Staff can only see their assigned trips
+        
+        let trips = [];
+        
         if (userRole === 'staff') {
-            query = query.eq('staff_id', userId);
+            // For staff, first get the staff_id from users table
+            const { data: userRecord, error: userError } = await supabase
+                .from('users')
+                .select('staff_id')
+                .eq('id', userId)
+                .single();
+                
+            if (userError || !userRecord?.staff_id) {
+                return res.status(400).json({
+                    error: 'Staff ID not found for user',
+                    details: userError?.message
+                });
+            }
+            
+            // For staff, get trips through trip_staff junction table using staff_id
+            const { data: staffTrips, error: staffError } = await supabase
+                .from('trip_staff')
+                .select(`
+                    trip_id,
+                    trips!inner(
+                        id,
+                        trip_name,
+                        destination,
+                        start_date,
+                        end_date,
+                        status,
+                        total_budget,
+                        created_at,
+                        updated_at,
+                        activecustomerscount
+                    )
+                `)
+                .eq('staff_id', userRecord.staff_id);
+                
+            if (staffError) {
+                return res.status(500).json({
+                    error: 'Failed to fetch staff trips',
+                    details: staffError.message
+                });
+            }
+            
+            // Extract trips from the junction table results and filter for active trips
+            trips = staffTrips
+                ?.map(st => st.trips)
+                ?.filter(trip => trip.status === 'active') || [];
+        } else {
+            // For admin/other roles, get all active trips
+            const { data: allTrips, error } = await supabase
+                .from('trips')
+                .select(`
+                    id,
+                    trip_name,
+                    destination,
+                    start_date,
+                    end_date,
+                    status,
+                    total_budget,
+                    created_at,
+                    updated_at,
+                    activecustomerscount
+                `)
+                .eq('status', 'active');
+                
+            if (error) {
+                return res.status(500).json({
+                    error: 'Failed to fetch trips',
+                    details: error.message
+                });
+            }
+            
+            trips = allTrips || [];
         }
-        // Add filters for active trips
-        query = query.eq('status', 'active');
-        const { data: trips, error } = await query;
-        if (error) {
-            return res.status(500).json({
-                error: 'Failed to fetch trips',
-                details: error.message
-            });
-        }
+        
         res.json({
             success: true,
             data: trips,

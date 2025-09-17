@@ -1,7 +1,10 @@
 // API Client for connecting frontend to backend server
 import { tokenManager } from '../auth/tokenManager';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// Use relative URL in development to leverage proxy, absolute URL in production
+const API_BASE_URL = process.env.NODE_ENV === 'development' 
+  ? '/api'  // Relative URL for development (uses proxy)
+  : (process.env.REACT_APP_API_URL || 'http://localhost:3001/api');
 
 interface ApiResponse<T = any> {
   success: boolean;

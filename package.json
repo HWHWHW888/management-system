@@ -96,6 +96,7 @@
     "@rollup/plugin-terser": "^0.4.0"
   },
   "homepage": ".",
+  "proxy": "http://localhost:3001",
   "build": {
     "generateSW": false
   }

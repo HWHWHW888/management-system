@@ -454,7 +454,7 @@ export function Dashboard({ user }: DashboardProps) {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-sm text-gray-600">Loading real-time dashboard data from Supabase...</p>
+          <p className="mt-2 text-sm text-gray-600">Loading dashboard data...</p>
         </div>
       </div>
     );
@@ -462,73 +462,6 @@ export function Dashboard({ user }: DashboardProps) {
 
   return (
     <div className="space-y-6">
-      {/* Enhanced Real-time Status Header */}
-      <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <Database className="w-5 h-5 text-green-600 mr-3" />
-            <div>
-              <p className="text-sm font-medium text-green-800">
-                ✅ Real-time Dashboard - Live Data from Supabase
-              </p>
-              <p className="text-xs text-green-600">
-                Dashboard automatically updates every 30 seconds with live rolling amounts, customer data, and trip information.
-                {lastSyncTime && ` • Last sync: ${lastSyncTime.toLocaleTimeString()}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            {refreshing && (
-              <div className="flex items-center text-blue-600">
-                <Activity className="w-4 h-4 mr-1 animate-pulse" />
-                <span className="text-xs">Syncing...</span>
-              </div>
-            )}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadRealTimeData}
-              disabled={refreshing}
-              className="text-xs"
-            >
-              <RefreshCw className="w-3 h-3 mr-1" />
-              Refresh
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={toggleRealTime}
-              className="text-xs"
-            >
-              <Zap className={`w-3 h-3 mr-1 ${isRealTimeEnabled ? 'text-green-500' : 'text-gray-500'}`} />
-              {isRealTimeEnabled ? 'Live' : 'Manual'}
-            </Button>
-            <Badge variant="outline" className={`text-xs ${connectionStatus === 'connected' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-              <div className={`w-2 h-2 rounded-full mr-1 ${connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-              {connectionStatus === 'connected' ? 'Connected' : 'Error'}
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      {/* Error Alert */}
-      {errorMessage && (
-        <Alert className="border-red-200 bg-red-50">
-          <AlertTriangle className="w-4 h-4 text-red-600" />
-          <AlertDescription className="text-red-800">
-            <strong>Connection Error:</strong> {errorMessage}
-            <Button
-              onClick={loadRealTimeData}
-              size="sm"
-              variant="outline"
-              className="ml-3 text-red-800 border-red-300 hover:bg-red-100"
-            >
-              <RefreshCw className="w-3 h-3 mr-1" />
-              Retry
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Key Performance Metrics - Real-time Customer Data */}
       <div>

@@ -717,56 +717,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
 
   return (
     <div className="space-y-6">
-      {/* Real-time Database Status */}
-      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <Database className="w-4 h-4 text-green-600 mr-2" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-green-800">
-                ✅ Real-time Customer Data Connected to Supabase
-              </p>
-              <p className="text-xs text-green-600">
-                Rolling amounts, win/loss, and trip data update automatically every 30 seconds
-                {lastDataUpdate && ` • Last sync: ${lastDataUpdate.toLocaleTimeString()}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            {saving && (
-              <div className="flex items-center text-blue-600">
-                <Save className="w-4 h-4 mr-1 animate-pulse" />
-                <span className="text-xs">Saving...</span>
-              </div>
-            )}
-            {isRefreshing && (
-              <div className="flex items-center text-orange-600">
-                <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                <span className="text-xs">Syncing...</span>
-              </div>
-            )}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadRealTimeData}
-              disabled={saving || isRefreshing}
-              className="text-xs"
-            >
-              <RefreshCw className="w-3 h-3 mr-1" />
-              Refresh
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Enhanced Features Notice */}
-      <Alert>
-        <CheckCircle className="w-4 h-4" />
-        <AlertDescription>
-          <strong>Enhanced Customer Management:</strong> Real-time rolling amounts and win/loss calculations, 
-          full customer profile editing with credit limits, and live trip history updates.
-        </AlertDescription>
-      </Alert>
 
       {/* Staff View Banner */}
       {isStaff && (

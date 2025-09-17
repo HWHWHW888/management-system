@@ -141,19 +141,26 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Casino Management System</CardTitle>
-            <CardDescription>
-              Sign in to access the management dashboard
+        <Card className="bg-white/95 backdrop-blur-sm border-2 border-amber-300 shadow-2xl shadow-amber-500/20">
+          <CardHeader className="text-center pb-8 pt-8">
+            <div className="mb-4">
+              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center shadow-lg">
+                <span className="text-2xl font-bold text-white">HW</span>
+              </div>
+            </div>
+            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 bg-clip-text text-transparent">
+              Hoe Win Junket Management System
+            </CardTitle>
+            <CardDescription className="text-slate-600 mt-3 font-medium">
+              Professional Gaming Management Platform
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="username">Username</Label>
+          <CardContent className="px-8 pb-8">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="username" className="text-slate-700 font-semibold">Username</Label>
                 <Input
                   id="username"
                   type="text"
@@ -162,11 +169,12 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                   placeholder="Enter username"
                   required
                   disabled={isLoading}
+                  className="h-12 border-2 border-slate-200 focus:border-amber-400 focus:ring-amber-400/20 bg-white/80 backdrop-blur-sm"
                 />
               </div>
               
-              <div>
-                <Label htmlFor="password">Password</Label>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-slate-700 font-semibold">Password</Label>
                 <Input
                   id="password"
                   type="password"
@@ -175,229 +183,45 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                   placeholder="Enter password"
                   required
                   disabled={isLoading}
+                  className="h-12 border-2 border-slate-200 focus:border-amber-400 focus:ring-amber-400/20 bg-white/80 backdrop-blur-sm"
                 />
               </div>
 
               {error && (
-                <Alert className="border-red-200 bg-red-50">
-                  <AlertTriangle className="w-4 h-4 text-red-600" />
-                  <AlertDescription className="text-red-800">
-                    <strong>Login Failed:</strong> {error}
+                <Alert className="border-2 border-red-300 bg-red-50/80 backdrop-blur-sm">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                  <AlertDescription className="text-red-800 font-medium">
+                    <strong>Authentication Failed:</strong> {error}
                     {error.includes('Invalid credentials') && (
-                      <div className="mt-2 text-xs">
-                        Make sure you're using the correct credentials:
-                        <br />• Admin: <code className="bg-red-100 px-1 rounded">admin / admin123</code>
-                        <br />• Agent: <code className="bg-red-100 px-1 rounded">agent1 / agent123</code>
-                        <br />• Staff: <code className="bg-red-100 px-1 rounded">staff1 / staff123</code>
+                      <div className="mt-3 p-3 bg-red-100/50 rounded-md text-sm">
+                        <div className="font-semibold mb-2">Valid Credentials:</div>
+                        <div className="space-y-1">
+                          <div>• Admin: <code className="bg-red-200 px-2 py-1 rounded font-mono">admin / admin123</code></div>
+                          <div>• Agent: <code className="bg-red-200 px-2 py-1 rounded font-mono">agent1 / agent123</code></div>
+                          <div>• Staff: <code className="bg-red-200 px-2 py-1 rounded font-mono">staff1 / staff123</code></div>
+                        </div>
                       </div>
                     )}
                   </AlertDescription>
                 </Alert>
               )}
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Signing In...' : 'Sign In'}
+              <Button 
+                type="submit" 
+                className="w-full h-12 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-semibold shadow-lg shadow-amber-500/25 border-0 transition-all duration-200" 
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <span>Authenticating...</span>
+                  </div>
+                ) : (
+                  'Access Dashboard'
+                )}
               </Button>
             </form>
 
-            <div className="mt-6 space-y-3">
-              {/* Test Credentials */}
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-2">
-                    <Key className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-yellow-800">Test Credentials</p>
-                      <p className="text-xs text-yellow-700 mt-1">
-                        Click to auto-fill login credentials for testing.
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowTestCredentials(!showTestCredentials)}
-                    className="text-xs"
-                  >
-                    {showTestCredentials ? 'Hide' : 'Show'}
-                  </Button>
-                </div>
-                
-                {showTestCredentials && (
-                  <div className="mt-3 space-y-2">
-                    <div className="grid grid-cols-3 gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fillTestCredentials('admin')}
-                        disabled={isLoading}
-                        className="text-xs"
-                      >
-                        Admin
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fillTestCredentials('agent')}
-                        disabled={isLoading}
-                        className="text-xs"
-                      >
-                        Agent
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fillTestCredentials('staff')}
-                        disabled={isLoading}
-                        className="text-xs"
-                      >
-                        Staff
-                      </Button>
-                    </div>
-                    <div className="text-xs text-yellow-600 space-y-1">
-                      <div className="flex justify-between">
-                        <span>Admin:</span>
-                        <code className="bg-yellow-100 px-1 rounded">admin / admin123</code>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Agent:</span>
-                        <code className="bg-yellow-100 px-1 rounded">agent1 / agent123</code>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Staff:</span>
-                        <code className="bg-yellow-100 px-1 rounded">staff1 / staff123</code>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Troubleshooting Tools */}
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <Bug className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-800">Troubleshooting</p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      If login fails, try these troubleshooting steps.
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={testDatabaseConnection}
-                        disabled={isLoading}
-                        className="text-xs"
-                      >
-                        <Database className="w-3 h-3 mr-1" />
-                        Test Connection
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={initializeAdminAccount}
-                        disabled={isLoading}
-                        className="text-xs"
-                      >
-                        <RefreshCw className="w-3 h-3 mr-1" />
-                        Reset Admin
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setDebugMode(!debugMode)}
-                        className="text-xs"
-                      >
-                        <Bug className="w-3 h-3 mr-1" />
-                        {debugMode ? 'Hide' : 'Show'} Debug
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Debug Information */}
-              {debugMode && connectionTest && (
-                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                  <div className="flex items-start space-x-2">
-                    <Info className="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">Debug Information</p>
-                      <div className="mt-2 text-xs text-gray-600">
-                        <div>Status: {connectionTest.success ? '✅ Success' : '❌ Failed'}</div>
-                        <div>Message: {connectionTest.message}</div>
-                        {connectionTest.details && <div>Details: {connectionTest.details}</div>}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Fresh Start Information */}
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-green-800">Fresh Start System</p>
-                    <p className="text-xs text-green-700 mt-1">
-                      The system starts with clean data. Only admin credentials are preset: 
-                      <code className="bg-green-100 px-1 rounded ml-1">admin / admin123</code>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Database Status */}
-              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <Database className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-purple-800">Secure Cloud Storage</p>
-                    <p className="text-xs text-purple-700 mt-1">
-                      All data is securely stored in Supabase cloud database with automatic backups and enterprise-grade security.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* User Roles Information */}
-              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <Users className="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">User Roles</p>
-                    <div className="mt-2 space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="outline" className="text-xs bg-red-50 text-red-700">Admin</Badge>
-                        <span className="text-xs text-gray-700">Full system access</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">Agent</Badge>
-                        <span className="text-xs text-gray-700">Customer & project management</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="outline" className="text-xs bg-green-50 text-green-700">Staff</Badge>
-                        <span className="text-xs text-gray-700">Rolling records & reports</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Security Notice */}
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <Shield className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-red-800">Security Notice</p>
-                    <p className="text-xs text-red-600 mt-1">
-                      This system contains sensitive business information. Unauthorized access is prohibited.
-                      Admin credentials can be changed in Data Management after login.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>

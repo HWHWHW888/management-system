@@ -12,7 +12,7 @@ import { Textarea } from './ui/textarea';
 import { User, StaffShift, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Database, Save, Eye, UserPlus, Shield, Key, EyeOff, LogIn, LogOut, CheckCircle, Clock } from 'lucide-react';
+import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Database, Save, Eye, UserPlus, Shield, Key, EyeOff, LogIn, LogOut, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { apiClient } from '../utils/api/apiClient';
 import { isReadOnlyRole } from '../utils/permissions';
@@ -56,6 +56,8 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [staffShifts, setStaffShifts] = useState<{[key: string]: StaffShift[]}>({});
+  const [loadingShifts, setLoadingShifts] = useState<{[key: string]: boolean}>({});
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -69,6 +71,24 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
     password: '',
     confirmPassword: ''
   });
+
+  const loadStaffShifts = useCallback(async (staffId: string) => {
+    if (loadingShifts[staffId] || staffShifts[staffId]) return;
+    
+    try {
+      setLoadingShifts(prev => ({ ...prev, [staffId]: true }));
+      
+      const shiftsResponse = await apiClient.get(`/staffs/${staffId}/shifts`);
+      
+      if (shiftsResponse.success) {
+        setStaffShifts(prev => ({ ...prev, [staffId]: shiftsResponse.data || [] }));
+      }
+    } catch (error) {
+      console.error('❌ Error loading staff shifts:', error);
+    } finally {
+      setLoadingShifts(prev => ({ ...prev, [staffId]: false }));
+    }
+  }, [loadingShifts, staffShifts]);
 
   const loadAllData = useCallback(async () => {
     try {
@@ -514,41 +534,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
 
   return (
     <div className="space-y-6">
-      {/* Database Status Indicator */}
-      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-        <div className="flex items-center">
-          <Database className="w-4 h-4 text-green-600 mr-2" />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-green-800">
-              ✅ Connected to Supabase Database
-            </p>
-            <p className="text-xs text-green-600">
-              All staff data is immediately saved to cloud database
-            </p>
-          </div>
-          {saving && (
-            <div className="flex items-center text-blue-600">
-              <Save className="w-4 h-4 mr-1 animate-pulse" />
-              <span className="text-xs">Saving...</span>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Admin Control Panel */}
-      <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-        <div className="flex items-center">
-          <Key className="w-5 h-5 text-amber-600 mr-2" />
-          <div>
-            <p className="text-sm font-medium text-amber-800">
-              Staff Login Management - Admin Only
-            </p>
-            <p className="text-xs text-amber-600">
-              You can create, edit, and manage staff login credentials. Staff members can only login with the credentials you provide.
-            </p>
-          </div>
-        </div>
-      </div>
 
       <div className="flex justify-between items-center">
         <div>
@@ -1148,51 +1134,127 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                         </TabsContent>
 
                         <TabsContent value="shifts" className="space-y-4 mt-6">
-                          {staffMember.current_shift && staffMember.current_shift.length === 0 ? (
-                            <Card>
-                              <CardContent className="text-center py-12">
-                                <Clock className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                                <p className="text-gray-500">No shift history found.</p>
-                                <p className="text-sm text-gray-400 mt-2">Check-ins and check-outs will appear here.</p>
-                              </CardContent>
-                            </Card>
-                          ) : (
-                            <div className="space-y-2 max-h-32 overflow-y-auto">
-                              {staffMember.current_shift?.slice(0, 3).map((shift: any, index: number) => (
-                                <Card key={shift.id}>
-                                  <CardContent className="p-4">
-                                    <div className="flex justify-between items-start mb-4">
-                                      <div>
-                                        <p className="font-medium">{shift.shiftDate}</p>
-                                      </div>
-                                      
-                                      {shift.checkOutTime && (
-                                        <div>
-                                          <Label className="text-sm font-medium text-gray-500">Check Out</Label>
-                                          <p className="text-xs text-gray-500 mt-1">Joined {new Date(staffMember.created_at).toLocaleDateString()}</p>
-                                          {shift.checkOutPhoto && (
-                                            <div className="mt-2">
-                                              <ImageWithFallback
-                                                src={shift.checkOutPhoto.data}
-                                                alt="Check-out photo"
-                                                className="w-20 h-20 object-cover rounded border"
-                                              />
+                          {(() => {
+                            // Load shifts when tab is accessed
+                            if (!staffShifts[staffMember.id] && !loadingShifts[staffMember.id]) {
+                              loadStaffShifts(staffMember.id);
+                            }
+                            
+                            const shifts = staffShifts[staffMember.id] || [];
+                            const isLoading = loadingShifts[staffMember.id];
+                            
+                            if (isLoading) {
+                              return (
+                                <Card>
+                                  <CardContent className="text-center py-12">
+                                    <RefreshCw className="w-8 h-8 mx-auto text-gray-400 mb-4 animate-spin" />
+                                    <p className="text-gray-500">Loading shift history...</p>
+                                  </CardContent>
+                                </Card>
+                              );
+                            }
+                            
+                            if (shifts.length === 0) {
+                              return (
+                                <Card>
+                                  <CardContent className="text-center py-12">
+                                    <Clock className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                                    <p className="text-gray-500">No shift history found.</p>
+                                    <p className="text-sm text-gray-400 mt-2">Check-ins and check-outs will appear here.</p>
+                                  </CardContent>
+                                </Card>
+                              );
+                            }
+                            
+                            return (
+                              <div className="space-y-4 max-h-96 overflow-y-auto">
+                                {shifts.sort((a: any, b: any) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()).map((shift: any) => (
+                                  <Card key={shift.id}>
+                                    <CardContent className="p-4">
+                                      <div className="flex justify-between items-start mb-4">
+                                        <div className="space-y-2">
+                                          <div className="flex items-center gap-2">
+                                            <Badge variant={shift.status === 'checked-in' ? 'default' : 'secondary'}>
+                                              {shift.status === 'checked-in' ? 'Active' : 'Completed'}
+                                            </Badge>
+                                            <span className="text-sm text-gray-500">
+                                              {new Date(shift.shift_date).toLocaleDateString()}
+                                            </span>
+                                          </div>
+                                          
+                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* Check-in Info */}
+                                            <div className="space-y-2">
+                                              <div className="flex items-center gap-2">
+                                                <LogIn className="w-4 h-4 text-green-600" />
+                                                <Label className="text-sm font-medium">Check In</Label>
+                                              </div>
+                                              <p className="text-sm text-gray-600">
+                                                {new Date(shift.check_in_time).toLocaleString()}
+                                              </p>
+                                              {shift.check_in_photo && (
+                                                <div className="mt-2">
+                                                  <ImageWithFallback
+                                                    src={shift.check_in_photo}
+                                                    alt="Check-in photo"
+                                                    className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80"
+                                                    onClick={() => window.open(shift.check_in_photo, '_blank')}
+                                                  />
+                                                </div>
+                                              )}
+                                            </div>
+                                            
+                                            {/* Check-out Info */}
+                                            {shift.check_out_time && (
+                                              <div className="space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                  <LogOut className="w-4 h-4 text-red-600" />
+                                                  <Label className="text-sm font-medium">Check Out</Label>
+                                                </div>
+                                                <p className="text-sm text-gray-600">
+                                                  {new Date(shift.check_out_time).toLocaleString()}
+                                                </p>
+                                                {shift.check_out_photo && (
+                                                  <div className="mt-2">
+                                                    <ImageWithFallback
+                                                      src={shift.check_out_photo}
+                                                      alt="Check-out photo"
+                                                      className="w-20 h-20 object-cover rounded border cursor-pointer hover:opacity-80"
+                                                      onClick={() => window.open(shift.check_out_photo, '_blank')}
+                                                    />
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Notes */}
+                                          {shift.notes && (
+                                            <div className="mt-3 p-2 bg-gray-50 rounded">
+                                              <Label className="text-xs font-medium text-gray-500">Notes</Label>
+                                              <p className="text-sm text-gray-700 mt-1">{shift.notes}</p>
+                                            </div>
+                                          )}
+                                          
+                                          {/* Duration */}
+                                          {shift.check_out_time && (
+                                            <div className="mt-2 text-xs text-gray-500">
+                                              Duration: {(() => {
+                                                const duration = new Date(shift.check_out_time).getTime() - new Date(shift.check_in_time).getTime();
+                                                const hours = Math.floor(duration / (1000 * 60 * 60));
+                                                const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60));
+                                                return `${hours}h ${minutes}m`;
+                                              })()}
                                             </div>
                                           )}
                                         </div>
-                                      )}
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              ))}
-                              
-                              {staffMember.current_shift && staffMember.current_shift.length > 0 && (
-                                <p className="text-sm text-gray-500 text-center">
-                                  Showing recent shifts.
-                                </p>
-                              )}
-                            </div>
-                          )}
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </TabsContent>
 
                         <TabsContent value="login" className="space-y-4 mt-6">
@@ -1290,31 +1352,123 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                             </div>
                           )}
                           
-                          {!staffMember.attachments || staffMember.attachments.length === 0 ? (
-                            <Card>
-                              <CardContent className="text-center py-12">
-                                <Paperclip className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                                <p className="text-gray-500">No files attached to this staff member.</p>
-                                <p className="text-sm text-gray-400 mt-2">Upload documents, photos, or other files related to this staff member.</p>
-                              </CardContent>
-                            </Card>
-                          ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {staffMember.attachments.map((attachment, index) => (
-                                <Card key={index}>
-                                  <CardContent className="p-4">
-                                    <div className="flex items-center space-x-2">
-                                      <Paperclip className="w-4 h-4 text-gray-400" />
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium truncate">{attachment.name}</p>
-                                        <p className="text-xs text-gray-500">{attachment.size} bytes • {attachment.type}</p>
-                                      </div>
-                                    </div>
+                          {(() => {
+                            // Load shifts when tab is accessed to get check-in/out photos
+                            if (!staffShifts[staffMember.id] && !loadingShifts[staffMember.id]) {
+                              loadStaffShifts(staffMember.id);
+                            }
+                            
+                            const shifts = staffShifts[staffMember.id] || [];
+                            const attachments = staffMember.attachments || [];
+                            
+                            // Collect all check-in/out photos from shifts
+                            const shiftPhotos: Array<{type: string, photo: string, date: string, shift_id: string, timestamp: number}> = [];
+                            shifts.forEach((shift: any) => {
+                              if (shift.check_in_photo) {
+                                shiftPhotos.push({
+                                  type: 'Check-in Photo',
+                                  photo: shift.check_in_photo,
+                                  date: new Date(shift.check_in_time).toLocaleString(),
+                                  shift_id: shift.id,
+                                  timestamp: new Date(shift.check_in_time).getTime()
+                                });
+                              }
+                              if (shift.check_out_photo) {
+                                shiftPhotos.push({
+                                  type: 'Check-out Photo',
+                                  photo: shift.check_out_photo,
+                                  date: new Date(shift.check_out_time).toLocaleString(),
+                                  shift_id: shift.id,
+                                  timestamp: new Date(shift.check_out_time).getTime()
+                                });
+                              }
+                            });
+                            
+                            // Sort photos by timestamp (newest first)
+                            shiftPhotos.sort((a, b) => b.timestamp - a.timestamp);
+                            
+                            const hasFiles = attachments.length > 0 || shiftPhotos.length > 0;
+                            
+                            if (!hasFiles) {
+                              return (
+                                <Card>
+                                  <CardContent className="text-center py-12">
+                                    <Paperclip className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                                    <p className="text-gray-500">No files or photos found.</p>
+                                    <p className="text-sm text-gray-400 mt-2">Upload documents or check-in/out photos will appear here.</p>
                                   </CardContent>
                                 </Card>
-                              ))}
-                            </div>
-                          )}
+                              );
+                            }
+                            
+                            return (
+                              <div className="space-y-6">
+                                {/* Check-in/out Photos Section */}
+                                {shiftPhotos.length > 0 && (
+                                  <div>
+                                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                      <CheckCircle className="w-4 h-4" />
+                                      Check-in/out Photos ({shiftPhotos.length})
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                      {shiftPhotos.map((item, index) => (
+                                        <Card key={`photo-${item.shift_id}-${index}`}>
+                                          <CardContent className="p-4">
+                                            <div className="space-y-3">
+                                              <div className="flex items-center justify-between">
+                                                <Badge variant={item.type.includes('Check-in') ? 'default' : 'secondary'}>
+                                                  {item.type}
+                                                </Badge>
+                                                <Eye className="w-4 h-4 text-gray-400" />
+                                              </div>
+                                              
+                                              <div className="aspect-square relative">
+                                                <ImageWithFallback
+                                                  src={item.photo}
+                                                  alt={item.type}
+                                                  className="w-full h-full object-cover rounded border cursor-pointer hover:opacity-80"
+                                                  onClick={() => window.open(item.photo, '_blank')}
+                                                />
+                                              </div>
+                                              
+                                              <div>
+                                                <p className="text-xs text-gray-500">{item.date}</p>
+                                              </div>
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {/* Regular Attachments Section */}
+                                {attachments.length > 0 && (
+                                  <div>
+                                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                      <Paperclip className="w-4 h-4" />
+                                      Documents & Files ({attachments.length})
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                      {attachments.map((attachment, index) => (
+                                        <Card key={`attachment-${index}`}>
+                                          <CardContent className="p-4">
+                                            <div className="flex items-center space-x-2">
+                                              <Paperclip className="w-4 h-4 text-gray-400" />
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium truncate">{attachment.name}</p>
+                                                <p className="text-xs text-gray-500">{attachment.size} bytes • {attachment.type}</p>
+                                              </div>
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </TabsContent>
                       </Tabs>
                     </CollapsibleContent>
