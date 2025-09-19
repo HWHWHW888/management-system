@@ -26,17 +26,29 @@ function AppContent() {
   const [debugMode, setDebugMode] = useState(false);
 
   useEffect(() => {
-    initializeApplication();
+    // Check if this is production domain but don't clear session immediately
+    const hostname = window.location.hostname;
+    const isProductionDomain = hostname === 'www.hoewingroup.com' || hostname === 'hoewingroup.com';
     
-    // Test API connection for Cloudflare Pages deployment
-    fetch(`${process.env.REACT_APP_API_URL?.replace('/api', '')}/health`)
-      .then(res => res.json())
-      .then(data => {
-        console.log('✅ Backend health check:', data);
-      })
-      .catch(error => {
-        console.error('❌ Backend health check failed:', error);
-      });
+    if (isProductionDomain) {
+      console.log('🔒 Production domain detected - enhanced security mode');
+    }
+    
+    // Parallel initialization
+    Promise.all([
+      initializeApplication(),
+      // Preload API health check in parallel
+      fetch(`${process.env.REACT_APP_API_URL?.replace('/api', '')}/health`)
+        .then(res => res.json())
+        .then(data => {
+          console.log('✅ Backend health check:', data);
+        })
+        .catch(error => {
+          console.error('❌ Backend health check failed:', error);
+        })
+    ]).catch(error => {
+      console.error('❌ Parallel initialization error:', error);
+    });
   }, []);
 
   const initializeApplication = async () => {
@@ -46,52 +58,85 @@ function AppContent() {
     try {
       console.log('🚀 Initializing Casino Management System...');
       
-      // Test connection with detailed feedback
+      // Single connection test (combines health check)
       const connectionTest = await db.testConnection();
       setConnectionDetails(connectionTest);
+      setIsDatabaseHealthy(connectionTest.success);
       
       if (!connectionTest.success) {
-        setIsDatabaseHealthy(false);
         throw new Error(`Database connection failed: ${connectionTest.message}. ${connectionTest.details || ''}`);
       }
 
-      // Check Supabase health
-      const isHealthy = await db.isHealthy();
-      setIsDatabaseHealthy(isHealthy);
-
-      if (!isHealthy) {
-        throw new Error('Supabase database health check failed. The server may be temporarily unavailable.');
+      // Skip data initialization for faster startup
+      // Only initialize if explicitly needed (first time setup)
+      const skipDataInit = localStorage.getItem('app_initialized');
+      if (!skipDataInit) {
+        console.log('🛡️ First-time setup - initializing data...');
+        await db.initializeSampleDataIfNeeded();
+        localStorage.setItem('app_initialized', 'true');
+      } else {
+        console.log('⚡ Skipping data initialization - already configured');
       }
 
-      // Safe initialization that preserves existing data
-      console.log('🛡️ Performing safe database initialization...');
-      await db.initializeSampleDataIfNeeded();
-
-      // Check for saved user session
+      // Smart session management for production domains
+      const hostname = window.location.hostname;
+      const isProductionDomain = hostname === 'www.hoewingroup.com' || hostname === 'hoewingroup.com';
+      
       const savedUser = localStorage.getItem('casinoUser');
       if (savedUser) {
         try {
           const user = JSON.parse(savedUser);
-          setCurrentUser(user);
-          console.log('👤 Restored user session:', user.username);
           
-          // Restore token to API client if available
-          if (user.token) {
-            const { apiClient } = await import('./utils/api/apiClient');
-            apiClient.setToken(user.token);
-            console.log('🔑 Token restored to API client');
-          }
-          
-          // Set default tab based on user role
-          if (user.role === 'staff') {
-            setActiveTab('checkinout');
+          if (isProductionDomain) {
+            // For production domain, validate token freshness
+            const loginTime = user.loginTime || 0;
+            const currentTime = Date.now();
+            const sessionTimeout = 8 * 60 * 60 * 1000; // 8 hours
+            
+            if (currentTime - loginTime > sessionTimeout) {
+              // Session expired, clear only this user's session
+              console.log('🔒 Session expired for production domain - requiring fresh login');
+              localStorage.removeItem('casinoUser');
+            } else {
+              // Valid session, restore user
+              setCurrentUser(user);
+              console.log('👤 Restored valid session for production:', user.username);
+              
+              if (user.token) {
+                const { apiClient } = await import('./utils/api/apiClient');
+                apiClient.setToken(user.token);
+                console.log('🔑 Token restored to API client');
+              }
+              
+              if (user.role === 'staff') {
+                setActiveTab('checkinout');
+              } else {
+                setActiveTab('dashboard');
+              }
+            }
           } else {
-            setActiveTab('dashboard');
+            // Development environment - restore session normally
+            setCurrentUser(user);
+            console.log('👤 Restored user session:', user.username);
+            
+            if (user.token) {
+              const { apiClient } = await import('./utils/api/apiClient');
+              apiClient.setToken(user.token);
+              console.log('🔑 Token restored to API client');
+            }
+            
+            if (user.role === 'staff') {
+              setActiveTab('checkinout');
+            } else {
+              setActiveTab('dashboard');
+            }
           }
         } catch (error) {
           console.error('Error parsing saved user session:', error);
           localStorage.removeItem('casinoUser');
         }
+      } else if (isProductionDomain) {
+        console.log('🔒 Production domain - no saved session, showing login');
       }
 
       console.log('✅ Application initialization completed');
@@ -117,13 +162,18 @@ function AppContent() {
       console.log('🔍 App.handleLogin user role:', user?.role);
       console.log('🔍 App.handleLogin user token:', user?.token ? 'Present' : 'Missing');
       
-      // Use the user object directly from databaseWrapper.login (already has token and role)
-      setCurrentUser(user);
+      // Add login timestamp for session management
+      const userWithTimestamp = {
+        ...user,
+        loginTime: Date.now()
+      };
       
-      // The user object is already saved to localStorage by databaseWrapper.login
-      // Just verify it's there
-      const savedUser = localStorage.getItem('casinoUser');
-      console.log('🔍 App.handleLogin localStorage user:', savedUser);
+      // Use the user object directly from databaseWrapper.login (already has token and role)
+      setCurrentUser(userWithTimestamp);
+      
+      // Update localStorage with timestamp
+      localStorage.setItem('casinoUser', JSON.stringify(userWithTimestamp));
+      console.log('🔍 App.handleLogin updated localStorage with timestamp');
       
       // Set default tab based on user role
       if (user.role === 'staff') {
