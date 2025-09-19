@@ -9,7 +9,7 @@ import { Textarea } from './ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { User, Staff, StaffShift } from '../types';
-import { Clock, CheckCircle, XCircle, RefreshCw, LogIn, LogOut, Activity, Calendar, MapPin, Users, Camera, Upload, DollarSign } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, RefreshCw, LogIn, LogOut, Activity, Calendar, MapPin, Users, Camera, Upload, DollarSign, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { apiClient } from '../utils/api/apiClient';
@@ -35,13 +35,14 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [uploadType, setUploadType] = useState<'transaction' | 'rolling'>('transaction');
   const [uploadPhoto, setUploadPhoto] = useState<File | null>(null);
-  const [uploadAmount, setUploadAmount] = useState('');
   const [uploadNotes, setUploadNotes] = useState('');
+  const [uploadDate, setUploadDate] = useState('2025-09-17'); // 设置默认日期为17/09/2025
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [selectedTripDetails, setSelectedTripDetails] = useState<any>(null);
   const [customerTransactions, setCustomerTransactions] = useState<any[]>([]);
   const [customerRolling, setCustomerRolling] = useState<any[]>([]);
-  const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
+  const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
+  const [customerPhotos, setCustomerPhotos] = useState<any[]>([]);
 
   // Load staff data and shifts
   const loadStaffData = useCallback(async () => {
@@ -196,19 +197,55 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   const loadTripDetails = async (trip: any) => {
     try {
       setSelectedTripDetails(trip);
-      console.log('Loading trip details for:', trip.id);
       
       // Try multiple approaches to get customer data
       let customersLoaded = false;
       
+      
+      // 添加客户数据结构转换函数
+      const normalizeCustomerData = (customers: any[]) => {
+        return customers.map((customer) => {
+          // 检查所有可能的ID字段
+          const possibleIdFields = ['id', 'customer_id', 'customerId', 'ID', 'Id'];
+          const id = possibleIdFields.map(field => customer[field]).find(val => val) || 'unknown-id';
+          
+          // 检查所有可能的名字字段
+          const possibleNameFields = [
+            'name', 'customer_name', 'customerName', 'full_name', 'fullName', 'Name',
+            'first_name', 'firstName', 'last_name', 'lastName', 'display_name', 'displayName'
+          ];
+          
+          let name = possibleNameFields.map(field => customer[field]).find(val => val && val.trim());
+          
+          // 如果还是没有找到名字，尝试从嵌套对象中查找
+          if (!name && customer.customer) {
+            name = possibleNameFields.map(field => customer.customer[field]).find(val => val && val.trim());
+          }
+          
+          // 最后的回退策略 - 使用ID作为显示名称
+          if (!name) {
+            name = `Customer ${id}`;
+          }
+          
+          // 返回标准化的客户对象
+          return {
+            ...customer,
+            id,
+            name,
+            customer_id: id,
+            customer_name: name
+          };
+        });
+      };
+      
       // Approach 1: Try trip-specific customer stats (may fail due to permissions)
       try {
         const customersResponse = await apiClient.get(`/trips/${trip.id}/customer-stats`);
-        console.log('Customer stats response:', customersResponse);
         if (customersResponse.success) {
-          setTripCustomers(customersResponse.data);
+          // 应用标准化函数处理客户数据
+          const normalizedCustomers = normalizeCustomerData(customersResponse.data || []);
+          setTripCustomers(normalizedCustomers);
           customersLoaded = true;
-          console.log('Loaded customers from trip stats:', customersResponse.data);
         }
       } catch (error) {
         console.log('Trip-specific customer stats failed, trying alternatives');
@@ -221,25 +258,25 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
           if (allCustomersResponse.success) {
             // Filter customers that might be associated with this trip
             // This is a fallback - in a real scenario, we'd need proper trip-customer relationships
-            setTripCustomers(allCustomersResponse.data || []);
+            const normalizedCustomers = normalizeCustomerData(allCustomersResponse.data || []);
+            setTripCustomers(normalizedCustomers);
             customersLoaded = true;
-            console.log('Loaded all customers as fallback:', allCustomersResponse.data);
           }
         } catch (error) {
-          console.log('All customers fetch failed');
         }
       }
       
       // Approach 3: Use any existing trip data as fallback
       if (!customersLoaded && trip.customers) {
-        setTripCustomers(trip.customers);
+        const normalizedCustomers = normalizeCustomerData(trip.customers || []);
+        setTripCustomers(normalizedCustomers);
         customersLoaded = true;
-        console.log('Using trip.customers as fallback:', trip.customers);
       }
       
-      // Load transactions and rolling records if we have customers
+      // Load transactions, rolling records, and customer photos if we have customers
       if (customersLoaded) {
         try {
+          // 加载交易记录和滚码记录（旧API）
           const [transactionsResponse, rollingResponse] = await Promise.all([
             apiClient.get(`/transactions?trip_id=${trip.id}`),
             apiClient.get(`/rolling-records?trip_id=${trip.id}`)
@@ -255,10 +292,26 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
           if (rollingResponse.success) {
             setCustomerRolling(rollingResponse.data || []);
           }
+          
+          // 尝试加载客户照片（新API）
+          try {
+            const photosResponse = await apiClient.get(`/customer-photos?trip_id=${trip.id}`);
+            console.log('Customer photos response:', photosResponse);
+            if (photosResponse.success) {
+              setCustomerPhotos(photosResponse.data || []);
+            } else {
+              setCustomerPhotos([]);
+            }
+          } catch (error) {
+            console.log('Failed to load customer photos (new API may not be implemented yet):', error);
+            setCustomerPhotos([]);
+          }
+          
         } catch (error) {
           console.log('Failed to load transactions/rolling:', error);
           setCustomerTransactions([]);
           setCustomerRolling([]);
+          setCustomerPhotos([]);
         }
       } else {
         // No customers loaded, set empty arrays
@@ -266,11 +319,11 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
         setTripCustomers([]);
         setCustomerTransactions([]);
         setCustomerRolling([]);
+        setCustomerPhotos([]);
       }
       
-      // Always open the dialog after loading data
-      console.log('Opening customer dialog');
-      setIsCustomerDialogOpen(true);
+      // Set the selected trip ID for the expandable section
+      setSelectedTripForUpload(trip);
       
     } catch (error) {
       console.error('Error loading trip details:', error);
@@ -282,29 +335,56 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
       }
       setCustomerTransactions([]);
       setCustomerRolling([]);
+      setCustomerPhotos([]);
       
-      // Still open the dialog even if there's an error
-      setIsCustomerDialogOpen(true);
+      // Close the expanded section on error
+      setExpandedTripId(null);
     }
   };
 
-  // Get transactions for a specific customer
+  // 获取客户照片 - 新函数，使用customer_photos表
+  const getCustomerPhotos = async (customerId: string, tripId: string) => {
+    try {
+      const response = await apiClient.get(`/customer-photos?customer_id=${customerId}&trip_id=${tripId}`);
+      if (response.success) {
+        return response.data || [];
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching customer photos:', error);
+      return [];
+    }
+  };
+
+  // 获取特定类型的最新照片
+  const getLatestCustomerPhoto = (photos: any[], photoType: string) => {
+    const typePhotos = photos.filter(p => p.photo_type === photoType);
+    if (typePhotos.length === 0) return null;
+    
+    return typePhotos.sort((a, b) => {
+      const dateA = new Date(a.upload_date);
+      const dateB = new Date(b.upload_date);
+      return dateB.getTime() - dateA.getTime();
+    })[0];
+  };
+
+  // 保留旧函数以兼容现有代码，后续可以逐步迁移
   const getCustomerTransactions = (customerId: string) => {
     return customerTransactions.filter(t => 
       (t.customer_id === customerId || t.customerId === customerId)
     );
   };
 
-  // Get rolling records for a specific customer
+  // 保留旧函数以兼容现有代码，后续可以逐步迁移
   const getCustomerRolling = (customerId: string) => {
     return customerRolling.filter(r => 
       (r.customer_id === customerId || r.customerId === customerId)
     );
   };
 
-  // Handle photo upload for transaction/rolling
+  // Handle photo upload for transaction/rolling using customer_photos table
   const handlePhotoUpload = async () => {
-    if (!uploadPhoto || !selectedCustomer || !uploadAmount) {
+    if (!uploadPhoto || !selectedCustomer || !uploadDate) {
       showError('Please fill in all required fields');
       return;
     }
@@ -316,36 +396,50 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
         try {
           const photoData = e.target?.result as string;
           
-          const uploadData: any = {
+          // 使用新的customer_photos表结构，照片存储为JSON格式
+          const photoJson = {
+            data: photoData,                // 照片数据
+            filename: uploadPhoto.name,     // 文件名
+            size: uploadPhoto.size,         // 文件大小
+            type: uploadPhoto.type,         // 文件类型
+            uploaded_at: new Date().toISOString()
+          };
+          
+          const customerPhotoData: any = {
             customer_id: selectedCustomer.customer_id || selectedCustomer.id,
-            type: uploadType,
-            amount: parseFloat(uploadAmount),
-            photo: photoData,
-            notes: uploadNotes,
-            staff_id: (user as any).staff_id || user.id,
-            trip_id: selectedTripForUpload.id
+            trip_id: selectedTripForUpload.id,
+            photo_type: uploadType,          // 'transaction' 或 'rolling'
+            photo: photoJson,                // 存储为JSON格式
+            uploaded_by: (user as any).staff_id || user.id,
+            transaction_date: uploadDate,    // 交易日期
+            status: 'pending'                // 默认状态为待审核
           };
 
-          const endpoint = uploadType === 'transaction' 
-            ? `/transactions`
-            : `/rolling-records`;
-
-          const response = await apiClient.post(endpoint, uploadData);
+          // 使用新的API端点
+          const endpoint = '/customer-photos';
+          
+          console.log(`Uploading ${uploadType} photo for customer:`, selectedCustomer.customer_name || selectedCustomer.name);
+          
+          const response = await apiClient.post(endpoint, customerPhotoData);
 
           if (response.success) {
             setIsUploadDialogOpen(false);
             setUploadPhoto(null);
-            setUploadAmount('');
+            setUploadDate(new Date().toISOString().split('T')[0]); // 重置日期为今天
             setUploadNotes('');
             setSelectedCustomer(null);
-            // Refresh trip customers
+            
+            // 显示成功消息
+            showError(`${uploadType === 'transaction' ? 'Transaction' : 'Rolling'} photo uploaded successfully and pending approval`);
+            
+            // 刷新客户数据
             await loadTripCustomers(selectedTripForUpload.id);
           } else {
-            showError(`Failed to upload ${uploadType}: ` + response.message);
+            showError(`Failed to upload ${uploadType} photo: ` + response.message);
           }
         } catch (error) {
-          console.error(`${uploadType} upload error:`, error);
-          showError(`Failed to upload ${uploadType}`);
+          console.error(`${uploadType} photo upload error:`, error);
+          showError(`Failed to upload ${uploadType} photo`);
         } finally {
           setIsSaving(false);
         }
@@ -599,50 +693,247 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
               ) : (
                 <div className="space-y-4">
                   {assignedTrips.map((trip) => (
-                    <Card key={trip.id} className="border-l-4 border-l-blue-400">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center space-x-2">
-                            <h4 className="font-medium">{trip.trip_name}</h4>
-                          </div>
-                          <Badge className={
-                            trip.status === 'active' ? 'bg-green-100 text-green-800' :
-                            trip.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
-                            'bg-gray-100 text-gray-800'
-                          }>
-                            {trip.status}
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <Label className="text-xs text-gray-500">Destination</Label>
-                            <p>{trip.destination}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-gray-500">Dates</Label>
-                            <p>{new Date(trip.start_date).toLocaleDateString()} - {new Date(trip.end_date).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between">
-                          <div className="flex space-x-2">
-                            <Badge variant="outline" className="text-xs">
-                              {trip.activecustomerscount || 0} Active Customers
+                    <div key={trip.id} className="mb-4">
+                      <Card className="border-l-4 border-l-blue-400">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center space-x-2">
+                              <h4 className="font-medium">{trip.trip_name}</h4>
+                            </div>
+                            <Badge className={
+                              trip.status === 'active' ? 'bg-green-100 text-green-800' :
+                              trip.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
+                              'bg-gray-100 text-gray-800'
+                            }>
+                              {trip.status}
                             </Badge>
                           </div>
-                          <div className="flex space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => loadTripDetails(trip)}
-                              className="text-xs"
-                            >
-                              <Users className="w-3 h-3 mr-1" />
-                              View Customers
-                            </Button>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <Label className="text-xs text-gray-500">Destination</Label>
+                              <p>{trip.destination}</p>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-gray-500">Dates</Label>
+                              <p>{new Date(trip.start_date).toLocaleDateString()} - {new Date(trip.end_date).toLocaleDateString()}</p>
+                            </div>
                           </div>
+                          <div className="mt-3 flex items-center justify-between">
+                            <div className="flex space-x-2">
+                              <Badge variant="outline" className="text-xs">
+                                {trip.activecustomerscount || 0} Active Customers
+                              </Badge>
+                            </div>
+                            <div className="flex space-x-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  // Toggle expanded state for this trip
+                                  setExpandedTripId(expandedTripId === trip.id ? null : trip.id);
+                                  // Load customer data if expanding and not already loaded
+                                  if (expandedTripId !== trip.id) {
+                                    loadTripDetails(trip);
+                                  }
+                                }}
+                                className="text-xs"
+                              >
+                                {expandedTripId === trip.id ? (
+                                  <>
+                                    <ChevronUp className="w-3 h-3 mr-1" />
+                                    Hide Customers
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="w-3 h-3 mr-1" />
+                                    View Customers
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      
+                      {/* Expandable Customer Section */}
+                      {expandedTripId === trip.id && (
+                        <div className="mt-2 pl-4 border-l-2 border-blue-200">
+                          {tripCustomers.length === 0 ? (
+                            <div className="text-center py-4 bg-gray-50 rounded">
+                              <Users className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                              <p className="text-sm text-gray-500">Loading customers...</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {/* 调试信息 */}
+                              {tripCustomers.map((customer) => {
+                                
+                                // 直接使用标准化后的字段
+                                const customerId = customer.id;
+                                const customerName = customer.name;
+                                
+                                
+                                // 筛选当前客户的照片
+                                const customerSpecificPhotos = customerPhotos.filter(photo => 
+                                  photo.customer_id === customerId
+                                );
+                                
+                                // 获取该客户最新的交易和滚码照片
+                                const transactionPhotos = customerSpecificPhotos.filter(p => p.photo_type === 'transaction');
+                                const rollingPhotos = customerSpecificPhotos.filter(p => p.photo_type === 'rolling');
+                                
+                                // 按上传日期排序，获取最新的照片
+                                const latestTransactionPhoto = transactionPhotos.length > 0 ? 
+                                  [...transactionPhotos].sort((a, b) => {
+                                    const dateA = new Date(a.upload_date);
+                                    const dateB = new Date(b.upload_date);
+                                    return dateB.getTime() - dateA.getTime();
+                                  })[0] : null;
+                                
+                                const latestRollingPhoto = rollingPhotos.length > 0 ? 
+                                  [...rollingPhotos].sort((a, b) => {
+                                    const dateA = new Date(a.upload_date);
+                                    const dateB = new Date(b.upload_date);
+                                    return dateB.getTime() - dateA.getTime();
+                                  })[0] : null;
+                                
+                                // 保留旧代码的兼容性，以防API尚未实现
+                                const transactions = getCustomerTransactions(customerId);
+                                const rolling = getCustomerRolling(customerId);
+                                
+                                // 如果新API未返回数据，尝试使用旧数据
+                                const fallbackTransaction = transactions.length > 0 ? 
+                                  [...transactions].sort((a, b) => {
+                                    const dateA = new Date(a.created_at || a.timestamp);
+                                    const dateB = new Date(b.created_at || b.timestamp);
+                                    return dateB.getTime() - dateA.getTime();
+                                  })[0] : null;
+                                
+                                const fallbackRolling = rolling.length > 0 ? 
+                                  [...rolling].sort((a, b) => {
+                                    const dateA = new Date(a.created_at || a.timestamp);
+                                    const dateB = new Date(b.created_at || b.timestamp);
+                                    return dateB.getTime() - dateA.getTime();
+                                  })[0] : null;
+                                  
+                                // 优先使用新API数据，如果没有则回退到旧数据
+                                const displayTransaction = latestTransactionPhoto || fallbackTransaction;
+                                const displayRolling = latestRollingPhoto || fallbackRolling;
+                                
+                                return (
+                                  <Card key={customerId} className="border-l-4 border-l-gray-300">
+                                    <CardContent className="p-3">
+                                      <div className="flex justify-between items-center mb-3">
+                                        <h5 className="text-base font-medium">
+                                          {customerName || `Customer`}
+                                        </h5>
+                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                          Active
+                                        </Badge>
+                                      </div>
+                                      
+                                      <div className="grid grid-cols-2 gap-4">
+                                        {/* Transaction Photo Section */}
+                                        <div className="border rounded p-3">
+                                          <h6 className="text-sm font-medium mb-2">Transaction</h6>
+                                          
+                                          {displayTransaction ? (
+                                            <div className="mb-3">
+                                              <ImageWithFallback
+                                                src={latestTransactionPhoto ? 
+                                                  // 新格式：从JSON对象中获取照片数据
+                                                  latestTransactionPhoto.photo?.data || ''
+                                                  : 
+                                                  // 旧格式：直接使用photo字段
+                                                  displayTransaction.photo
+                                                }
+                                                alt="Transaction proof"
+                                                className="w-full h-24 object-cover rounded border mb-1"
+                                              />
+                                              {/* 根据需求移除日期显示 */}
+                                              {latestTransactionPhoto?.status && (
+                                                <Badge className={`text-xs mt-1 ${latestTransactionPhoto.status === 'approved' ? 'bg-green-100 text-green-800' : latestTransactionPhoto.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                  {latestTransactionPhoto.status.charAt(0).toUpperCase() + latestTransactionPhoto.status.slice(1)}
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <div className="w-full h-24 bg-gray-100 rounded border flex items-center justify-center mb-3">
+                                              <Camera className="w-8 h-8 text-gray-300" />
+                                              <p className="text-xs text-gray-400 ml-2">No photo</p>
+                                            </div>
+                                          )}
+                                          
+                                          <Button
+                                            size="sm"
+                                            variant="default"
+                                            onClick={() => {
+                                              setSelectedCustomer(customer);
+                                              setUploadType('transaction');
+                                              setIsUploadDialogOpen(true);
+                                            }}
+                                            className="w-full flex items-center justify-center"
+                                          >
+                                            <Camera className="w-4 h-4 mr-1" />
+                                            Upload Transaction Photo
+                                          </Button>
+                                        </div>
+                                        
+                                        {/* Rolling Photo Section */}
+                                        <div className="border rounded p-3">
+                                          <h6 className="text-sm font-medium mb-2">Rolling</h6>
+                                          
+                                          {displayRolling ? (
+                                            <div className="mb-3">
+                                              <ImageWithFallback
+                                                src={latestRollingPhoto ? 
+                                                  // 新格式：从JSON对象中获取照片数据
+                                                  latestRollingPhoto.photo?.data || ''
+                                                  : 
+                                                  // 旧格式：直接使用photo字段
+                                                  displayRolling.photo
+                                                }
+                                                alt="Rolling proof"
+                                                className="w-full h-24 object-cover rounded border mb-1"
+                                              />
+                                              {/* 根据需求移除日期显示 */}
+                                              {latestRollingPhoto?.status && (
+                                                <Badge className={`text-xs mt-1 ${latestRollingPhoto.status === 'approved' ? 'bg-green-100 text-green-800' : latestRollingPhoto.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                  {latestRollingPhoto.status.charAt(0).toUpperCase() + latestRollingPhoto.status.slice(1)}
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <div className="w-full h-24 bg-gray-100 rounded border flex items-center justify-center mb-3">
+                                              <Camera className="w-8 h-8 text-gray-300" />
+                                              <p className="text-xs text-gray-400 ml-2">No photo</p>
+                                            </div>
+                                          )}
+                                          
+                                          <Button
+                                            size="sm"
+                                            variant="default"
+                                            onClick={() => {
+                                              setSelectedCustomer(customer);
+                                              setUploadType('rolling');
+                                              setIsUploadDialogOpen(true);
+                                            }}
+                                            className="w-full flex items-center justify-center"
+                                          >
+                                            <Camera className="w-4 h-4 mr-1" />
+                                            Upload Rolling Photo
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </CardContent>
-                    </Card>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -667,7 +958,15 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {shifts.slice(0, 10).map((shift) => (
+                  {shifts
+                    .sort((a, b) => {
+                      // Sort by newest date/time first
+                      const dateA = new Date((a as any).check_in_time || (a as any).shift_date || a.checkInTime || a.shiftDate);
+                      const dateB = new Date((b as any).check_in_time || (b as any).shift_date || b.checkInTime || b.shiftDate);
+                      return dateB.getTime() - dateA.getTime();
+                    })
+                    .slice(0, 10)
+                    .map((shift) => (
                     <Card key={shift.id} className="border-l-4 border-l-blue-400">
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-2">
@@ -728,169 +1027,6 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
         </TabsContent>
       </Tabs>
 
-      {/* Trip Details Dialog */}
-      <Dialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedTripDetails?.trip_name} - Customer Details
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            {tripCustomers.length === 0 ? (
-              <div className="text-center py-8">
-                <Users className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                <p className="text-gray-500">No customers found for this trip.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {tripCustomers.map((customer) => {
-                  const customerId = customer.customer_id || customer.id;
-                  const customerName = customer.customer_name || customer.name;
-                  const transactions = getCustomerTransactions(customerId);
-                  const rolling = getCustomerRolling(customerId);
-                  
-                  return (
-                    <Card key={customerId} className="border-l-4 border-l-blue-400">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="text-lg">{customerName}</CardTitle>
-                            <CardDescription>
-                              Buy-in: {customer.total_buy_in || 0} | Cash-out: {customer.total_cash_out || 0} | Rolling: {customer.rolling_amount || 0}
-                            </CardDescription>
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            View and manage existing records
-                          </div>
-                        </div>
-                      </CardHeader>
-                      
-                      <CardContent>
-                        <Tabs defaultValue="transactions" className="w-full">
-                          <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="transactions" className="text-xs">
-                              Transactions ({transactions.length})
-                            </TabsTrigger>
-                            <TabsTrigger value="rolling" className="text-xs">
-                              Rolling ({rolling.length})
-                            </TabsTrigger>
-                          </TabsList>
-                          
-                          <TabsContent value="transactions" className="mt-4">
-                            {transactions.length === 0 ? (
-                              <div className="text-center py-4">
-                                <DollarSign className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-                                <p className="text-sm text-gray-500">No transactions recorded</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                {transactions.map((transaction, index) => (
-                                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                                    <div className="flex items-center space-x-3">
-                                      <Badge variant={transaction.transaction_type === 'buy-in' ? 'default' : 'secondary'}>
-                                        {transaction.transaction_type}
-                                      </Badge>
-                                      <span className="font-medium">${transaction.amount}</span>
-                                      <span className="text-sm text-gray-500">
-                                        {new Date(transaction.created_at || transaction.timestamp).toLocaleString()}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                      {transaction.photo ? (
-                                        <ImageWithFallback
-                                          src={transaction.photo}
-                                          alt="Transaction proof"
-                                          className="w-12 h-12 object-cover rounded border"
-                                        />
-                                      ) : (
-                                        <div className="w-12 h-12 bg-gray-200 rounded border flex items-center justify-center">
-                                          <Camera className="w-4 h-4 text-gray-400" />
-                                        </div>
-                                      )}
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => {
-                                          setSelectedCustomer(customer);
-                                          setUploadType('transaction');
-                                          setIsUploadDialogOpen(true);
-                                        }}
-                                        className="text-xs"
-                                      >
-                                        {transaction.photo ? 'Update Photo' : 'Upload Photo'}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </TabsContent>
-                          
-                          <TabsContent value="rolling" className="mt-4">
-                            {rolling.length === 0 ? (
-                              <div className="text-center py-4">
-                                <Camera className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-                                <p className="text-sm text-gray-500">No rolling records</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                {rolling.map((roll, index) => (
-                                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                                    <div className="flex items-center space-x-3">
-                                      <Badge variant="outline">Rolling</Badge>
-                                      <span className="font-medium">${roll.amount}</span>
-                                      <span className="text-sm text-gray-500">
-                                        {new Date(roll.created_at || roll.timestamp).toLocaleString()}
-                                      </span>
-                                      {roll.game_type && (
-                                        <Badge variant="secondary" className="text-xs">
-                                          {roll.game_type}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                      {roll.photo ? (
-                                        <ImageWithFallback
-                                          src={roll.photo}
-                                          alt="Rolling proof"
-                                          className="w-12 h-12 object-cover rounded border"
-                                        />
-                                      ) : (
-                                        <div className="w-12 h-12 bg-gray-200 rounded border flex items-center justify-center">
-                                          <Camera className="w-4 h-4 text-gray-400" />
-                                        </div>
-                                      )}
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => {
-                                          setSelectedCustomer(customer);
-                                          setUploadType('rolling');
-                                          setIsUploadDialogOpen(true);
-                                        }}
-                                        className="text-xs"
-                                      >
-                                        {roll.photo ? 'Update Photo' : 'Upload Photo'}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </TabsContent>
-                        </Tabs>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Upload Dialog */}
       <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
         <DialogContent className="max-w-md">
@@ -915,45 +1051,54 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                 <Label className="text-sm font-medium text-blue-800">Selected Customer</Label>
                 <div className="mt-1">
                   <p className="font-medium">{selectedCustomer.customer_name || selectedCustomer.name}</p>
-                  <p className="text-sm text-gray-600">
-                    Current: Buy-in ${selectedCustomer.total_buy_in || 0} | 
-                    Cash-out ${selectedCustomer.total_cash_out || 0} | 
-                    Rolling ${selectedCustomer.rolling_amount || 0}
-                  </p>
                 </div>
               </div>
             )}
 
-            {/* Amount Input */}
+            {/* Date Input */}
             <div>
-              <Label htmlFor="uploadAmount">
-                {uploadType === 'transaction' ? 'Transaction Amount' : 'Rolling Amount'} (Required)
-              </Label>
+              <Label htmlFor="uploadDate">Date (Required)</Label>
               <Input
-                id="uploadAmount"
-                type="number"
-                step="0.01"
-                value={uploadAmount}
-                onChange={(e) => setUploadAmount(e.target.value)}
-                placeholder="Enter amount..."
+                id="uploadDate"
+                type="date"
+                value={uploadDate}
+                onChange={(e) => setUploadDate(e.target.value)}
                 disabled={isSaving}
                 required
+                className="mb-2"
               />
             </div>
 
             {/* Photo Upload */}
             <div>
-              <Label htmlFor="uploadPhoto">Photo Proof (Required)</Label>
+              <Label htmlFor="uploadPhoto">Upload Photo</Label>
               <Input
                 id="uploadPhoto"
                 type="file"
                 accept="image/*"
-                onChange={(e) => setUploadPhoto(e.target.files?.[0] || null)}
-                className="mt-1"
-                required
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setUploadPhoto(e.target.files[0]);
+                  }
+                }}
                 disabled={isSaving}
+                required
               />
             </div>
+
+            {/* Photo Preview */}
+            {uploadPhoto && (
+              <div className="mt-2">
+                <Label className="text-sm mb-1 block">Photo Preview</Label>
+                <div className="border rounded p-2 bg-gray-50">
+                  <img 
+                    src={URL.createObjectURL(uploadPhoto)} 
+                    alt="Preview" 
+                    className="max-h-40 mx-auto object-contain"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Notes */}
             <div>
@@ -962,8 +1107,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                 id="uploadNotes"
                 value={uploadNotes}
                 onChange={(e) => setUploadNotes(e.target.value)}
-                placeholder="Additional notes..."
-                rows={2}
+                placeholder="Add any additional notes..."
                 disabled={isSaving}
               />
             </div>
@@ -980,18 +1124,15 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
               </Button>
               <Button 
                 onClick={handlePhotoUpload} 
-                disabled={!uploadPhoto || !selectedCustomer || !uploadAmount || isSaving}
+                disabled={!uploadPhoto || !uploadDate || isSaving}
               >
                 {isSaving ? (
                   <>
-                    <Activity className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Uploading...
                   </>
                 ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload {uploadType === 'transaction' ? 'Transaction' : 'Rolling'}
-                  </>
+                  'Upload'
                 )}
               </Button>
             </div>

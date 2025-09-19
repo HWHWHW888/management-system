@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collap
 import { User, Agent, Customer, FileAttachment, Trip, TripCustomer, RollingRecord, BuyInOutRecord } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { isReadOnlyRole } from '../utils/permissions';
+import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { 
@@ -39,6 +39,7 @@ interface CustomerTripHistory {
 
 function CustomerManagementComponent({ user, showError, clearError }: CustomerManagementProps) {
   const isReadOnly = isReadOnlyRole(user.role);
+  const canSeeFinancials = canViewFinancialData(user.role);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -920,34 +921,39 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                           {(customer as any).details ? 'Details available' : 'No details available'}
                         </span>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <DollarSign className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-medium">Rolling: ${(customer.totalRolling || 0).toLocaleString()}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {(customer.totalWinLoss || 0) >= 0 ? (
-                          <TrendingUp className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 text-red-600" />
-                        )}
-                        <span className={`text-sm font-medium ${
-                          (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          W/L: ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Wallet className="w-4 h-4 text-purple-600" />
-                        <span className="text-sm">
-                          Cash: ${((customer.totalBuyOut || 0) - (customer.totalBuyIn || 0)).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Building2 className="w-4 h-4 text-orange-600" />
-                        <span className="text-sm">
-                          Credit: ${(customer.creditLimit || 0).toLocaleString()}
-                        </span>
-                      </div>
+                      {/* Hide financial data for staff users, show for boss */}
+                      {canSeeFinancials && (
+                        <>
+                          <div className="flex items-center space-x-2">
+                            <DollarSign className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-medium">Rolling: ${(customer.totalRolling || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {(customer.totalWinLoss || 0) >= 0 ? (
+                              <TrendingUp className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <TrendingDown className="w-4 h-4 text-red-600" />
+                            )}
+                            <span className={`text-sm font-medium ${
+                              (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              W/L: ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Wallet className="w-4 h-4 text-purple-600" />
+                            <span className="text-sm">
+                              Cash: ${((customer.totalBuyOut || 0) - (customer.totalBuyIn || 0)).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Building2 className="w-4 h-4 text-orange-600" />
+                            <span className="text-sm">
+                              Credit: ${(customer.creditLimit || 0).toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {!isReadOnly && (
@@ -1106,14 +1112,18 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                 <Label className="text-sm font-medium text-gray-500">Gaming Preferences</Label>
                                 <p>{(customer as any).details?.gaming_preferences || 'Not provided'}</p>
                               </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Credit Limit</Label>
-                                <p className="font-medium">${(customer.creditLimit || 0).toLocaleString()}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Available Credit</Label>
-                                <p className="font-medium">${(customer.availableCredit || 0).toLocaleString()}</p>
-                              </div>
+                              {canSeeFinancials && (
+                                <>
+                                  <div>
+                                    <Label className="text-sm font-medium text-gray-500">Credit Limit</Label>
+                                    <p className="font-medium">${(customer.creditLimit || 0).toLocaleString()}</p>
+                                  </div>
+                                  <div>
+                                    <Label className="text-sm font-medium text-gray-500">Available Credit</Label>
+                                    <p className="font-medium">${(customer.availableCredit || 0).toLocaleString()}</p>
+                                  </div>
+                                </>
+                              )}
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Emergency Contact</Label>
                                 <p>{(customer as any).details?.emergency_contact || 'Not provided'}</p>
@@ -1125,35 +1135,37 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             </div>
                           </div>
 
-                          {/* Real-time Financial Summary */}
-                          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                            <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                              <Activity className="w-4 h-4 mr-2" />
-                              Real-time Financial Summary
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Total Rolling</Label>
-                                <p className="text-xl font-bold text-blue-600">${(customer.totalRolling || 0).toLocaleString()}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Total Win/Loss</Label>
-                                <p className={`text-xl font-bold ${
-                                  (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                                }`}>
-                                  ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
-                                </p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Buy-in Total</Label>
-                                <p className="text-xl font-bold text-blue-500">${(customer.totalBuyIn || 0).toLocaleString()}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Buy-out Total</Label>
-                                <p className="text-xl font-bold text-purple-500">${(customer.totalBuyOut || 0).toLocaleString()}</p>
+                          {/* Real-time Financial Summary - Hidden for staff, visible for boss */}
+                          {canSeeFinancials && (
+                            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                              <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                                <Activity className="w-4 h-4 mr-2" />
+                                Real-time Financial Summary
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-500">Total Rolling</Label>
+                                  <p className="text-xl font-bold text-blue-600">${(customer.totalRolling || 0).toLocaleString()}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-500">Total Win/Loss</Label>
+                                  <p className={`text-xl font-bold ${
+                                    (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-500">Buy-in Total</Label>
+                                  <p className="text-xl font-bold text-blue-500">${(customer.totalBuyIn || 0).toLocaleString()}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-500">Buy-out Total</Label>
+                                  <p className="text-xl font-bold text-purple-500">${(customer.totalBuyOut || 0).toLocaleString()}</p>
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          )}
 
                         </TabsContent>
 

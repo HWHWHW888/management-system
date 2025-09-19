@@ -16,7 +16,7 @@ import { Trip, Customer, Agent } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { useLanguage } from '../contexts/LanguageContext';
-import { isReadOnlyRole } from '../utils/permissions';
+import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
 import { 
   SUPPORTED_CURRENCIES, 
   formatCurrency, 
@@ -41,6 +41,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const showError = useCallback((message: string) => console.error(message), []);
   const { t } = useLanguage();
   const isReadOnly = isReadOnlyRole(currentUser.role);
+  const canSeeFinancials = canViewFinancialData(currentUser.role);
   
   // Utility function for safe number conversion
   const safeNumber = (value: any): number => {
@@ -84,13 +85,15 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [transactionForm, setTransactionForm] = useState({
     type: 'buy-in', // buy-in, cash-out (database format)
     amount: '',
-    description: ''
+    venue: '',
+    datetime: new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm format
   });
   const [rollingForm, setRollingForm] = useState({
     amount: '',
     staff_id: '',
     game_type: 'baccarat',
-    description: ''
+    venue: '',
+    datetime: new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm format
   });
 
   // Form data states
@@ -130,7 +133,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [newExpense, setNewExpense] = useState({
     description: '',
     amount: 0,
-    category: 'flight' as const
+    category: 'flight' as const,
+    datetime: new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm format
   });
   const [editAgentShare, setEditAgentShare] = useState(25);
   const [editingAgent, setEditingAgent] = useState<any>(null);
@@ -227,8 +231,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       setSaving(true);
       const response = await apiClient.post(`/trips/${tripId}/expenses`, expenseData);
       if (response.success) {
-        await loadTripExpenses(tripId);
-        await loadTripSharing(tripId);
+        await loadTripDetails(tripId);
         return true;
       }
       return false;
@@ -649,6 +652,29 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     }
   };
 
+  // Load trip details without changing active tabs
+  const loadTripDetails = async (tripId: string) => {
+    try {
+      const backendData = await apiClient.get(`/trips/${tripId}`);
+      if (backendData.success && backendData.data) {
+        const enrichedTrip = {
+          ...backendData.data,
+          customers: backendData.data.customers || [],
+          staff: backendData.data.staff || [],
+          transactions: backendData.data.transactions || [],
+          rolling: backendData.data.rolling || [],
+          expenses: backendData.data.expenses || []
+        };
+        
+        setSelectedTrip(enrichedTrip);
+        setTripSharing(enrichedTrip.sharing || null);
+        await loadAgentProfits(tripId);
+      }
+    } catch (error) {
+      console.error('❌ Error refreshing trip details:', error);
+    }
+  };
+
   // Add customer to trip
   const handleAddCustomerToTrip = async (customerId: string) => {
     if (!selectedTrip) return;
@@ -674,8 +700,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
 
       console.log('✅ Customer added to trip via API:', customer.name);
       
-      // Refresh trip data to get updated customer list
-      await selectTrip(selectedTrip);
+      // Refresh trip data without changing tabs
+      await loadTripDetails(selectedTrip.id);
       setShowAddCustomer(false);
       
     } catch (error) {
@@ -822,7 +848,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         transaction_type: mappedTransactionType, // Must be 'buy-in' or 'cash-out'
         amount: parseFloat(transactionForm.amount),
         status: 'completed', // Add required status field
-        notes: transactionForm.description || null
+        venue: transactionForm.venue || null,
+        updated_at: new Date(transactionForm.datetime).toISOString()
       };
 
       console.log('🔄 Adding transaction:', transactionData);
@@ -833,7 +860,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         // Refresh the selected trip data
         await selectTrip(selectedTrip);
         setShowAddTransaction(false);
-        setTransactionForm({ type: 'buy-in', amount: '', description: '' });
+        setTransactionForm({ type: 'buy-in', amount: '', venue: '', datetime: new Date().toISOString().slice(0, 16) });
         setSelectedCustomerForTransaction(null);
       } else {
         showError('Failed to add transaction');
@@ -857,7 +884,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         staff_id: rollingForm.staff_id,
         game_type: rollingForm.game_type,
         rolling_amount: parseFloat(rollingForm.amount),
-        notes: rollingForm.description
+        venue: rollingForm.venue
       });
       
       const response = await apiClient.post(`/trips/${selectedTrip.id}/rolling-records`, {
@@ -865,14 +892,15 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         staff_id: rollingForm.staff_id,
         game_type: rollingForm.game_type,
         rolling_amount: parseFloat(rollingForm.amount),
-        notes: rollingForm.description
+        venue: rollingForm.venue,
+        updated_at: new Date(rollingForm.datetime).toISOString()
       });
       
       if (response.success) {
-        // Refresh the selected trip data
-        await selectTrip(selectedTrip);
+        // Refresh the selected trip data without changing tabs
+        await loadTripDetails(selectedTrip.id);
         setShowAddRolling(false);
-        setRollingForm({ amount: '', staff_id: '', game_type: 'baccarat', description: '' });
+        setRollingForm({ amount: '', staff_id: '', game_type: 'baccarat', venue: '', datetime: new Date().toISOString().slice(0, 16) });
         setSelectedCustomerForRolling(null);
       } else {
         showError('Failed to add rolling');
@@ -968,7 +996,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     const expenseData = {
       expense_type: newExpense.category,
       amount: newExpense.amount,
-      description: newExpense.description
+      description: newExpense.description,
+      updated_at: new Date(newExpense.datetime).toISOString()
     };
 
     const success = await addTripExpense(selectedTrip.id, expenseData);
@@ -977,7 +1006,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       setNewExpense({
         description: '',
         amount: 0,
-        category: 'flight'
+        category: 'flight',
+        datetime: new Date().toISOString().slice(0, 16)
       });
       console.log('✅ Expense added to trip via API');
     }
@@ -1330,20 +1360,24 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                           <div className="text-gray-500 text-xs">Customers</div>
                           <div className="font-medium">{trip.customers?.length || 0}</div>
                         </div>
-                        <div className="text-center">
-                          <div className="text-gray-500 text-xs">Total Rolling</div>
-                          <div className="font-medium text-blue-600">HK${safeFormatNumber(trip.sharing?.total_rolling || 0)}</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-gray-500 text-xs">Expenses</div>
-                          <div className="font-medium text-red-600">HK${safeFormatNumber(Math.abs(trip.sharing?.total_expenses || 0))}</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-gray-500 text-xs">Profit</div>
-                          <div className={`font-medium ${(trip.sharing?.net_result || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            HK${safeFormatNumber(Math.abs(trip.sharing?.net_result || 0))}
-                          </div>
-                        </div>
+                        {canSeeFinancials && (
+                          <>
+                            <div className="text-center">
+                              <div className="text-gray-500 text-xs">Total Rolling</div>
+                              <div className="font-medium text-blue-600">HK${safeFormatNumber(trip.sharing?.total_rolling || 0)}</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-gray-500 text-xs">Expenses</div>
+                              <div className="font-medium text-red-600">HK${safeFormatNumber(Math.abs(trip.sharing?.total_expenses || 0))}</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-gray-500 text-xs">Profit</div>
+                              <div className={`font-medium ${(trip.sharing?.net_result || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                HK${safeFormatNumber(Math.abs(trip.sharing?.net_result || 0))}
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </CardHeader>
                   </Card>
@@ -2124,6 +2158,16 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                             />
                           </div>
                           <div>
+                            <Label htmlFor="expenseDateTime">Date & Time</Label>
+                            <Input
+                              id="expenseDateTime"
+                              type="datetime-local"
+                              value={newExpense.datetime}
+                              onChange={(e) => setNewExpense({...newExpense, datetime: e.target.value})}
+                              required
+                            />
+                          </div>
+                          <div>
                             <Label htmlFor="expenseCategory">Category</Label>
                             <Select 
                               value={newExpense.category} 
@@ -2486,23 +2530,44 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               )}
             </div>
             <div>
-              <Label htmlFor="transactionDescription">Description (Optional)</Label>
+              <Label htmlFor="transactionVenue" className="flex items-center">
+                Venue <span className="text-red-500 ml-1">*</span>
+              </Label>
+              <Select
+                value={transactionForm.venue}
+                onValueChange={(value) => setTransactionForm({...transactionForm, venue: value})}
+                required
+              >
+                <SelectTrigger id="transactionVenue" className={!transactionForm.venue ? "border-red-300" : ""}>
+                  <SelectValue placeholder="Select venue" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Hoe Win VIP">Hoe Win VIP</SelectItem>
+                  <SelectItem value="House Casino">House Casino</SelectItem>
+                  <SelectItem value="Competition">Competition</SelectItem>
+                </SelectContent>
+              </Select>
+              {!transactionForm.venue && (
+                <p className="text-xs text-red-500 mt-1">Venue is required</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="transactionDateTime">Date & Time</Label>
               <Input
-                id="transactionDescription"
-                type="text"
-                placeholder="Enter description"
-                value={transactionForm.description}
-                onChange={(e) => setTransactionForm({...transactionForm, description: e.target.value})}
+                id="transactionDateTime"
+                type="datetime-local"
+                value={transactionForm.datetime}
+                onChange={(e) => setTransactionForm({...transactionForm, datetime: e.target.value})}
               />
             </div>
           </div>
-          <div className="flex justify-end gap-2 mt-6">
-            <Button variant="outline" onClick={() => setShowAddTransaction(false)} disabled={saving}>
+          <div className="flex justify-end space-x-2 mt-6">
+            <Button variant="outline" onClick={() => setShowAddTransaction(false)}>
               Cancel
             </Button>
             <Button 
               onClick={handleAddTransaction} 
-              disabled={saving || !transactionForm.amount}
+              disabled={saving || !transactionForm.amount || !transactionForm.venue}
             >
               {saving ? (
                 <>
@@ -2586,14 +2651,36 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               )}
             </div>
             <div>
-              <Label htmlFor="rollingNotes">Notes (Optional)</Label>
+              <Label htmlFor="rollingDateTime">Date & Time</Label>
               <Input
-                id="rollingNotes"
-                type="text"
-                placeholder="Enter notes"
-                value={rollingForm.description}
-                onChange={(e) => setRollingForm({...rollingForm, description: e.target.value})}
+                id="rollingDateTime"
+                type="datetime-local"
+                value={rollingForm.datetime}
+                onChange={(e) => setRollingForm({...rollingForm, datetime: e.target.value})}
+                required
               />
+            </div>
+            <div>
+              <Label htmlFor="rollingVenue" className="flex items-center">
+                Venue <span className="text-red-500 ml-1">*</span>
+              </Label>
+              <Select
+                value={rollingForm.venue}
+                onValueChange={(value) => setRollingForm({...rollingForm, venue: value})}
+                required
+              >
+                <SelectTrigger id="rollingVenue" className={!rollingForm.venue ? "border-red-300" : ""}>
+                  <SelectValue placeholder="Select venue" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Hoe Win VIP">Hoe Win VIP</SelectItem>
+                  <SelectItem value="House Casino">House Casino</SelectItem>
+                  <SelectItem value="Competition">Competition</SelectItem>
+                </SelectContent>
+              </Select>
+              {!rollingForm.venue && (
+                <p className="text-xs text-red-500 mt-1">Venue is required</p>
+              )}
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-6">
@@ -2602,7 +2689,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
             </Button>
             <Button 
               onClick={handleAddRolling} 
-              disabled={saving || !rollingForm.amount || !rollingForm.staff_id}
+              disabled={saving || !rollingForm.amount || !rollingForm.staff_id || !rollingForm.venue}
             >
               {saving ? (
                 <>
@@ -2616,6 +2703,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

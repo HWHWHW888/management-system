@@ -2573,7 +2573,7 @@ router.post('/:id/transactions', authenticateToken, canAccessTrip, async (req, r
       agent_id, 
       amount, 
       transaction_type, 
-      notes, 
+      venue, 
       status = 'completed',
       recorded_by_staff_id 
     } = req.body;
@@ -2673,7 +2673,7 @@ router.post('/:id/transactions', authenticateToken, canAccessTrip, async (req, r
       amount: parseFloat(amount),
       transaction_type,
       status: status || 'completed',
-      notes: notes || null,
+      venue: venue || null,
       recorded_by_staff_id: recordedByStaffId, // Can be null
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -3223,7 +3223,7 @@ router.post('/:id/rolling-records', authenticateToken, requireAdmin, async (req,
       staff_id,
       game_type,
       rolling_amount,
-      notes,
+      venue,
       attachment_id
     } = req.body;
 
@@ -3258,7 +3258,7 @@ router.post('/:id/rolling-records', authenticateToken, requireAdmin, async (req,
         staff_id: staff_id,
         game_type: game_type,
         rolling_amount: parseFloat(rolling_amount),
-        notes: notes || null,
+        venue: venue || null,
         attachment_id: attachment_id || null
       })
       .select()

@@ -97,21 +97,6 @@ export function Reports({ user }: ReportsProps) {
       const customersData = customersResult.data || [];
       const tripsData = tripsResult.data || []; // This includes trip_sharing data
 
-      // 🔍 DEBUG: Log retrieved data from backend API
-      console.group('📊 Reports Data Retrieved from Backend API');
-      console.log('🏢 Agents Data:', agentsData);
-      console.log('👥 Customers Data:', customersData);
-      console.log('✈️ Trips Data:', tripsData);
-      console.log('📈 Trip Sharing Data Details:');
-      tripsData.forEach((trip: any, index: number) => {
-        console.log(`Trip ${index + 1} (${trip.trip_name}):`, {
-          tripId: trip.id,
-          sharing: trip.sharing,
-          hasSharing: !!trip.sharing,
-          sharingKeys: trip.sharing ? Object.keys(trip.sharing) : 'No sharing data'
-        });
-      });
-      console.groupEnd();
 
       // Process customers with data from backend (already includes totals)
       const processedCustomers = customersData.map((customer: Customer) => {
@@ -150,14 +135,6 @@ export function Reports({ user }: ReportsProps) {
         // Calculate total rolling from commission (reverse calculation)
         const totalRolling = sharing?.totalRollingCommission ? (sharing.totalRollingCommission / 0.014) : 0;
 
-        // 🔍 DEBUG: Log individual trip processing
-        console.log(`🔄 Processing Trip: ${(trip as any).name || (trip as any).trip_name} (ID: ${trip.id})`, {
-          originalSharing: sharing,
-          calculatedTotalRolling: totalRolling,
-          sharingTotalWinLoss: sharing?.totalWinLoss,
-          sharingCompanyShare: sharing?.companyShare,
-          sharingTotalRollingCommission: sharing?.totalRollingCommission
-        });
 
         return {
           ...trip,
@@ -271,46 +248,20 @@ export function Reports({ user }: ReportsProps) {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - parseInt(dateRange));
   
-  // 🔧 TEMPORARY FIX: Show all trips regardless of date to display the data
+  // Show all trips regardless of date to display the data
   const showAllData = true;
-
-  // 🔍 DEBUG: Log filtering parameters
-  console.group('🔍 Data Filtering Debug');
-  console.log('📅 Time Range (days):', parseInt(dateRange));
-  console.log('📅 Cutoff Date:', cutoffDate.toISOString());
-  console.log('📊 Total Trips Before Filter:', trips.length);
-  trips.forEach((t: any, index: number) => {
-    const tripDate = t.date || t.start_date || t.created_at;
-    const isValidDate = tripDate && !isNaN(new Date(tripDate).getTime());
-    console.log(`📊 Trip ${index + 1} Details:`, {
-      id: t.id,
-      name: t.name || t.trip_name,
-      rawTrip: t, // Show full trip object
-      date: tripDate,
-      dateType: typeof tripDate,
-      isValidDate,
-      parsedDate: isValidDate ? new Date(tripDate).toISOString() : 'Invalid Date',
-      cutoffDate: cutoffDate.toISOString(),
-      isAfterCutoff: isValidDate ? new Date(tripDate) >= cutoffDate : false
-    });
-  });
 
   filteredCustomers = filteredCustomers.filter(c => 
     new Date((c as any).createdAt || (c as any).created_at) >= cutoffDate
   );
   
-    filteredTrips = filteredTrips.filter(t => {
-      if (showAllData) {
-        console.log('🔧 Showing all trips (date filter bypassed)');
-        return true; // Show all trips regardless of date
-      }
-      const tripDate = t.date || (t as any).start_date || (t as any).created_at;
-      return tripDate && !isNaN(new Date(tripDate).getTime()) && new Date(tripDate) >= cutoffDate;
-    });
-
-    console.log('📊 Filtered Trips Count:', filteredTrips.length);
-    console.log('📊 Filtered Customers Count:', filteredCustomers.length);
-    console.groupEnd();
+  filteredTrips = filteredTrips.filter(t => {
+    if (showAllData) {
+      return true; // Show all trips regardless of date
+    }
+    const tripDate = t.date || (t as any).start_date || (t as any).created_at;
+    return tripDate && !isNaN(new Date(tripDate).getTime()) && new Date(tripDate) >= cutoffDate;
+  });
 
     return { filteredCustomers, filteredTrips, filteredRollingRecords, filteredBuyInOutRecords };
   };
@@ -352,17 +303,6 @@ export function Reports({ user }: ReportsProps) {
     const companyNetResult = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.netResult), 0);
     const companyShare = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.companyShare), 0);
 
-    // 🔍 DEBUG: Log company totals from trip_sharing
-    console.group('🏢 Company Totals from Trip Sharing Data');
-    console.log('🎲 Company Total Rolling Commission:', companyTotalRolling);
-    console.log('💰 Company Total Win/Loss:', companyTotalWinLoss);
-    console.log('💵 Company Total Buy-In:', companyTotalBuyIn);
-    console.log('💸 Company Total Buy-Out:', companyTotalBuyOut);
-    console.log('💳 Company Total Expenses:', companyTotalExpenses);
-    console.log('📊 Company Net Result:', companyNetResult);
-    console.log('🏦 Company Share:', companyShare);
-    console.log('🔢 Filtered Trips Count:', filteredTrips.length);
-    console.groupEnd();
 
     // Trip totals for display
     const tripTotalRolling = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.totalRolling), 0);

@@ -11,7 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collap
 import { User, Agent, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { isReadOnlyRole } from '../utils/permissions';
+import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
 import { apiClient } from '../utils/api/apiClient';
 import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Save, Eye } from 'lucide-react';
 
@@ -21,6 +21,7 @@ interface AgentManagementProps extends WithErrorHandlerProps {
 
 function AgentManagementComponent({ user, showError, clearError }: AgentManagementProps) {
   const isReadOnly = isReadOnlyRole(user.role);
+  const canSeeFinancials = canViewFinancialData(user.role);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);

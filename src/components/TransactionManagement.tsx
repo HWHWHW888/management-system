@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { User, Customer, Transaction } from '../types';
+import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
 import { Plus, Calendar, DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface TransactionManagementProps {
@@ -17,6 +18,8 @@ interface TransactionManagementProps {
 const gameTypes = ['Baccarat', 'Blackjack', 'Poker', 'Roulette', 'Slots', 'Other'];
 
 export function TransactionManagement({ user }: TransactionManagementProps) {
+  const isReadOnly = isReadOnlyRole(user.role);
+  const canSeeFinancials = canViewFinancialData(user.role);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -171,13 +174,14 @@ export function TransactionManagement({ user }: TransactionManagementProps) {
             {user.role === 'agent' ? 'Record gaming activity for your customers' : 'View and manage all gaming transactions'}
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={openNewTransactionDialog}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Transaction
-            </Button>
-          </DialogTrigger>
+        {!isReadOnly && (
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={openNewTransactionDialog}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Transaction
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>
@@ -288,7 +292,8 @@ export function TransactionManagement({ user }: TransactionManagementProps) {
               </div>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -319,41 +324,51 @@ export function TransactionManagement({ user }: TransactionManagementProps) {
                     </CardDescription>
                   </div>
                   <div className="flex space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(transaction)}>
-                      Edit
-                    </Button>
-                    <Button 
-                      variant="destructive" 
-                      size="sm"
-                      onClick={() => deleteTransaction(transaction.id)}
-                    >
-                      Delete
-                    </Button>
+                    {!isReadOnly && (
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(transaction)}>
+                        Edit
+                      </Button>
+                    )}
+                    {!isReadOnly && (
+                      <Button 
+                        variant="destructive" 
+                        size="sm"
+                        onClick={() => deleteTransaction(transaction.id)}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <DollarSign className="w-4 h-4 text-gray-400" />
-                    <span>Rolling: ${transaction.rollingAmount.toLocaleString()}</span>
+                {canSeeFinancials ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex items-center space-x-2">
+                      <DollarSign className="w-4 h-4 text-gray-400" />
+                      <span>Rolling: ${transaction.rollingAmount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {transaction.winLoss >= 0 ? (
+                        <TrendingUp className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <TrendingDown className="w-4 h-4 text-red-600" />
+                      )}
+                      <span className={transaction.winLoss >= 0 ? 'text-green-600' : 'text-red-600'}>
+                        W/L: ${transaction.winLoss.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-600">
+                        {transaction.winLoss >= 0 ? 'Customer Win' : 'House Win'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    {transaction.winLoss >= 0 ? (
-                      <TrendingUp className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <TrendingDown className="w-4 h-4 text-red-600" />
-                    )}
-                    <span className={transaction.winLoss >= 0 ? 'text-green-600' : 'text-red-600'}>
-                      W/L: ${transaction.winLoss.toLocaleString()}
-                    </span>
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-gray-500">Financial details are restricted for your role.</p>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-600">
-                      {transaction.winLoss >= 0 ? 'Customer Win' : 'House Win'}
-                    </span>
-                  </div>
-                </div>
+                )}
                 {transaction.notes && (
                   <div className="mt-3 p-3 bg-gray-50 rounded-md">
                     <p className="text-sm text-gray-700">{transaction.notes}</p>
