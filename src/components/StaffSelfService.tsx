@@ -7,9 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Badge } from './ui/badge';
 import { Textarea } from './ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { User, Staff, StaffShift } from '../types';
-import { Clock, CheckCircle, XCircle, RefreshCw, LogIn, LogOut, Activity, Calendar, MapPin, Users, Camera, Upload, DollarSign, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, RefreshCw, LogIn, LogOut, Activity, Calendar, MapPin, Users, Camera, DollarSign, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { apiClient } from '../utils/api/apiClient';
@@ -38,7 +37,6 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   const [uploadNotes, setUploadNotes] = useState('');
   const [uploadDate, setUploadDate] = useState('2025-09-17'); // 设置默认日期为17/09/2025
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
-  const [selectedTripDetails, setSelectedTripDetails] = useState<any>(null);
   const [customerTransactions, setCustomerTransactions] = useState<any[]>([]);
   const [customerRolling, setCustomerRolling] = useState<any[]>([]);
   const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
@@ -196,7 +194,6 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   // Load detailed trip data with customers and their transactions/rolling
   const loadTripDetails = async (trip: any) => {
     try {
-      setSelectedTripDetails(trip);
       
       // Try multiple approaches to get customer data
       let customersLoaded = false;
@@ -342,31 +339,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
     }
   };
 
-  // 获取客户照片 - 新函数，使用customer_photos表
-  const getCustomerPhotos = async (customerId: string, tripId: string) => {
-    try {
-      const response = await apiClient.get(`/customer-photos?customer_id=${customerId}&trip_id=${tripId}`);
-      if (response.success) {
-        return response.data || [];
-      }
-      return [];
-    } catch (error) {
-      console.error('Error fetching customer photos:', error);
-      return [];
-    }
-  };
 
-  // 获取特定类型的最新照片
-  const getLatestCustomerPhoto = (photos: any[], photoType: string) => {
-    const typePhotos = photos.filter(p => p.photo_type === photoType);
-    if (typePhotos.length === 0) return null;
-    
-    return typePhotos.sort((a, b) => {
-      const dateA = new Date(a.upload_date);
-      const dateB = new Date(b.upload_date);
-      return dateB.getTime() - dateA.getTime();
-    })[0];
-  };
 
   // 保留旧函数以兼容现有代码，后续可以逐步迁移
   const getCustomerTransactions = (customerId: string) => {
@@ -452,13 +425,6 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
     }
   };
 
-  // Open upload dialog
-  const openUploadDialog = async (trip: any, type: 'transaction' | 'rolling') => {
-    setSelectedTripForUpload(trip);
-    setUploadType(type);
-    await loadTripCustomers(trip.id);
-    setIsUploadDialogOpen(true);
-  };
 
   if (isLoading) {
     return (

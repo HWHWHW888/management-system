@@ -15,7 +15,7 @@ import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Save, Eye, UserPlus, Key, EyeOff, LogIn, LogOut, Clock, RefreshCw, CheckCircle, Shield } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { apiClient } from '../utils/api/apiClient';
-import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
+import { isReadOnlyRole } from '../utils/permissions';
 
 interface StaffManagementProps extends WithErrorHandlerProps {
   user: User;
@@ -39,7 +39,6 @@ interface StaffWithUser {
 
 function StaffManagementComponent({ user, showError, clearError }: StaffManagementProps) {
   const isReadOnly = isReadOnlyRole(user.role);
-  const canSeeFinancials = canViewFinancialData(user.role);
   const [staff, setStaff] = useState<StaffWithUser[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
@@ -326,32 +325,32 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
     setExpandedStaff(expandedStaff === staffId ? null : staffId);
   };
 
-  const toggleStaffStatus = async (staffId: string) => {
-    try {
-      setSaving(true);
-      clearError();
-      
-      const staffMember = staff.find(s => s.id === staffId);
-      if (!staffMember) return;
-      
-      const newStatus = staffMember.status === 'active' ? 'inactive' : 'active';
-      const response = await apiClient.updateStaff(staffId, { status: newStatus });
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to update staff status');
-      }
-      
-      // Reload data to get updated information
-      await loadAllData();
-      
-    } catch (error) {
-      console.error('❌ Error updating staff status:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      showError(`Failed to update staff status: ${errorMessage}`);
-    } finally {
-      setSaving(false);
-    }
-  };
+  // const toggleStaffStatus = async (staffId: string) => {
+  //   try {
+  //     setSaving(true);
+  //     clearError();
+  //     
+  //     const staffMember = staff.find(s => s.id === staffId);
+  //     if (!staffMember) return;
+  //     
+  //     const newStatus = staffMember.status === 'active' ? 'inactive' : 'active';
+  //     const response = await apiClient.updateStaff(staffId, { status: newStatus });
+  //     
+  //     if (!response.success) {
+  //       throw new Error(response.error || 'Failed to update staff status');
+  //     }
+  //     
+  //     // Reload data to get updated information
+  //     await loadAllData();
+  //     
+  //   } catch (error) {
+  //     console.error('❌ Error updating staff status:', error);
+  //     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+  //     showError(`Failed to update staff status: ${errorMessage}`);
+  //   } finally {
+  //     setSaving(false);
+  //   }
+  // };
 
   const openCheckInDialog = (staffMember: StaffWithUser) => {
     setCheckingInStaff(staffMember);
