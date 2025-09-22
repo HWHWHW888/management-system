@@ -260,7 +260,7 @@ export interface Trip {
   recentActivityCount?: number;
   totalExpenses?: number;
   // Backend API fields (snake_case from trips.js)
-  // Note: total_win, total_loss, net_profit removed from trips table - now in trip_sharing
+  // Note: total_win, total_loss fields consolidated into total_win_loss in trip_customer_stats
   total_budget?: number; // From backend API
   activecustomerscount?: number; // Updated field name from schema
   // Legacy fields for backward compatibility

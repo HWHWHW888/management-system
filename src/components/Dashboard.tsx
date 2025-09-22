@@ -255,9 +255,21 @@ export function Dashboard({ user }: DashboardProps) {
     // Total Rolling from trip_sharing table (always positive for rebate calculation)
     const tripSharingTotalRolling = trips.reduce((sum, trip) => {
       const value = Math.abs(safeNumber(trip.sharing?.total_rolling || trip.sharing?.totalRolling));
-      console.log(`Trip ${trip.trip_name}: total_rolling = ${trip.sharing?.total_rolling}, contributing ${value} to total rolling`);
+      console.log(`🔍 Trip ${trip.trip_name || trip.name}:`, {
+        hasSharing: !!trip.sharing,
+        total_rolling: trip.sharing?.total_rolling,
+        totalRolling: trip.sharing?.totalRolling,
+        sharingObject: trip.sharing,
+        contributingValue: value
+      });
       return sum + value;
     }, 0);
+    
+    console.log('📊 Dashboard Total Rolling Summary:', {
+      totalTrips: trips.length,
+      tripsWithSharing: trips.filter(t => t.sharing).length,
+      finalTotalRolling: tripSharingTotalRolling
+    });
 
     // Agent metrics
     const totalAgents = agents.length;

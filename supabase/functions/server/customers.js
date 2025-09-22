@@ -943,5 +943,149 @@ router.delete('/:id/attachments/:attachmentId', authenticateToken, async (req, r
     });
   }
 });
+
+/**
+ * POST /customers/:id/passport
+ * Upload passport file for customer
+ */
+router.post('/:id/passport', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.params.id;
+    const { name, type, size, data, uploadedAt } = req.body;
+
+    console.log('🔍 Backend - Uploading passport for customer:', customerId);
+    console.log('🔍 Backend - Passport file details:', { name, type, size: size ? `${size} bytes` : 'unknown' });
+
+    // Validate required fields
+    if (!name || !type || !data) {
+      return res.status(400).json({
+        error: 'Missing required fields: name, type, data'
+      });
+    }
+
+    // Validate file type (images and PDFs only)
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/pdf'];
+    if (!allowedTypes.includes(type)) {
+      return res.status(400).json({
+        error: 'Invalid file type. Only images (JPEG, PNG, GIF) and PDF files are allowed.'
+      });
+    }
+
+    // Check if customer exists
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('id, name')
+      .eq('id', customerId)
+      .single();
+
+    if (customerError || !customer) {
+      return res.status(404).json({
+        error: 'Customer not found'
+      });
+    }
+
+    // Get or create customer details record
+    let { data: customerDetails, error: getError } = await supabase
+      .from('customer_details')
+      .select('*')
+      .eq('customer_id', customerId)
+      .single();
+
+    if (getError && getError.code !== 'PGRST116') {
+      console.error('🔍 Backend - Get customer details error:', getError);
+      return res.status(500).json({
+        error: 'Failed to get customer details',
+        details: getError.message
+      });
+    }
+
+    // Prepare passport file data
+    const passportFileData = {
+      id: `passport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: name,
+      type: type,
+      size: size || 0,
+      data: data,
+      uploadedAt: uploadedAt || new Date().toISOString(),
+      category: 'passport'
+    };
+
+    // Update or create customer details with passport photo
+    const updateData = {
+      customer_id: customerId,
+      passport_photo: {
+        data: data,
+        name: name,
+        type: type,
+        size: size || 0,
+        uploadedAt: uploadedAt || new Date().toISOString()
+      },
+      passport_file_name: name,
+      passport_file_type: type,
+      passport_file_size: size || 0,
+      passport_uploaded_at: uploadedAt || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (customerDetails) {
+      // Update existing record
+      const { data: updatedDetails, error: updateError } = await supabase
+        .from('customer_details')
+        .update(updateData)
+        .eq('customer_id', customerId)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('🔍 Backend - Update customer details error:', updateError);
+        return res.status(500).json({
+          error: 'Failed to update customer details with passport',
+          details: updateError.message
+        });
+      }
+
+      customerDetails = updatedDetails;
+    } else {
+      // Create new record
+      const { data: newDetails, error: createError } = await supabase
+        .from('customer_details')
+        .insert(updateData)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('🔍 Backend - Create customer details error:', createError);
+        return res.status(500).json({
+          error: 'Failed to create customer details with passport',
+          details: createError.message
+        });
+      }
+
+      customerDetails = newDetails;
+    }
+
+    console.log('✅ Passport file uploaded successfully for customer:', customer.name);
+
+    res.status(201).json({
+      success: true,
+      message: 'Passport photo uploaded successfully',
+      data: {
+        passport_photo: customerDetails.passport_photo,
+        file_name: passportFileData.name,
+        file_type: passportFileData.type,
+        file_size: passportFileData.size,
+        uploaded_at: passportFileData.uploadedAt,
+        customer_details: customerDetails
+      }
+    });
+
+  } catch (error) {
+    console.error('🔍 Backend - Upload passport error:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
   
   export default router;

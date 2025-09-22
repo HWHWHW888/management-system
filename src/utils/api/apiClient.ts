@@ -428,6 +428,14 @@ class ApiClient {
     });
   }
 
+  // Customer passport file upload
+  async uploadCustomerPassport(customerId: string, passportData: any): Promise<ApiResponse<any>> {
+    return this.request(`/customers/${customerId}/passport`, {
+      method: 'POST',
+      body: JSON.stringify(passportData)
+    });
+  }
+
   // Staff endpoints
   async getStaffs(): Promise<ApiResponse<any[]>> {
     return this.request('/staffs');

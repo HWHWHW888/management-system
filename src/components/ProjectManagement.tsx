@@ -603,8 +603,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         backendData: {
           totalBuyIn: statisticsResponse.success ? statisticsResponse.data?.statistics?.total_buy_in || 0 : 0,
           totalCashOut: statisticsResponse.success ? statisticsResponse.data?.statistics?.total_cash_out || 0 : 0,
-          totalWin: statisticsResponse.success ? statisticsResponse.data?.statistics?.total_win || 0 : 0,
-          totalLoss: statisticsResponse.success ? statisticsResponse.data?.statistics?.total_loss || 0 : 0,
+          totalWinLoss: statisticsResponse.success ? statisticsResponse.data?.statistics?.total_win_loss || 0 : 0,
           profitMargin: statisticsResponse.success ? statisticsResponse.data?.statistics?.profit_margin || 0 : 0,
           customerStatsLoaded: customersResponse.success,
           expensesLoaded: expensesResponse.success,

@@ -53,6 +53,11 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [imagePreview, setImagePreview] = useState<{
+    isOpen: boolean;
+    src: string;
+    title: string;
+  }>({ isOpen: false, src: '', title: '' });
   
   // Basic customer form data
   const [formData, setFormData] = useState({
@@ -68,6 +73,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   const [detailFormData, setDetailFormData] = useState({
     // Identity & Personal
     passportNumber: '',
+    passportFile: null as File | null,
     idNumber: '',
     nationality: '',
     dateOfBirth: '',
@@ -325,6 +331,38 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     if (!selectedCustomer) return;
 
     try {
+      setSaving(true);
+      
+      // Handle passport file upload first if there's a file
+      let passportFileUrl = null;
+      if (detailFormData.passportFile) {
+        console.log('🔍 Uploading passport file:', detailFormData.passportFile.name);
+        
+        // Convert file to base64 for upload
+        const fileData = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(detailFormData.passportFile!);
+        });
+
+        // Upload passport file via API
+        const passportUploadResponse = await apiClient.uploadCustomerPassport(selectedCustomer.id, {
+          name: detailFormData.passportFile.name,
+          type: detailFormData.passportFile.type,
+          size: detailFormData.passportFile.size,
+          data: fileData,
+          uploadedAt: new Date().toISOString()
+        });
+
+        if (!passportUploadResponse.success) {
+          throw new Error(passportUploadResponse.error || 'Failed to upload passport file');
+        }
+        
+        passportFileUrl = passportUploadResponse.data?.passport_photo?.data;
+        console.log('✅ Passport file uploaded successfully:', passportFileUrl);
+      }
+
       // Prepare customer details data
       const detailsData = {
         // Identity & Personal fields
@@ -375,6 +413,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           const details = updatedDetailsResponse.data as any;
           setDetailFormData({
             passportNumber: details.passport_number || '',
+            passportFile: null,
             idNumber: details.id_number || '',
             nationality: details.nationality || '',
             dateOfBirth: details.date_of_birth || '',
@@ -408,7 +447,17 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     } catch (error) {
       console.error('Error updating customer details:', error);
       showError(`Failed to update customer details: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleImagePreview = (src: string, title: string) => {
+    setImagePreview({ isOpen: true, src, title });
+  };
+
+  const closeImagePreview = () => {
+    setImagePreview({ isOpen: false, src: '', title: '' });
   };
 
   const handleEdit = (customer: Customer) => {
@@ -437,6 +486,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         setDetailFormData({
           // Identity & Personal
           passportNumber: details.passport_number || '',
+          passportFile: null,
           idNumber: details.id_number || '',
           nationality: details.nationality || '',
           dateOfBirth: details.date_of_birth || '',
@@ -462,6 +512,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         setDetailFormData({
           // Identity & Personal
           passportNumber: '',
+          passportFile: null,
           idNumber: '',
           nationality: '',
           dateOfBirth: '',
@@ -489,6 +540,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       // Use empty form as fallback
       setDetailFormData({
         passportNumber: '',
+        passportFile: null,
         idNumber: '',
         nationality: '',
         dateOfBirth: '',
@@ -1025,7 +1077,10 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                           </TabsTrigger>
                           <TabsTrigger value="files" className="flex items-center space-x-2">
                             <Paperclip className="w-4 h-4" />
-                            <span>Files ({customer.attachments?.length || 0})</span>
+                            <span>Files ({
+                              (customer.attachments?.length || 0) + 
+                              ((customer as any).details?.passport_photo?.data ? 1 : 0)
+                            })</span>
                           </TabsTrigger>
                         </TabsList>
                         
@@ -1075,6 +1130,40 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Passport Number</Label>
                                 <p>{(customer as any).details?.passport_number || 'Not provided'}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-500">Passport Photo</Label>
+                                {(customer as any).details?.passport_photo?.data ? (
+                                  <div className="mt-1">
+                                    <div className="flex items-center space-x-2">
+                                      <FileText className="w-4 h-4 text-blue-500" />
+                                      <span className="text-sm text-blue-600">
+                                        {(customer as any).details?.passport_photo?.name || (customer as any).details?.passport_file_name || 'Passport Photo'}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-gray-500">
+                                      Uploaded: {(customer as any).details?.passport_photo?.uploadedAt ? 
+                                        new Date((customer as any).details.passport_photo.uploadedAt).toLocaleDateString() : 
+                                        (customer as any).details?.passport_uploaded_at ? 
+                                        new Date((customer as any).details.passport_uploaded_at).toLocaleDateString() : 
+                                        'Unknown date'
+                                      }
+                                    </p>
+                                    {((customer as any).details?.passport_photo?.type || (customer as any).details?.passport_file_type)?.startsWith('image/') && (
+                                      <img 
+                                        src={(customer as any).details.passport_photo?.data} 
+                                        alt="Passport"
+                                        className="mt-2 w-32 h-20 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity"
+                                        onClick={() => handleImagePreview(
+                                          (customer as any).details.passport_photo?.data,
+                                          `${customer.name} - Passport Photo`
+                                        )}
+                                      />
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-gray-500">Not provided</p>
+                                )}
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">ID Number</Label>
@@ -1393,6 +1482,52 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             />
                           )}
                           
+                          {/* Passport Photo Section */}
+                          {(customer as any).details?.passport_photo?.data && (
+                            <div className="space-y-4">
+                              <h4 className="font-medium text-gray-900 flex items-center">
+                                <IdCard className="w-4 h-4 mr-2" />
+                                Passport Photo
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <Card className="p-4">
+                                  <div className="flex items-center space-x-2">
+                                    <FileText className="w-4 h-4 text-blue-500" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium truncate">
+                                        {(customer as any).details?.passport_photo?.name || (customer as any).details?.passport_file_name || 'Passport Photo'}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        {(customer as any).details?.passport_photo?.size ? 
+                                          `${((customer as any).details.passport_photo.size / 1024).toFixed(1)} KB` : 
+                                          (customer as any).details?.passport_file_size ? 
+                                          `${((customer as any).details.passport_file_size / 1024).toFixed(1)} KB` : 
+                                          'Unknown size'
+                                        } • {(customer as any).details?.passport_photo?.uploadedAt ? 
+                                          new Date((customer as any).details.passport_photo.uploadedAt).toLocaleDateString() : 
+                                          (customer as any).details?.passport_uploaded_at ? 
+                                          new Date((customer as any).details.passport_uploaded_at).toLocaleDateString() : 
+                                          'Unknown date'
+                                        }
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {((customer as any).details?.passport_photo?.type || (customer as any).details?.passport_file_type)?.startsWith('image/') && (
+                                    <img 
+                                      src={(customer as any).details.passport_photo?.data} 
+                                      alt="Passport"
+                                      className="mt-2 w-full h-32 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                      onClick={() => handleImagePreview(
+                                        (customer as any).details.passport_photo?.data,
+                                        `${customer.name} - Passport Photo`
+                                      )}
+                                    />
+                                  )}
+                                </Card>
+                              </div>
+                            </div>
+                          )}
+                          
                           {customer.attachments && customer.attachments.length > 0 && (
                             <div className="space-y-4">
                               <h4 className="font-medium text-gray-900">Attached Files</h4>
@@ -1412,7 +1547,11 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                       <img 
                                         src={attachment.data} 
                                         alt={attachment.name}
-                                        className="mt-2 w-full h-32 object-cover rounded"
+                                        className="mt-2 w-full h-32 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                        onClick={() => handleImagePreview(
+                                          attachment.data,
+                                          `${customer.name} - ${attachment.name}`
+                                        )}
                                       />
                                     )}
                                   </Card>
@@ -1459,6 +1598,57 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                       placeholder="Not provided"
                       disabled={saving}
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="passportFile">Passport Photo</Label>
+                    
+                    {/* Show existing passport photo if available */}
+                    {(selectedCustomer as any)?.details?.passport_photo?.data && !detailFormData.passportFile && (
+                      <div className="mb-3 p-3 border rounded-lg bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700">Current Passport Photo:</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => selectedCustomer && handleImagePreview(
+                              (selectedCustomer as any).details.passport_photo.data,
+                              `${selectedCustomer.name} - Current Passport Photo`
+                            )}
+                          >
+                            <Eye className="w-3 h-3 mr-1" />
+                            View
+                          </Button>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <FileText className="w-4 h-4 text-blue-500" />
+                          <span className="text-sm text-gray-600">
+                            {(selectedCustomer as any).details?.passport_photo?.name || 
+                             (selectedCustomer as any).details?.passport_file_name || 'passport.jpg'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Upload a new file to replace the current passport photo
+                        </p>
+                      </div>
+                    )}
+                    
+                    <Input
+                      id="passportFile"
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setDetailFormData({...detailFormData, passportFile: file});
+                      }}
+                      disabled={saving}
+                      className="cursor-pointer"
+                    />
+                    {detailFormData.passportFile && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        New file selected: {detailFormData.passportFile.name} ({(detailFormData.passportFile.size / 1024).toFixed(1)} KB)
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="idNumber">ID Number</Label>
@@ -1682,6 +1872,32 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Image Preview Modal */}
+      <Dialog open={imagePreview.isOpen} onOpenChange={closeImagePreview}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+          <DialogHeader className="p-6 pb-2">
+            <DialogTitle className="flex items-center space-x-2">
+              <IdCard className="w-5 h-5" />
+              <span>{imagePreview.title}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            <div className="relative">
+              <img 
+                src={imagePreview.src} 
+                alt={imagePreview.title}
+                className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+              />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button variant="outline" onClick={closeImagePreview}>
+                Close
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -19,7 +19,7 @@ async function calculateCustomerTripStats(tripId, customerId) {
 
     if (error) {
       console.error('Error calculating customer trip stats:', error);
-      return { total_win: 0, total_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0 };
+      return { total_win_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0 };
     }
 
     // Get rolling records data from trip_rolling table
@@ -66,13 +66,11 @@ async function calculateCustomerTripStats(tripId, customerId) {
     // Positive = company profit, Negative = company loss
     const net_result = total_buy_in - total_cash_out - rolling_amount;
 
-    // Calculate win/loss based on net result for backward compatibility
-    const total_win = net_result > 0 ? net_result : 0;
-    const total_loss = net_result < 0 ? Math.abs(net_result) : 0;
+    // Use combined total_win_loss field (positive = win, negative = loss)
+    const total_win_loss = net_result;
 
     return {
-      total_win,
-      total_loss,
+      total_win_loss,
       total_buy_in,
       total_cash_out,
       net_result,
@@ -80,7 +78,7 @@ async function calculateCustomerTripStats(tripId, customerId) {
     };
   } catch (error) {
     console.error('Error in calculateCustomerTripStats:', error);
-    return { total_win: 0, total_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0 };
+    return { total_win_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0 };
   }
 }
 
@@ -95,8 +93,7 @@ async function updateCustomerTripStats(tripId, customerId) {
       customer_id: customerId,
       total_buy_in: stats.total_buy_in,
       total_cash_out: stats.total_cash_out,
-      total_win: stats.total_win,
-      total_loss: stats.total_loss,
+      total_win_loss: stats.total_win_loss,
       net_result: stats.net_result,
       rolling_amount: stats.rolling_amount,
       updated_at: new Date().toISOString()
@@ -114,6 +111,9 @@ async function updateCustomerTripStats(tripId, customerId) {
   // Update customer's total buy-in and buy-out in customers table
   await updateCustomerTotalBuyInOut(customerId);
 
+  // Update customer's total rolling amount across all trips
+  await updateCustomerTotalRolling(customerId);
+
   return stats;
 }
 
@@ -125,7 +125,7 @@ async function updateCustomerTotalWinLoss(customerId) {
     // Calculate total win/loss from all trip customer stats
     const { data: allStats, error } = await supabase
       .from('trip_customer_stats')
-      .select('total_win, total_loss, net_result')
+      .select('total_win_loss, net_result')
       .eq('customer_id', customerId);
 
     if (error) {
@@ -259,7 +259,7 @@ async function deductTripDataFromCustomer(tripId, customerId) {
     // Get the customer's trip stats before deletion
     const { data: tripStats, error: statsError } = await supabase
       .from('trip_customer_stats')
-      .select('total_buy_in, total_cash_out, total_win, total_loss, net_result, rolling_amount')
+      .select('total_buy_in, total_cash_out, total_win_loss, net_result, rolling_amount')
       .eq('trip_id', tripId)
       .eq('customer_id', customerId)
       .single();
@@ -329,7 +329,7 @@ async function addTripDataToCustomer(tripId, customerId) {
     // Get the customer's trip stats after addition
     const { data: tripStats, error: statsError } = await supabase
       .from('trip_customer_stats')
-      .select('total_buy_in, total_cash_out, total_win, total_loss, net_result, rolling_amount')
+      .select('total_buy_in, total_cash_out, total_win_loss, net_result, rolling_amount')
       .eq('trip_id', tripId)
       .eq('customer_id', customerId)
       .single();
@@ -415,39 +415,36 @@ async function calculateTripStats(tripId) {
     // Get all customer stats for this trip
     const { data: customerStats, error } = await supabase
       .from('trip_customer_stats')
-      .select('total_buy_in, total_cash_out, total_win, total_loss, net_result')
+      .select('total_buy_in, total_cash_out, total_win_loss, net_result')
       .eq('trip_id', tripId);
 
     if (error) {
       console.error('Error calculating trip stats:', error);
-      return { total_win: 0, total_loss: 0, net_profit: 0 };
+      return { total_win_loss: 0, net_profit: 0, total_buy_in: 0, total_cash_out: 0 };
     }
 
-    let total_win = 0;
-    let total_loss = 0;
+    let total_win_loss = 0;
     let total_buy_in = 0;
     let total_cash_out = 0;
 
     customerStats?.forEach(stats => {
-      total_win += parseFloat(stats.total_win) || 0;
-      total_loss += parseFloat(stats.total_loss) || 0;
+      total_win_loss += parseFloat(stats.total_win_loss) || 0;
       total_buy_in += parseFloat(stats.total_buy_in) || 0;
       total_cash_out += parseFloat(stats.total_cash_out) || 0;
     });
 
-    // Calculate net profit: (cash-out + wins) - (buy-in + losses)
-    const net_profit = (total_cash_out + total_win) - (total_buy_in + total_loss);
+    // Net profit is the sum of all customer net results
+    const net_profit = total_win_loss;
 
     return {
-      total_win,
-      total_loss,
+      total_win_loss,
       net_profit,
       total_buy_in,
       total_cash_out
     };
   } catch (error) {
     console.error('Error in calculateTripStats:', error);
-    return { total_win: 0, total_loss: 0, net_profit: 0, total_buy_in: 0, total_cash_out: 0 };
+    return { total_win_loss: 0, net_profit: 0, total_buy_in: 0, total_cash_out: 0 };
   }
 }
 
@@ -709,7 +706,7 @@ async function updateTripSharing(tripId, tripStats) {
       agent_share_percentage: agentSharePercentage,
       company_share_percentage: companySharePercentage,
       agent_breakdown: agentBreakdown,
-      total_rolling: totalRollingFromTable // Total rolling amount from rolling_records table
+      total_rolling: totalRolling // Total rolling amount from customer stats (trip_customer_stats)
     };
     
     console.log('Updating trip sharing with data:', sharingData);
@@ -966,6 +963,7 @@ router.get('/', authenticateToken, async (req, res) => {
             const normalizedSharing = sharing ? {
                 totalWinLoss: sharing.total_win_loss || 0,
                 totalExpenses: sharing.total_expenses || 0,
+                totalRolling: sharing.total_rolling || 0, // Add missing totalRolling field
                 totalRollingCommission: (sharing.total_rolling || 0) * 0.014, // Calculate commission
                 totalBuyIn: sharing.total_buy_in || 0,
                 totalBuyOut: sharing.total_buy_out || 0,
@@ -975,10 +973,15 @@ router.get('/', authenticateToken, async (req, res) => {
                 companyShare: sharing.company_share || 0,
                 agentSharePercentage: sharing.agent_share_percentage || 0,
                 companySharePercentage: sharing.company_share_percentage || 100,
-                agentBreakdown: sharing.agent_breakdown || []
+                agentBreakdown: sharing.agent_breakdown || [],
+                // Also include snake_case versions for backward compatibility
+                total_rolling: sharing.total_rolling || 0,
+                total_win_loss: sharing.total_win_loss || 0,
+                total_expenses: sharing.total_expenses || 0
             } : {
                 totalWinLoss: 0,
                 totalExpenses: 0,
+                totalRolling: 0, // Add missing totalRolling field
                 totalRollingCommission: 0,
                 totalBuyIn: 0,
                 totalBuyOut: 0,
@@ -988,7 +991,11 @@ router.get('/', authenticateToken, async (req, res) => {
                 companyShare: 0,
                 agentSharePercentage: 0,
                 companySharePercentage: 100,
-                agentBreakdown: []
+                agentBreakdown: [],
+                // Also include snake_case versions for backward compatibility
+                total_rolling: 0,
+                total_win_loss: 0,
+                total_expenses: 0
             };
 
             return {
@@ -3127,6 +3134,9 @@ router.put('/:id/customers/:customerId/stats', authenticateToken, canAccessTrip,
     const tripStats = await calculateTripStats(tripId);
     await updateTripSharing(tripId, tripStats);
 
+    // Update customer's total rolling amount across all trips
+    await updateCustomerTotalRolling(customerId);
+
     res.json({
       success: true,
       message: 'Customer stats updated successfully',
@@ -3193,10 +3203,13 @@ router.post('/:id/recalculate-stats', authenticateToken, canAccessTrip, async (r
 
     // Update all customer stats and trip totals
     const stats = await updateTripStats(tripId);
+    
+    // Also update trip sharing to ensure total_rolling is correct
+    await updateTripSharing(tripId, stats);
 
     res.json({
       success: true,
-      message: 'Trip stats recalculated successfully',
+      message: 'Trip stats and sharing recalculated successfully',
       data: stats
     });
 
