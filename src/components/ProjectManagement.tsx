@@ -269,8 +269,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     try {
       setSaving(true);
       const response = await apiClient.post(`/trips/${tripId}/expenses`, expenseData);
-      if (response.success) {
-        await loadTripDetails(tripId);
+      if (response.success && selectedTrip) {
+        await selectTrip(selectedTrip);
         return true;
       }
       return false;
@@ -690,28 +690,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     }
   };
 
-  // Load trip details without changing active tabs
-  const loadTripDetails = async (tripId: string) => {
-    try {
-      const backendData = await apiClient.get(`/trips/${tripId}`);
-      if (backendData.success && backendData.data) {
-        const enrichedTrip = {
-          ...backendData.data,
-          customers: backendData.data.customers || [],
-          staff: backendData.data.staff || [],
-          transactions: backendData.data.transactions || [],
-          rolling: backendData.data.rolling || [],
-          expenses: backendData.data.expenses || []
-        };
-        
-        setSelectedTrip(enrichedTrip);
-        setTripSharing(enrichedTrip.sharing || null);
-        await loadAgentProfits(tripId);
-      }
-    } catch (error) {
-      console.error('❌ Error refreshing trip details:', error);
-    }
-  };
 
   // Add customer to trip
   const handleAddCustomerToTrip = async (customerId: string) => {
@@ -738,8 +716,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
 
       console.log('✅ Customer added to trip via API:', customer.name);
       
-      // Refresh trip data without changing tabs
-      await loadTripDetails(selectedTrip.id);
+      // Refresh trip data completely to show new customer
+      await selectTrip(selectedTrip);
       setShowAddCustomer(false);
       
     } catch (error) {
@@ -935,8 +913,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       });
       
       if (response.success) {
-        // Refresh the selected trip data without changing tabs
-        await loadTripDetails(selectedTrip.id);
+        // Refresh the selected trip data completely to show new rolling record
+        await selectTrip(selectedTrip);
         setShowAddRolling(false);
         setRollingForm({ amount: '', staff_id: '', game_type: 'baccarat', venue: '', datetime: new Date().toISOString().slice(0, 16) });
         setSelectedCustomerForRolling(null);
@@ -1082,7 +1060,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       const response = await apiClient.put(`/trips/${selectedTrip.id}/expenses/${editingExpense.id}`, expenseData);
       
       if (response.success) {
-        await loadTripDetails(selectedTrip.id);
+        await selectTrip(selectedTrip);
         setShowEditExpense(false);
         setEditingExpense(null);
         setNewExpense({
@@ -1118,7 +1096,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       const response = await apiClient.delete(`/trips/${selectedTrip.id}/expenses/${deletingExpense.id}`);
       
       if (response.success) {
-        await loadTripDetails(selectedTrip.id);
+        await selectTrip(selectedTrip);
         setShowDeleteExpense(false);
         setDeletingExpense(null);
         console.log('✅ Expense deleted successfully');
