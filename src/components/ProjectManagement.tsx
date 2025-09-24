@@ -78,6 +78,10 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [selectedCustomerForTransaction, setSelectedCustomerForTransaction] = useState<any>(null);
   const [selectedCustomerForRolling, setSelectedCustomerForRolling] = useState<any>(null);
   const [showAddExpense, setShowAddExpense] = useState(false);
+  const [showEditExpense, setShowEditExpense] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<any>(null);
+  const [showDeleteExpense, setShowDeleteExpense] = useState(false);
+  const [deletingExpense, setDeletingExpense] = useState<any>(null);
   const [showCustomerPhotos, setShowCustomerPhotos] = useState(false);
   const [selectedCustomerForPhotos, setSelectedCustomerForPhotos] = useState<any>(null);
   const [customerPhotos, setCustomerPhotos] = useState<any[]>([]);
@@ -1047,6 +1051,87 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     }
   };
 
+  // Edit expense
+  const handleEditExpense = (expense: any) => {
+    setEditingExpense(expense);
+    setNewExpense({
+      description: expense.description,
+      amount: expense.amount,
+      category: expense.expense_type,
+      datetime: expense.expense_date ? new Date(expense.expense_date).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16)
+    });
+    setShowEditExpense(true);
+  };
+
+  // Update expense
+  const handleUpdateExpense = async () => {
+    if (!selectedTrip || !editingExpense || !newExpense.description.trim() || newExpense.amount <= 0) {
+      showError('Please fill in all expense fields');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const expenseData = {
+        expense_type: newExpense.category,
+        amount: newExpense.amount,
+        description: newExpense.description,
+        expense_date: new Date(newExpense.datetime).toISOString()
+      };
+
+      const response = await apiClient.put(`/trips/${selectedTrip.id}/expenses/${editingExpense.id}`, expenseData);
+      
+      if (response.success) {
+        await loadTripDetails(selectedTrip.id);
+        setShowEditExpense(false);
+        setEditingExpense(null);
+        setNewExpense({
+          description: '',
+          amount: 0,
+          category: 'flight',
+          datetime: new Date().toISOString().slice(0, 16)
+        });
+        console.log('✅ Expense updated successfully');
+      } else {
+        showError('Failed to update expense');
+      }
+    } catch (error) {
+      console.error('Error updating expense:', error);
+      showError('Failed to update expense');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete expense
+  const handleDeleteExpense = (expense: any) => {
+    setDeletingExpense(expense);
+    setShowDeleteExpense(true);
+  };
+
+  // Confirm delete expense
+  const confirmDeleteExpense = async () => {
+    if (!selectedTrip || !deletingExpense) return;
+
+    try {
+      setSaving(true);
+      const response = await apiClient.delete(`/trips/${selectedTrip.id}/expenses/${deletingExpense.id}`);
+      
+      if (response.success) {
+        await loadTripDetails(selectedTrip.id);
+        setShowDeleteExpense(false);
+        setDeletingExpense(null);
+        console.log('✅ Expense deleted successfully');
+      } else {
+        showError('Failed to delete expense');
+      }
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      showError('Failed to delete expense');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const filteredTrips = getFilteredTrips();
   
@@ -2344,6 +2429,120 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                     )}
                   </div>
 
+                  {/* Edit Expense Dialog */}
+                  {!isReadOnly && (
+                    <Dialog open={showEditExpense} onOpenChange={setShowEditExpense}>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Edit Expense</DialogTitle>
+                          <DialogDescription>
+                            Update the expense details
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="editExpenseDescription">Description</Label>
+                            <Input
+                              id="editExpenseDescription"
+                              value={newExpense.description}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewExpense({...newExpense, description: e.target.value})}
+                              placeholder="Expense description"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="editExpenseAmount">Amount ({getCurrencySymbol(selectedTrip?.currency || 'HKD')})</Label>
+                            <Input
+                              id="editExpenseAmount"
+                              type="number"
+                              value={newExpense.amount}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewExpense({...newExpense, amount: parseFloat(e.target.value) || 0})}
+                              placeholder="0.00"
+                              min="0"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="editExpenseDateTime">Date & Time</Label>
+                            <Input
+                              id="editExpenseDateTime"
+                              type="datetime-local"
+                              value={newExpense.datetime}
+                              onChange={(e) => setNewExpense({...newExpense, datetime: e.target.value})}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="editExpenseCategory">Category</Label>
+                            <Select 
+                              value={newExpense.category} 
+                              onValueChange={(value: any) => setNewExpense({...newExpense, category: value})}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="accommodation">Accommodation</SelectItem>
+                                <SelectItem value="transportation">Transportation</SelectItem>
+                                <SelectItem value="entertainment">Entertainment</SelectItem>
+                                <SelectItem value="food_beverage">Food & Beverage</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex justify-end space-x-2">
+                            <Button variant="outline" onClick={() => {
+                              setShowEditExpense(false);
+                              setEditingExpense(null);
+                              setNewExpense({
+                                description: '',
+                                amount: 0,
+                                category: 'flight',
+                                datetime: new Date().toISOString().slice(0, 16)
+                              });
+                            }}>
+                              Cancel
+                            </Button>
+                            <Button onClick={handleUpdateExpense} disabled={saving}>
+                              {saving ? 'Updating...' : 'Update Expense'}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+
+                  {/* Delete Expense Confirmation Dialog */}
+                  {!isReadOnly && (
+                    <AlertDialog open={showDeleteExpense} onOpenChange={setShowDeleteExpense}>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete this expense? This action cannot be undone.
+                            <br /><br />
+                            <strong>Expense:</strong> {deletingExpense?.description}
+                            <br />
+                            <strong>Amount:</strong> {deletingExpense && formatCurrency(deletingExpense.amount, viewingCurrency, selectedTrip)}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel onClick={() => {
+                            setShowDeleteExpense(false);
+                            setDeletingExpense(null);
+                          }}>
+                            Cancel
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={confirmDeleteExpense}
+                            disabled={saving}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            {saving ? 'Deleting...' : 'Delete Expense'}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+
                   {expensesLoading ? (
                     <Card>
                       <CardContent className="text-center py-8">
@@ -2389,6 +2588,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                 <TableHead>Type</TableHead>
                                 <TableHead>Date</TableHead>
                                 <TableHead className="text-right">Amount</TableHead>
+                                {!isReadOnly && <TableHead className="text-center">Actions</TableHead>}
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -2400,6 +2600,29 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                   <TableCell className="text-right font-medium text-red-600">
                                     {formatCurrency(expense.amount, viewingCurrency, selectedTrip)}
                                   </TableCell>
+                                  {!isReadOnly && (
+                                    <TableCell className="text-center">
+                                      <div className="flex justify-center space-x-2">
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => handleEditExpense(expense)}
+                                          disabled={saving}
+                                        >
+                                          <Settings className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => handleDeleteExpense(expense)}
+                                          disabled={saving}
+                                          className="text-red-600 hover:text-red-700"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  )}
                                 </TableRow>
                               ))}
                             </TableBody>
