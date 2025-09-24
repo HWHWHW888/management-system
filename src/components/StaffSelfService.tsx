@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { User, Staff, StaffShift } from '../types';
 import { Clock, CheckCircle, XCircle, RefreshCw, LogIn, LogOut, Activity, Calendar, MapPin, Users, Camera, DollarSign, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { PhotoDisplay } from './common/PhotoDisplay';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { apiClient } from '../utils/api/apiClient';
 
@@ -34,11 +35,10 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [uploadType, setUploadType] = useState<'transaction' | 'rolling'>('transaction');
   const [uploadPhoto, setUploadPhoto] = useState<File | null>(null);
-  const [uploadNotes, setUploadNotes] = useState('');
-  const [uploadDate, setUploadDate] = useState('2025-09-17'); // 设置默认日期为17/09/2025
+  const [uploadDate, setUploadDate] = useState(new Date().toISOString().split('T')[0]); // 设置默认日期为当日
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
-  const [customerTransactions, setCustomerTransactions] = useState<any[]>([]);
-  const [customerRolling, setCustomerRolling] = useState<any[]>([]);
+  const [, setCustomerTransactions] = useState<any[]>([]);
+  const [, setCustomerRolling] = useState<any[]>([]);
   const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
   const [customerPhotos, setCustomerPhotos] = useState<any[]>([]);
 
@@ -235,7 +235,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
         });
       };
       
-      // Approach 1: Try trip-specific customer stats (may fail due to permissions)
+      // Approach 1: Try trip-specific customer stats (recommended)
       try {
         const customersResponse = await apiClient.get(`/trips/${trip.id}/customer-stats`);
         if (customersResponse.success) {
@@ -245,21 +245,21 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
           customersLoaded = true;
         }
       } catch (error) {
-        console.log('Trip-specific customer stats failed, trying alternatives');
+        console.log('Trip-specific customer stats failed, trying trip customers endpoint');
       }
       
-      // Approach 2: If trip-specific fails, try to get all customers and filter by trip
+      // Approach 2: Try trip customers endpoint (more specific than customer-stats)
       if (!customersLoaded) {
         try {
-          const allCustomersResponse = await apiClient.get('/customers');
-          if (allCustomersResponse.success) {
-            // Filter customers that might be associated with this trip
-            // This is a fallback - in a real scenario, we'd need proper trip-customer relationships
-            const normalizedCustomers = normalizeCustomerData(allCustomersResponse.data || []);
+          const tripCustomersResponse = await apiClient.get(`/trips/${trip.id}/customers`);
+          if (tripCustomersResponse.success) {
+            // This should return only customers assigned to this specific trip
+            const normalizedCustomers = normalizeCustomerData(tripCustomersResponse.data || []);
             setTripCustomers(normalizedCustomers);
             customersLoaded = true;
           }
         } catch (error) {
+          console.log('Trip customers endpoint failed');
         }
       }
       
@@ -341,19 +341,18 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
 
 
 
-  // 保留旧函数以兼容现有代码，后续可以逐步迁移
-  const getCustomerTransactions = (customerId: string) => {
-    return customerTransactions.filter(t => 
-      (t.customer_id === customerId || t.customerId === customerId)
-    );
-  };
+  // Legacy functions kept for future compatibility (currently unused)
+  // const getCustomerTransactions = (customerId: string) => {
+  //   return customerTransactions.filter(t => 
+  //     (t.customer_id === customerId || t.customerId === customerId)
+  //   );
+  // };
 
-  // 保留旧函数以兼容现有代码，后续可以逐步迁移
-  const getCustomerRolling = (customerId: string) => {
-    return customerRolling.filter(r => 
-      (r.customer_id === customerId || r.customerId === customerId)
-    );
-  };
+  // const getCustomerRolling = (customerId: string) => {
+  //   return customerRolling.filter(r => 
+  //     (r.customer_id === customerId || r.customerId === customerId)
+  //   );
+  // };
 
   // Handle photo upload for transaction/rolling using customer_photos table
   const handlePhotoUpload = async () => {
@@ -379,13 +378,13 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
           };
           
           const customerPhotoData: any = {
-            customer_id: selectedCustomer.customer_id || selectedCustomer.id,
+            customer_id: selectedCustomer.customer?.id,
             trip_id: selectedTripForUpload.id,
             photo_type: uploadType,          // 'transaction' 或 'rolling'
             photo: photoJson,                // 存储为JSON格式
             uploaded_by: (user as any).staff_id || user.id,
-            transaction_date: uploadDate,    // 交易日期
-            status: 'pending'                // 默认状态为待审核
+            transaction_date: uploadDate     // 交易日期
+            // status 字段由数据库默认设置为 'pending'，不需要手动指定
           };
 
           // 使用新的API端点
@@ -393,13 +392,29 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
           
           console.log(`Uploading ${uploadType} photo for customer:`, selectedCustomer.customer_name || selectedCustomer.name);
           
+          // Debug log for selectedCustomer structure
+          console.log("🔍 Selected Customer Object:", selectedCustomer);
+          console.log("🔍 Customer ID fields:", {
+            "selectedCustomer.id": selectedCustomer.id,
+            "selectedCustomer.customer_id": selectedCustomer.customer_id,
+            "selectedCustomer.customer?.id": selectedCustomer.customer?.id
+          });
+          
+          // Debug log for photo upload payload
+          console.log("📸 Uploading photo payload:", {
+            customer_id: customerPhotoData.customer_id,
+            trip_id: customerPhotoData.trip_id,
+            photo_type: customerPhotoData.photo_type,
+            photo: customerPhotoData.photo,
+            transaction_date: customerPhotoData.transaction_date,
+          });
+          
           const response = await apiClient.post(endpoint, customerPhotoData);
 
           if (response.success) {
             setIsUploadDialogOpen(false);
             setUploadPhoto(null);
             setUploadDate(new Date().toISOString().split('T')[0]); // 重置日期为今天
-            setUploadNotes('');
             setSelectedCustomer(null);
             
             // 显示成功消息
@@ -734,9 +749,9 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                               {/* 调试信息 */}
                               {tripCustomers.map((customer) => {
                                 
-                                // 直接使用标准化后的字段
-                                const customerId = customer.id;
-                                const customerName = customer.name;
+                                // 使用正确的customer ID和name
+                                const customerId = customer.customer?.id || customer.customer_id;
+                                const customerName = customer.customer?.name || customer.name;
                                 
                                 
                                 // 筛选当前客户的照片
@@ -744,47 +759,73 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                   photo.customer_id === customerId
                                 );
                                 
+                                // Debug: Photo matching (can be removed in production)
+                                // console.log(`🔍 Customer ${customerName} (${customerId}):`, {
+                                //   totalPhotos: customerPhotos.length,
+                                //   matchingPhotos: customerSpecificPhotos.length
+                                // });
+                                
                                 // 获取该客户最新的交易和滚码照片
                                 const transactionPhotos = customerSpecificPhotos.filter(p => p.photo_type === 'transaction');
                                 const rollingPhotos = customerSpecificPhotos.filter(p => p.photo_type === 'rolling');
                                 
-                                // 按上传日期排序，获取最新的照片
-                                const latestTransactionPhoto = transactionPhotos.length > 0 ? 
-                                  [...transactionPhotos].sort((a, b) => {
-                                    const dateA = new Date(a.upload_date);
-                                    const dateB = new Date(b.upload_date);
-                                    return dateB.getTime() - dateA.getTime();
-                                  })[0] : null;
+                                // Photo data available for future features (currently unused)
+                                // const latestTransactionPhoto = transactionPhotos.length > 0 ? 
+                                //   [...transactionPhotos].sort((a, b) => {
+                                //     const dateA = new Date(a.upload_date);
+                                //     const dateB = new Date(b.upload_date);
+                                //     return dateB.getTime() - dateA.getTime();
+                                //   })[0] : null;
                                 
-                                const latestRollingPhoto = rollingPhotos.length > 0 ? 
-                                  [...rollingPhotos].sort((a, b) => {
-                                    const dateA = new Date(a.upload_date);
-                                    const dateB = new Date(b.upload_date);
-                                    return dateB.getTime() - dateA.getTime();
-                                  })[0] : null;
+                                // const latestRollingPhoto = rollingPhotos.length > 0 ? 
+                                //   [...rollingPhotos].sort((a, b) => {
+                                //     const dateA = new Date(a.upload_date);
+                                //     const dateB = new Date(b.upload_date);
+                                //     return dateB.getTime() - dateA.getTime();
+                                //   })[0] : null;
                                 
-                                // 保留旧代码的兼容性，以防API尚未实现
-                                const transactions = getCustomerTransactions(customerId);
-                                const rolling = getCustomerRolling(customerId);
+                                // Legacy data compatibility (currently unused)
+                                // const transactions = getCustomerTransactions(customerId);
+                                // const rolling = getCustomerRolling(customerId);
                                 
-                                // 如果新API未返回数据，尝试使用旧数据
-                                const fallbackTransaction = transactions.length > 0 ? 
-                                  [...transactions].sort((a, b) => {
-                                    const dateA = new Date(a.created_at || a.timestamp);
-                                    const dateB = new Date(b.created_at || b.timestamp);
-                                    return dateB.getTime() - dateA.getTime();
-                                  })[0] : null;
+                                // Fallback data for future use (currently unused but kept for potential features)
+                                // const fallbackTransaction = transactions.length > 0 ? 
+                                //   [...transactions].sort((a, b) => {
+                                //     const dateA = new Date(a.created_at || a.timestamp);
+                                //     const dateB = new Date(b.created_at || b.timestamp);
+                                //     return dateB.getTime() - dateA.getTime();
+                                //   })[0] : null;
                                 
-                                const fallbackRolling = rolling.length > 0 ? 
-                                  [...rolling].sort((a, b) => {
-                                    const dateA = new Date(a.created_at || a.timestamp);
-                                    const dateB = new Date(b.created_at || b.timestamp);
-                                    return dateB.getTime() - dateA.getTime();
-                                  })[0] : null;
+                                // const fallbackRolling = rolling.length > 0 ? 
+                                //   [...rolling].sort((a, b) => {
+                                //     const dateA = new Date(a.created_at || a.timestamp);
+                                //     const dateB = new Date(b.created_at || b.timestamp);
+                                //     return dateB.getTime() - dateA.getTime();
+                                //   })[0] : null;
                                   
-                                // 优先使用新API数据，如果没有则回退到旧数据
-                                const displayTransaction = latestTransactionPhoto || fallbackTransaction;
-                                const displayRolling = latestRollingPhoto || fallbackRolling;
+                                // Helper function for photo validation (available for future use)
+                                // const isValidPhotoData = (photoData: string) => {
+                                //   if (!photoData) return false;
+                                //   // Check if it's a valid base64 image data URL and not just "test"
+                                //   return photoData.startsWith('data:image/') && 
+                                //          !photoData.includes('base64,test') && 
+                                //          photoData.length > 100; // Reasonable minimum length for actual image data
+                                // };
+                                
+                                // Get valid photo data or null (currently unused but available for future features)
+                                // const validTransactionPhotoData = latestTransactionPhoto?.photo?.data && 
+                                //   isValidPhotoData(latestTransactionPhoto.photo.data) ? 
+                                //   latestTransactionPhoto.photo.data : null;
+                                  
+                                // const validRollingPhotoData = latestRollingPhoto?.photo?.data && 
+                                //   isValidPhotoData(latestRollingPhoto.photo.data) ? 
+                                //   latestRollingPhoto.photo.data : null;
+                                
+                                // Debug: Photo display validation (can be removed in production)
+                                // console.log(`📷 ${customerName} photos:`, {
+                                //   validTransactionPhotoData: validTransactionPhotoData ? 'Valid' : 'Invalid/Missing',
+                                //   validRollingPhotoData: validRollingPhotoData ? 'Valid' : 'Invalid/Missing'
+                                // });
                                 
                                 return (
                                   <Card key={customerId} className="border-l-4 border-l-gray-300">
@@ -802,33 +843,14 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                         {/* Transaction Photo Section */}
                                         <div className="border rounded p-3">
                                           <h6 className="text-sm font-medium mb-2">Transaction</h6>
-                                          
-                                          {displayTransaction ? (
-                                            <div className="mb-3">
-                                              <ImageWithFallback
-                                                src={latestTransactionPhoto ? 
-                                                  // 新格式：从JSON对象中获取照片数据
-                                                  latestTransactionPhoto.photo?.data || ''
-                                                  : 
-                                                  // 旧格式：直接使用photo字段
-                                                  displayTransaction.photo
-                                                }
-                                                alt="Transaction proof"
-                                                className="w-full h-24 object-cover rounded border mb-1"
-                                              />
-                                              {/* 根据需求移除日期显示 */}
-                                              {latestTransactionPhoto?.status && (
-                                                <Badge className={`text-xs mt-1 ${latestTransactionPhoto.status === 'approved' ? 'bg-green-100 text-green-800' : latestTransactionPhoto.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                                  {latestTransactionPhoto.status.charAt(0).toUpperCase() + latestTransactionPhoto.status.slice(1)}
-                                                </Badge>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            <div className="w-full h-24 bg-gray-100 rounded border flex items-center justify-center mb-3">
-                                              <Camera className="w-8 h-8 text-gray-300" />
-                                              <p className="text-xs text-gray-400 ml-2">No photo</p>
-                                            </div>
-                                          )}
+                                          <div className="mb-3">
+                                            <PhotoDisplay
+                                              photos={transactionPhotos}
+                                              type="transaction"
+                                              size="medium"
+                                              maxPhotos={4}
+                                            />
+                                          </div>
                                           
                                           <Button
                                             size="sm"
@@ -848,33 +870,14 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                         {/* Rolling Photo Section */}
                                         <div className="border rounded p-3">
                                           <h6 className="text-sm font-medium mb-2">Rolling</h6>
-                                          
-                                          {displayRolling ? (
-                                            <div className="mb-3">
-                                              <ImageWithFallback
-                                                src={latestRollingPhoto ? 
-                                                  // 新格式：从JSON对象中获取照片数据
-                                                  latestRollingPhoto.photo?.data || ''
-                                                  : 
-                                                  // 旧格式：直接使用photo字段
-                                                  displayRolling.photo
-                                                }
-                                                alt="Rolling proof"
-                                                className="w-full h-24 object-cover rounded border mb-1"
-                                              />
-                                              {/* 根据需求移除日期显示 */}
-                                              {latestRollingPhoto?.status && (
-                                                <Badge className={`text-xs mt-1 ${latestRollingPhoto.status === 'approved' ? 'bg-green-100 text-green-800' : latestRollingPhoto.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                                  {latestRollingPhoto.status.charAt(0).toUpperCase() + latestRollingPhoto.status.slice(1)}
-                                                </Badge>
-                                              )}
-                                            </div>
-                                          ) : (
-                                            <div className="w-full h-24 bg-gray-100 rounded border flex items-center justify-center mb-3">
-                                              <Camera className="w-8 h-8 text-gray-300" />
-                                              <p className="text-xs text-gray-400 ml-2">No photo</p>
-                                            </div>
-                                          )}
+                                          <div className="mb-3">
+                                            <PhotoDisplay
+                                              photos={rollingPhotos}
+                                              type="rolling"
+                                              size="medium"
+                                              maxPhotos={4}
+                                            />
+                                          </div>
                                           
                                           <Button
                                             size="sm"
@@ -1066,17 +1069,6 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
               </div>
             )}
 
-            {/* Notes */}
-            <div>
-              <Label htmlFor="uploadNotes">Notes (Optional)</Label>
-              <Textarea
-                id="uploadNotes"
-                value={uploadNotes}
-                onChange={(e) => setUploadNotes(e.target.value)}
-                placeholder="Add any additional notes..."
-                disabled={isSaving}
-              />
-            </div>
 
             {/* Action Buttons */}
             <div className="flex justify-end space-x-2">

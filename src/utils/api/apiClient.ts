@@ -1,9 +1,9 @@
 // API Client for connecting frontend to backend server
 import { tokenManager } from '../auth/tokenManager';
 
-// Use relative URL in development to leverage proxy, absolute URL in production
+// Use direct backend URL in development, environment variable in production
 const API_BASE_URL = process.env.NODE_ENV === 'development' 
-  ? '/api'  // Relative URL for development (uses proxy)
+  ? 'http://localhost:3001/api'  // Direct URL for development
   : (process.env.REACT_APP_API_URL || 'http://localhost:3001/api');
 
 interface ApiResponse<T = any> {
@@ -113,6 +113,14 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
       console.log(`🔑 ApiClient Interceptor: Added auth header for ${endpoint}`);
     }
+
+    // Debug log for API requests
+    console.log("📤 API Request:", {
+      url,
+      method: options.method || 'GET',
+      headers,
+      body: options.body,
+    });
 
     try {
       const response = await fetch(url, {

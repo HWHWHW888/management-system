@@ -17,6 +17,7 @@ import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { useLanguage } from '../contexts/LanguageContext';
 import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
+import { PhotoDisplay } from './common/PhotoDisplay';
 import { 
   SUPPORTED_CURRENCIES, 
   formatCurrency, 
@@ -25,7 +26,7 @@ import {
 } from '../utils/currency';
 import { 
   MapPin, RefreshCw, Users, DollarSign, Settings, Plus, Trash2, Eye,
-  BarChart, UserCheck, X, Share2, AlertTriangle
+  BarChart, UserCheck, X, Share2, AlertTriangle, Camera, Image, CheckCircle
 } from 'lucide-react';
 
 
@@ -77,6 +78,9 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [selectedCustomerForTransaction, setSelectedCustomerForTransaction] = useState<any>(null);
   const [selectedCustomerForRolling, setSelectedCustomerForRolling] = useState<any>(null);
   const [showAddExpense, setShowAddExpense] = useState(false);
+  const [showCustomerPhotos, setShowCustomerPhotos] = useState(false);
+  const [selectedCustomerForPhotos, setSelectedCustomerForPhotos] = useState<any>(null);
+  const [customerPhotos, setCustomerPhotos] = useState<any[]>([]);
   
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [sharingLoading, setSharingLoading] = useState(false);
@@ -200,6 +204,37 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       setAgentProfits([]);
     }
   }, [showError]);
+
+  // Load customer photos (transaction and rolling photos)
+  const loadCustomerPhotos = useCallback(async (customerId: string, tripId: string) => {
+    try {
+      console.log('🔍 Loading customer photos for:', { customerId, tripId });
+      const response = await apiClient.get(`/trips/${tripId}/customers/${customerId}/photos`);
+      
+      if (response.success) {
+        console.log('📸 Customer photos loaded:', response.data);
+        setCustomerPhotos(response.data || []);
+      } else {
+        console.log('❌ Failed to load customer photos:', response.error);
+        setCustomerPhotos([]);
+      }
+    } catch (error) {
+      console.error('❌ Error loading customer photos:', error);
+      setCustomerPhotos([]);
+    }
+  }, []);
+
+  // Handle viewing customer photos
+  const handleViewCustomerPhotos = async (tripCustomer: any) => {
+    if (!selectedTrip) return;
+    
+    const customerId = tripCustomer.customerId || tripCustomer.customer_id;
+    setSelectedCustomerForPhotos(tripCustomer);
+    setShowCustomerPhotos(true);
+    
+    // Load photos for this customer
+    await loadCustomerPhotos(customerId, selectedTrip.id);
+  };
 
   const updateCommissionRate = async (agentId: string, customerId: string, commissionRate: number) => {
     try {
@@ -1713,12 +1748,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                     </div>
                                   </div>
                                 </div>
-                                {/* Commission Info */}
-                                {tripCustomer.commission_earned && (
-                                  <div className="mt-2 p-2 bg-yellow-50 rounded text-xs">
-                                    <span className="text-yellow-700">Commission Earned: {formatCurrency(tripCustomer.commission_earned, viewingCurrency, selectedTrip)}</span>
-                                  </div>
-                                )}
                               </div>
                               <div className="flex gap-2">
                                 <Button
@@ -1744,6 +1773,15 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                 >
                                   <Plus className="w-3 h-3 mr-1" />
                                   Rolling
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleViewCustomerPhotos(tripCustomer)}
+                                  disabled={saving}
+                                >
+                                  <Camera className="w-3 h-3 mr-1" />
+                                  Photos
                                 </Button>
                                 <Button
                                   variant="outline"
@@ -2080,34 +2118,140 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                       {((selectedTrip as any).staff || []).map((staffMember: any) => (
                         <Card key={staffMember.id || staffMember.staff_id}>
                           <CardContent className="p-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                                  <Users className="w-5 h-5 text-blue-600" />
-                                </div>
-                                <div>
-                                  <div className="font-medium">{staffMember.name || staffMember.staffName}</div>
-                                  <div className="text-sm text-gray-500">{staffMember.email || staffMember.staffEmail}</div>
-                                  <div className="text-xs text-gray-400">
-                                    Position: {staffMember.position || staffMember.staffPosition}
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <Users className="w-5 h-5 text-blue-600" />
                                   </div>
-                                  {staffMember.created_at && (
+                                  <div>
+                                    <div className="font-medium">{staffMember.name || staffMember.staffName}</div>
+                                    <div className="text-sm text-gray-500">{staffMember.email || staffMember.staffEmail}</div>
                                     <div className="text-xs text-gray-400">
-                                      Added: {new Date(staffMember.created_at).toLocaleDateString()}
+                                      Position: {staffMember.position || staffMember.staffPosition}
                                     </div>
+                                    {staffMember.created_at && (
+                                      <div className="text-xs text-gray-400">
+                                        Added: {new Date(staffMember.created_at).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  {!isReadOnly && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleRemoveStaffFromTrip(staffMember.staff_id || staffMember.id)}
+                                      disabled={saving}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
                                   )}
                                 </div>
                               </div>
-                              <div className="flex items-center space-x-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleRemoveStaffFromTrip(staffMember.staff_id || staffMember.id)}
-                                  disabled={saving}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
+                              
+                              {/* Staff Shift Photos - Using same logic as StaffManagement */}
+                              {(() => {
+                                // Load shifts for this staff member if not already loaded
+                                const loadShifts = async () => {
+                                  try {
+                                    const shiftsResponse = await apiClient.get(`/staffs/${staffMember.staff_id || staffMember.staffId}/shifts`);
+                                    if (shiftsResponse.success) {
+                                      // Store shifts data in staffMember for display
+                                      staffMember.shifts = shiftsResponse.data || [];
+                                    }
+                                  } catch (error) {
+                                    console.error('❌ Error loading staff shifts:', error);
+                                  }
+                                };
+                                
+                                // Load shifts if not already loaded
+                                if (!staffMember.shifts) {
+                                  loadShifts();
+                                }
+                                
+                                const shifts = staffMember.shifts || [];
+                                
+                                // Collect all check-in/out photos from shifts (same as StaffManagement)
+                                const shiftPhotos: Array<{type: string, photo: string, date: string, shift_id: string, timestamp: number}> = [];
+                                shifts.forEach((shift: any) => {
+                                  if (shift.check_in_photo) {
+                                    shiftPhotos.push({
+                                      type: 'Check-in Photo',
+                                      photo: shift.check_in_photo,
+                                      date: new Date(shift.check_in_time).toLocaleString(),
+                                      shift_id: shift.id,
+                                      timestamp: new Date(shift.check_in_time).getTime()
+                                    });
+                                  }
+                                  if (shift.check_out_photo) {
+                                    shiftPhotos.push({
+                                      type: 'Check-out Photo',
+                                      photo: shift.check_out_photo,
+                                      date: new Date(shift.check_out_time).toLocaleString(),
+                                      shift_id: shift.id,
+                                      timestamp: new Date(shift.check_out_time).getTime()
+                                    });
+                                  }
+                                });
+                                
+                                // Sort photos by timestamp (newest first)
+                                shiftPhotos.sort((a, b) => b.timestamp - a.timestamp);
+                                
+                                if (shiftPhotos.length === 0) {
+                                  return (
+                                    <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                                      <h5 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
+                                        <CheckCircle className="w-4 h-4 mr-2" />
+                                        Check-in/out Photos (0)
+                                      </h5>
+                                      <div className="text-center py-4 text-gray-500">
+                                        <p className="text-sm">No check-in/out photos available</p>
+                                        <p className="text-xs mt-1">Photos will appear here when staff check in/out</p>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                
+                                return (
+                                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                                    <h5 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                                      <CheckCircle className="w-4 h-4 mr-2" />
+                                      Check-in/out Photos ({shiftPhotos.length})
+                                    </h5>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                      {shiftPhotos.map((item, index) => (
+                                        <Card key={`photo-${item.shift_id}-${index}`} className="overflow-hidden">
+                                          <CardContent className="p-3">
+                                            <div className="space-y-2">
+                                              <div className="flex items-center justify-between">
+                                                <Badge variant={item.type.includes('Check-in') ? 'default' : 'secondary'} className="text-xs">
+                                                  {item.type}
+                                                </Badge>
+                                                <Eye className="w-3 h-3 text-gray-400" />
+                                              </div>
+                                              
+                                              <div className="aspect-square relative">
+                                                <img
+                                                  src={item.photo}
+                                                  alt={item.type}
+                                                  className="w-full h-full object-cover rounded border cursor-pointer hover:opacity-80"
+                                                  onClick={() => window.open(item.photo, '_blank')}
+                                                />
+                                              </div>
+                                              
+                                              <div>
+                                                <p className="text-xs text-gray-500">{item.date}</p>
+                                              </div>
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </CardContent>
                         </Card>
@@ -2382,14 +2526,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                 tripSharing.net_result >= 0 ? 'text-green-600' : 'text-red-600'
                               }`}>
                                 {formatCurrency(Math.abs(tripSharing.net_result), viewingCurrency, selectedTrip)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                              <span className="font-medium">Net Cash Flow</span>
-                              <span className={`font-bold ${
-                                tripSharing.net_cash_flow >= 0 ? 'text-green-600' : 'text-red-600'
-                              }`}>
-                                {formatCurrency(Math.abs(tripSharing.net_cash_flow), viewingCurrency, selectedTrip)}
                               </span>
                             </div>
                           </div>
@@ -2698,6 +2834,101 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               ) : (
                 'Add Rolling'
               )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Photos Dialog */}
+      <Dialog open={showCustomerPhotos} onOpenChange={setShowCustomerPhotos}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Camera className="w-5 h-5" />
+              <span>Customer Photos - {selectedCustomerForPhotos?.customerName || selectedCustomerForPhotos?.customer?.name}</span>
+            </DialogTitle>
+            <DialogDescription>
+              Transaction and Rolling photos uploaded by staff
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+            {customerPhotos.length === 0 ? (
+              <div className="text-center py-8">
+                <Image className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                <p className="text-gray-500">No photos available for this customer</p>
+                <p className="text-sm text-gray-400 mt-2">
+                  Staff can upload transaction and rolling photos during operations
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Transaction Photos */}
+                {customerPhotos.filter((photo: any) => photo.type === 'transaction' || photo.photo_type === 'transaction').length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-medium mb-3 flex items-center">
+                      <span className="mr-2">💰</span>
+                      Transaction Photos
+                    </h4>
+                    <PhotoDisplay
+                      photos={customerPhotos
+                        .filter((photo: any) => photo.type === 'transaction' || photo.photo_type === 'transaction')
+                        .map((photo: any) => ({
+                          id: photo.id,
+                          photo: {
+                            data: photo.file_data || photo.photo?.data,
+                            filename: photo.file_name || photo.photo?.filename,
+                            size: photo.file_size || photo.photo?.size,
+                            type: photo.file_type || photo.photo?.type
+                          },
+                          status: photo.status,
+                          upload_date: photo.uploaded_at || photo.upload_date,
+                          transaction_date: photo.transaction_date
+                        }))
+                      }
+                      type="transaction"
+                      size="large"
+                      maxPhotos={6}
+                    />
+                  </div>
+                )}
+
+                {/* Rolling Photos */}
+                {customerPhotos.filter((photo: any) => photo.type === 'rolling' || photo.photo_type === 'rolling').length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-medium mb-3 flex items-center">
+                      <span className="mr-2">🎲</span>
+                      Rolling Photos
+                    </h4>
+                    <PhotoDisplay
+                      photos={customerPhotos
+                        .filter((photo: any) => photo.type === 'rolling' || photo.photo_type === 'rolling')
+                        .map((photo: any) => ({
+                          id: photo.id,
+                          photo: {
+                            data: photo.file_data || photo.photo?.data,
+                            filename: photo.file_name || photo.photo?.filename,
+                            size: photo.file_size || photo.photo?.size,
+                            type: photo.file_type || photo.photo?.type
+                          },
+                          status: photo.status,
+                          upload_date: photo.uploaded_at || photo.upload_date,
+                          transaction_date: photo.transaction_date
+                        }))
+                      }
+                      type="rolling"
+                      size="large"
+                      maxPhotos={6}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          <div className="flex justify-end mt-4">
+            <Button variant="outline" onClick={() => setShowCustomerPhotos(false)}>
+              Close
             </Button>
           </div>
         </DialogContent>

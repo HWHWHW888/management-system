@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/
 import { Badge } from './ui/badge';
 import { 
   Users, UserCheck, TrendingDown, DollarSign, Receipt, Trophy, Target, 
-  MapPin, Activity
+  MapPin, Activity, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
@@ -130,6 +130,10 @@ export function Dashboard({ user }: DashboardProps) {
   
   // Loading and sync states
   const [loading, setLoading] = useState(true);
+  
+  // Sorting states for customer performance
+  const [sortBy, setSortBy] = useState<'rolling' | 'winloss'>('rolling');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Helper functions
   const safeFormatNumber = (value: number | undefined | null): string => {
@@ -235,6 +239,26 @@ export function Dashboard({ user }: DashboardProps) {
 
   const { filteredCustomers, filteredTrips } = getFilteredData();
 
+  // Sorting function for customers
+  const getSortedCustomers = () => {
+    const sorted = [...filteredCustomers].sort((a, b) => {
+      let valueA, valueB;
+      
+      if (sortBy === 'rolling') {
+        valueA = safeNumber(a.totalRolling);
+        valueB = safeNumber(b.totalRolling);
+      } else {
+        valueA = safeNumber(a.totalWinLoss);
+        valueB = safeNumber(b.totalWinLoss);
+      }
+      
+      return sortOrder === 'desc' ? valueB - valueA : valueA - valueB;
+    });
+    
+    // Return all customers, not just top 5
+    return sorted;
+  };
+
   // Calculate comprehensive metrics from real-time data
   const calculateMetrics = () => {
     // Trip-based financial metrics
@@ -252,9 +276,9 @@ export function Dashboard({ user }: DashboardProps) {
     const customerTotalBuyIn = filteredCustomers.reduce((sum, c) => sum + safeNumber(c.totalBuyIn), 0);
     const customerTotalBuyOut = filteredCustomers.reduce((sum, c) => sum + safeNumber(c.totalBuyOut), 0);
     
-    // Total Rolling from trip_sharing table (always positive for rebate calculation)
+    // Total Rolling from trip_sharing table (should be positive by nature)
     const tripSharingTotalRolling = trips.reduce((sum, trip) => {
-      const value = Math.abs(safeNumber(trip.sharing?.total_rolling || trip.sharing?.totalRolling));
+      const value = safeNumber(trip.sharing?.total_rolling || trip.sharing?.totalRolling);
       console.log(`🔍 Trip ${trip.trip_name || trip.name}:`, {
         hasSharing: !!trip.sharing,
         total_rolling: trip.sharing?.total_rolling,
@@ -292,13 +316,13 @@ export function Dashboard({ user }: DashboardProps) {
     });
     
     const tripSharingGrossProfit = trips.reduce((sum, trip) => {
-      const value = Math.abs(safeNumber(trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss));
+      const value = safeNumber(trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss);
       console.log(`Trip ${trip.trip_name}: total_win_loss = ${trip.sharing?.total_win_loss}, contributing ${value} to gross profit`);
       return sum + value;
     }, 0);
     
     const tripSharingExpenses = trips.reduce((sum, trip) => {
-      const value = Math.abs(safeNumber(trip.sharing?.total_expenses || trip.sharing?.totalExpenses));
+      const value = safeNumber(trip.sharing?.total_expenses || trip.sharing?.totalExpenses);
       console.log(`Trip ${trip.trip_name}: total_expenses = ${trip.sharing?.total_expenses}, contributing ${value} to expenses`);
       return sum + value;
     }, 0);
@@ -430,7 +454,7 @@ export function Dashboard({ user }: DashboardProps) {
               <DollarSign className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-700">HK${safeFormatNumber(metrics.customerTotalRolling)}</div>
+              <div className="text-2xl font-bold text-blue-700">HK${safeFormatNumber(Math.abs(metrics.customerTotalRolling))}</div>
               <p className="text-xs text-blue-600">
                 From {metrics.totalRollingRecords} rolling records across {metrics.totalCustomers} customers
               </p>
@@ -450,7 +474,7 @@ export function Dashboard({ user }: DashboardProps) {
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                HK${safeFormatNumber(metrics.houseGrossWin)}
+                HK${safeFormatNumber(Math.abs(metrics.houseGrossWin))}
               </div>
               <p className={`text-xs ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 From trip sharing win/loss data
@@ -464,7 +488,7 @@ export function Dashboard({ user }: DashboardProps) {
               <Receipt className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-700">HK${safeFormatNumber(metrics.totalExpenses)}</div>
+              <div className="text-2xl font-bold text-red-700">HK${safeFormatNumber(Math.abs(metrics.totalExpenses))}</div>
               <p className="text-xs text-red-600">
                 Total operational expenses from trip sharing
               </p>
@@ -484,7 +508,7 @@ export function Dashboard({ user }: DashboardProps) {
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${metrics.houseFinalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                HK${safeFormatNumber(metrics.houseFinalProfit)}
+                HK${safeFormatNumber(Math.abs(metrics.houseFinalProfit))}
               </div>
               <p className={`text-xs ${metrics.houseFinalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 Company share from trip sharing
@@ -573,7 +597,7 @@ export function Dashboard({ user }: DashboardProps) {
                 .slice(0, 5) // Show up to 5 trips to match customer performance section
                 .map((trip) => {
                   // Use trip_sharing data directly
-                  const totalRolling = Math.abs(trip.sharing?.total_rolling || trip.sharing?.totalRolling || 0);
+                  const totalRolling = trip.sharing?.total_rolling || trip.sharing?.totalRolling || 0;
                   const winLoss = trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss || 0;
                   
                   // Calculate progress based on dates
@@ -610,12 +634,12 @@ export function Dashboard({ user }: DashboardProps) {
                       <div className="grid grid-cols-2 gap-6 text-right text-xs">
                         <div>
                           <div className="text-gray-500">Rolling</div>
-                          <div className="font-medium text-blue-600">HK${safeFormatNumber(totalRolling)}</div>
+                          <div className="font-medium text-blue-600">HK${safeFormatNumber(Math.abs(totalRolling))}</div>
                         </div>
                         <div>
                           <div className="text-gray-500">Win/Loss</div>
                           <div className={`font-medium ${
-                            winLoss <= 0 ? 'text-green-600' : 'text-red-600'
+                            winLoss < 0 ? 'text-red-600' : winLoss >= 0 ? 'text-green-600' : 'text-gray-600'
                           }`}>
                             HK${safeFormatNumber(Math.abs(winLoss))}
                           </div>
@@ -633,10 +657,39 @@ export function Dashboard({ user }: DashboardProps) {
       {/* Recent Customer Activity */}
       <Card>
         <CardHeader>
-          <CardTitle>Real-time Customer Performance</CardTitle>
-          <CardDescription>
-            Top performing customers based on live rolling data {user.role === 'agent' ? 'you manage' : ''}
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Real-time Customer Performance</CardTitle>
+              <CardDescription>
+                All customers based on live rolling data {user.role === 'agent' ? 'you manage' : ''} ({filteredCustomers.length} customers)
+              </CardDescription>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1 text-sm">
+                <span className="text-gray-500">Sort by:</span>
+                <button
+                  onClick={() => setSortBy(sortBy === 'rolling' ? 'winloss' : 'rolling')}
+                  className="flex items-center space-x-1 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+                >
+                  <span className="font-medium">
+                    {sortBy === 'rolling' ? 'Rolling' : 'Win/Loss'}
+                  </span>
+                  <ArrowUpDown className="h-3 w-3" />
+                </button>
+              </div>
+              <button
+                onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+                className="flex items-center px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+                title={`Sort ${sortOrder === 'desc' ? 'ascending' : 'descending'}`}
+              >
+                {sortOrder === 'desc' ? (
+                  <ArrowDown className="h-4 w-4 text-gray-600" />
+                ) : (
+                  <ArrowUp className="h-4 w-4 text-gray-600" />
+                )}
+              </button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {filteredCustomers.length === 0 ? (
@@ -646,45 +699,48 @@ export function Dashboard({ user }: DashboardProps) {
               <p className="text-xs text-gray-400 mt-1">Customer performance will appear here once rolling records are created</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {filteredCustomers
-                .sort((a, b) => safeNumber(b.totalRolling) - safeNumber(a.totalRolling))
-                .slice(0, 5)
-                .map((customer) => {
-                  const indicator = getWinLossStatus(customer.totalWinLoss || 0);
-                  const Icon = indicator.icon;
-                  
-                  return (
-                    <div key={customer.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center space-x-4">
-                        <Icon className={`h-5 w-5 ${indicator.color}`} />
-                        <div>
-                          <p className="font-medium">{customer.name}</p>
-                          <p className="text-sm text-gray-500">
-                            Agent: {customer.agentName} • {customer.isActive ? 'Active' : 'Inactive'}
-                          </p>
-                          <p className="text-xs text-purple-600">
-                            Commission Rate: {customer.rollingPercentage}%
-                          </p>
-                        </div>
+            <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+              {getSortedCustomers().map((customer) => {
+                const indicator = getWinLossStatus(customer.totalWinLoss || 0);
+                const Icon = indicator.icon;
+                const winLoss = customer.totalWinLoss || 0;
+                
+                return (
+                  <div key={customer.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center space-x-4">
+                      <Icon className={`h-5 w-5 ${indicator.color}`} />
+                      <div>
+                        <p className="font-medium">{customer.name}</p>
+                        <p className="text-sm text-gray-500">
+                          Agent: {customer.agentName} • {customer.isActive ? 'Active' : 'Inactive'}
+                        </p>
+                        <p className="text-xs text-purple-600">
+                          Commission Rate: {customer.rollingPercentage}%
+                        </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-6 text-right text-xs">
-                        <div>
-                          <div className="text-gray-500">Rolling</div>
-                          <div className="font-medium text-blue-600">HK${safeFormatNumber(Math.abs(customer.totalRolling || 0))}</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-6 text-right text-xs">
+                      <div>
+                        <div className="text-gray-500">Rolling</div>
+                        <div className="font-medium text-blue-600">HK${safeFormatNumber(Math.abs(customer.totalRolling || 0))}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">Win/Loss</div>
+                        <div className={`font-medium ${
+                          winLoss < 0 ? 'text-red-600' : winLoss > 0 ? 'text-green-600' : 'text-gray-600'
+                        }`}>
+                          HK${safeFormatNumber(Math.abs(winLoss))}
                         </div>
-                        <div>
-                          <div className="text-gray-500">Win/Loss</div>
-                          <div className={`font-medium ${
-                            (customer.totalWinLoss || 0) <= 0 ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            HK${safeFormatNumber(Math.abs(customer.totalWinLoss || 0))}
-                          </div>
+                        <div className={`text-xs ${
+                          winLoss < 0 ? 'text-red-500' : winLoss > 0 ? 'text-green-500' : 'text-gray-500'
+                        }`}>
+                          {winLoss < 0 ? '公司输钱' : winLoss > 0 ? '公司赢钱' : '持平'}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>

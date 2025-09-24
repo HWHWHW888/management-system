@@ -76,29 +76,59 @@ router.get('/', authenticateToken, async (req, res) => {
         }
         
         console.log('Trip staff_id:', trip.staff_id, 'User staff_id:', staffId);
-        if (trip.staff_id !== staffId) {
+        
+        let hasAccess = false;
+        
+        // Method 1: Check if staff_id matches (direct assignment)
+        if (trip.staff_id === staffId) {
+          hasAccess = true;
+        } else {
+          // Method 2: Check trip_staff relationship table (staff assigned through trip_staff)
+          const { data: tripStaff, error: tripStaffError } = await supabase
+            .from('trip_staff')
+            .select('id')
+            .eq('trip_id', trip_id)
+            .eq('staff_id', staffId)
+            .single();
+          
+          if (!tripStaffError && tripStaff) {
+            hasAccess = true;
+          }
+        }
+        
+        if (!hasAccess) {
           return res.status(403).json({
             error: 'Access denied to this trip'
           });
         }
         // Trip access verified, query will already be filtered by trip_id
       } else {
-        // Get all trip IDs for this staff member
-        const { data: staffTrips, error: tripError } = await supabase
+        // Get all trip IDs for this staff member (both direct and through trip_staff)
+        let tripIds = [];
+        
+        // Method 1: Get trips where staff_id matches directly
+        const { data: directTrips, error: directTripError } = await supabase
           .from('trips')
           .select('id')
           .eq('staff_id', staffId);
         
-        if (tripError) {
-          console.error('Failed to fetch staff trips:', tripError);
-          return res.status(500).json({
-            error: 'Failed to fetch staff trips',
-            details: tripError.message
-          });
+        if (directTrips) {
+          tripIds = directTrips.map(trip => trip.id);
         }
         
-        const tripIds = staffTrips?.map(trip => trip.id) || [];
-        console.log('Staff trip IDs:', tripIds);
+        // Method 2: Get trips through trip_staff relationship table
+        const { data: tripStaffData, error: tripStaffError } = await supabase
+          .from('trip_staff')
+          .select('trip_id')
+          .eq('staff_id', staffId);
+        
+        if (tripStaffData) {
+          const relationshipTripIds = tripStaffData.map(ts => ts.trip_id);
+          // Combine and deduplicate trip IDs
+          tripIds = [...new Set([...tripIds, ...relationshipTripIds])];
+        }
+        
+        console.log('Staff trip IDs (combined):', tripIds);
         
         if (tripIds.length === 0) {
           // Staff has no trips, return empty result
@@ -236,7 +266,26 @@ router.post('/', authenticateToken, async (req, res) => {
         return res.status(404).json({ error: 'Trip not found' });
       }
       
-      if (trip.staff_id !== staffId) {
+      let hasAccess = false;
+      
+      // Method 1: Check if staff_id matches (direct assignment)
+      if (trip.staff_id === staffId) {
+        hasAccess = true;
+      } else {
+        // Method 2: Check trip_staff relationship table (staff assigned through trip_staff)
+        const { data: tripStaff, error: tripStaffError } = await supabase
+          .from('trip_staff')
+          .select('id')
+          .eq('trip_id', trip_id)
+          .eq('staff_id', staffId)
+          .single();
+        
+        if (!tripStaffError && tripStaff) {
+          hasAccess = true;
+        }
+      }
+      
+      if (!hasAccess) {
         return res.status(403).json({ error: 'Access denied to this trip' });
       }
     }
@@ -261,8 +310,8 @@ router.post('/', authenticateToken, async (req, res) => {
         photo_type,
         photo,
         uploaded_by: staffId,
-        transaction_date: transaction_date || new Date().toISOString().split('T')[0],
-        status: 'pending'
+        transaction_date: transaction_date || new Date().toISOString().split('T')[0]
+        // status 字段由数据库默认设置为 'pending'
       })
       .select()
       .single();

@@ -20,6 +20,9 @@ import chipExchangesRouter from './chip-exchanges.js';
 import customerPhotosRouter from './customer-photos.js';
 // import gameTypesRouter from './game-types.js'; // Commented out - file doesn't exist
 
+// Debug log to check if customerPhotosRouter is imported correctly
+console.log('Customer Photos Router:', typeof customerPhotosRouter);
+
 
 const app = express();
 const PORT = process.env.PORT || 3001;

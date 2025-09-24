@@ -221,17 +221,38 @@ export async function canAccessTrip(req, res, next) {
             console.log('  - User staff_id:', req.user.staff_id);
             console.log('  - User role:', req.user.role);
             
-            // For staff users, req.user.staff_id should match trip.staff_id
-            // req.user.id is users table ID, req.user.staff_id is staff table ID
-            if (trip.staff_id !== req.user.staff_id) {
-                console.log('❌ Access denied - staff_id mismatch');
+            let hasAccess = false;
+            
+            // Method 1: Check if staff_id matches (direct assignment)
+            if (trip.staff_id === req.user.staff_id) {
+                hasAccess = true;
+                console.log('✅ Access granted - direct staff_id match');
+            } else {
+                // Method 2: Check trip_staff relationship table (staff assigned through trip_staff)
+                console.log('🔍 Checking trip_staff relationship table...');
+                const { data: tripStaff, error: tripStaffError } = await supabase
+                    .from('trip_staff')
+                    .select('id')
+                    .eq('trip_id', tripId)
+                    .eq('staff_id', req.user.staff_id)
+                    .single();
+                
+                if (!tripStaffError && tripStaff) {
+                    hasAccess = true;
+                    console.log('✅ Access granted - found in trip_staff table');
+                } else {
+                    console.log('❌ Not found in trip_staff table:', tripStaffError?.message);
+                }
+            }
+            
+            if (!hasAccess) {
+                console.log('❌ Access denied - staff not assigned to this trip');
                 res.status(403).json({
                     success: false,
                     message: 'Access denied to this trip'
                 });
                 return;
             }
-            console.log('✅ Access granted - staff_id matches');
         }
         next();
     }

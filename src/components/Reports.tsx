@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, ComposedChart, AreaChart, Area } from 'recharts';
-import { Calendar, TrendingUp, TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, Filter, Clock, Wifi, WifiOff, AlertCircle, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpCircle, ArrowUpDown } from 'lucide-react';
-import { supabase } from '../utils/supabase/supabaseClients';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, AreaChart, Area, Line } from 'recharts';
+import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpCircle, ArrowUpDown } from 'lucide-react';
 import { tokenManager } from '../utils/auth/tokenManager';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -24,8 +23,8 @@ export function Reports({ user }: ReportsProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
-  const [rollingRecords, setRollingRecords] = useState<RollingRecord[]>([]);
-  const [buyInOutRecords, setBuyInOutRecords] = useState<BuyInOutRecord[]>([]);
+  const [, setRollingRecords] = useState<RollingRecord[]>([]);
+  const [, setBuyInOutRecords] = useState<BuyInOutRecord[]>([]);
   
   // Filter states
   const [dateRange, setDateRange] = useState('30'); // days

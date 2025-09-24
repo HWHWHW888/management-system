@@ -13,6 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collap
 import { User, Agent, Customer, FileAttachment, Trip, TripCustomer, RollingRecord, BuyInOutRecord } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
+import { PhotoDisplay } from './common/PhotoDisplay';
 import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
@@ -20,7 +21,7 @@ import {
   Plus, Edit, Mail, DollarSign, TrendingUp, TrendingDown, Paperclip, MapPin, Target, 
   ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, 
   IdCard, Heart, FileText, ArrowUpCircle, ArrowDownCircle, 
-  Building2, Receipt, Wallet, Save, Activity, CheckCircle
+  Receipt, Wallet, Save, Activity, CheckCircle
 } from 'lucide-react';
 
 interface CustomerManagementProps extends WithErrorHandlerProps {
@@ -992,18 +993,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                               W/L: ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
                             </span>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <Wallet className="w-4 h-4 text-purple-600" />
-                            <span className="text-sm">
-                              Cash: ${((customer.totalBuyOut || 0) - (customer.totalBuyIn || 0)).toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Building2 className="w-4 h-4 text-orange-600" />
-                            <span className="text-sm">
-                              Credit: ${(customer.creditLimit || 0).toLocaleString()}
-                            </span>
-                          </div>
                         </>
                       )}
                     </div>
@@ -1149,16 +1138,24 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                         'Unknown date'
                                       }
                                     </p>
-                                    {((customer as any).details?.passport_photo?.type || (customer as any).details?.passport_file_type)?.startsWith('image/') && (
-                                      <img 
-                                        src={(customer as any).details.passport_photo?.data} 
-                                        alt="Passport"
-                                        className="mt-2 w-32 h-20 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity"
-                                        onClick={() => handleImagePreview(
-                                          (customer as any).details.passport_photo?.data,
-                                          `${customer.name} - Passport Photo`
-                                        )}
-                                      />
+                                    {(customer as any).details?.passport_photo?.data && (
+                                      <div className="mt-2">
+                                        <PhotoDisplay
+                                          photos={[{
+                                            id: 'passport',
+                                            photo: {
+                                              data: (customer as any).details.passport_photo.data,
+                                              filename: (customer as any).details.passport_photo.name || 'passport.jpg',
+                                              size: (customer as any).details.passport_photo.size,
+                                              type: (customer as any).details.passport_photo.type
+                                            },
+                                            upload_date: (customer as any).details.passport_photo.uploaded_at
+                                          }]}
+                                          type="passport"
+                                          size="medium"
+                                          maxPhotos={1}
+                                        />
+                                      </div>
                                     )}
                                   </div>
                                 ) : (
@@ -1201,18 +1198,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                 <Label className="text-sm font-medium text-gray-500">Gaming Preferences</Label>
                                 <p>{(customer as any).details?.gaming_preferences || 'Not provided'}</p>
                               </div>
-                              {canSeeFinancials && (
-                                <>
-                                  <div>
-                                    <Label className="text-sm font-medium text-gray-500">Credit Limit</Label>
-                                    <p className="font-medium">${(customer.creditLimit || 0).toLocaleString()}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-sm font-medium text-gray-500">Available Credit</Label>
-                                    <p className="font-medium">${(customer.availableCredit || 0).toLocaleString()}</p>
-                                  </div>
-                                </>
-                              )}
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Emergency Contact</Label>
                                 <p>{(customer as any).details?.emergency_contact || 'Not provided'}</p>
@@ -1512,16 +1497,24 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                       </p>
                                     </div>
                                   </div>
-                                  {((customer as any).details?.passport_photo?.type || (customer as any).details?.passport_file_type)?.startsWith('image/') && (
-                                    <img 
-                                      src={(customer as any).details.passport_photo?.data} 
-                                      alt="Passport"
-                                      className="mt-2 w-full h-32 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
-                                      onClick={() => handleImagePreview(
-                                        (customer as any).details.passport_photo?.data,
-                                        `${customer.name} - Passport Photo`
-                                      )}
-                                    />
+                                  {(customer as any).details?.passport_photo?.data && (
+                                    <div className="mt-2">
+                                      <PhotoDisplay
+                                        photos={[{
+                                          id: 'passport',
+                                          photo: {
+                                            data: (customer as any).details.passport_photo.data,
+                                            filename: (customer as any).details.passport_photo.name || 'passport.jpg',
+                                            size: (customer as any).details.passport_photo.size,
+                                            type: (customer as any).details.passport_photo.type
+                                          },
+                                          upload_date: (customer as any).details.passport_photo.uploaded_at
+                                        }]}
+                                        type="passport"
+                                        size="large"
+                                        maxPhotos={1}
+                                      />
+                                    </div>
                                   )}
                                 </Card>
                               </div>
@@ -1587,8 +1580,13 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                 <TabsTrigger value="additional">Additional Details</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="identity" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <TabsContent value="identity" className="space-y-6">
+                <div className="bg-gray-50 p-6 rounded-lg border">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                    <IdCard className="w-5 h-5 mr-2 text-blue-600" />
+                    Identity & Personal Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="passportNumber">Passport Number</Label>
                     <Input
@@ -1702,10 +1700,16 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                     />
                   </div>
                 </div>
+                </div>
               </TabsContent>
               
-              <TabsContent value="preferences" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <TabsContent value="preferences" className="space-y-6">
+                <div className="bg-blue-50 p-6 rounded-lg border">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                    <Heart className="w-5 h-5 mr-2 text-pink-600" />
+                    Preferences & Lifestyle
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="hobby">Hobby</Label>
                     <Input
@@ -1747,10 +1751,16 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                     />
                   </div>
                 </div>
+                </div>
               </TabsContent>
               
-              <TabsContent value="additional" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <TabsContent value="additional" className="space-y-6">
+                <div className="bg-green-50 p-6 rounded-lg border">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                    <FileText className="w-5 h-5 mr-2 text-green-600" />
+                    Additional Details
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="maritalStatus">Marital Status</Label>
                     <Select 
@@ -1849,6 +1859,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                       rows={3}
                     />
                   </div>
+                </div>
                 </div>
               </TabsContent>
             </Tabs>

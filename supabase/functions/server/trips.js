@@ -62,23 +62,30 @@ async function calculateCustomerTripStats(tripId, customerId) {
       rolling_amount += rollingAmt;
     });
 
-    // Calculate net result from company perspective: buy-in - cash-out - rolling_amount
-    // Positive = company profit, Negative = company loss
-    const net_result = total_buy_in - total_cash_out - rolling_amount;
+    // Calculate win/loss: buy-in - cash-out (simple difference)
+    // Positive = customer won money, Negative = customer lost money
+    const total_win_loss = total_buy_in - total_cash_out;
 
-    // Use combined total_win_loss field (positive = win, negative = loss)
-    const total_win_loss = net_result;
+    // Default commission rate (1.4%)
+    const commission_rate = 0.014; // 1.4% commission rate
+    
+    // Commission earned will be calculated automatically by the database
+    // Calculate net result for customer: total_win_loss - (rolling_amount * commission_rate)
+    // This represents the customer's actual profit/loss after commission
+    const commission_earned = rolling_amount * commission_rate;
+    const net_result = total_win_loss - commission_earned;
 
     return {
       total_win_loss,
       total_buy_in,
       total_cash_out,
       net_result,
-      rolling_amount
+      rolling_amount,
+      commission_earned
     };
   } catch (error) {
     console.error('Error in calculateCustomerTripStats:', error);
-    return { total_win_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0 };
+    return { total_win_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0, commission_earned: 0 };
   }
 }
 
@@ -96,6 +103,7 @@ async function updateCustomerTripStats(tripId, customerId) {
       total_win_loss: stats.total_win_loss,
       net_result: stats.net_result,
       rolling_amount: stats.rolling_amount,
+      commission_rate: 0.014, // 1.4% default commission rate
       updated_at: new Date().toISOString()
     }, {
       onConflict: 'trip_id,customer_id'
@@ -287,7 +295,7 @@ async function deductTripDataFromCustomer(tripId, customerId) {
 
     // Calculate new totals by deducting trip data
     const newTotalRolling = (parseFloat(customer.total_rolling) || 0) - (parseFloat(tripStats.rolling_amount) || 0);
-    const newTotalWinLoss = (parseFloat(customer.total_win_loss) || 0) - (parseFloat(tripStats.net_result) || 0);
+    const newTotalWinLoss = (parseFloat(customer.total_win_loss) || 0) - (parseFloat(tripStats.total_win_loss) || 0);
     const newTotalBuyIn = (parseFloat(customer.total_buy_in) || 0) - (parseFloat(tripStats.total_buy_in) || 0);
     const newTotalBuyOut = (parseFloat(customer.total_buy_out) || 0) - (parseFloat(tripStats.total_cash_out) || 0);
 
@@ -357,7 +365,7 @@ async function addTripDataToCustomer(tripId, customerId) {
 
     // Calculate new totals by adding trip data
     const newTotalRolling = (parseFloat(customer.total_rolling) || 0) + (parseFloat(tripStats.rolling_amount) || 0);
-    const newTotalWinLoss = (parseFloat(customer.total_win_loss) || 0) + (parseFloat(tripStats.net_result) || 0);
+    const newTotalWinLoss = (parseFloat(customer.total_win_loss) || 0) + (parseFloat(tripStats.total_win_loss) || 0);
     const newTotalBuyIn = (parseFloat(customer.total_buy_in) || 0) + (parseFloat(tripStats.total_buy_in) || 0);
     const newTotalBuyOut = (parseFloat(customer.total_buy_out) || 0) + (parseFloat(tripStats.total_cash_out) || 0);
 
@@ -433,7 +441,8 @@ async function calculateTripStats(tripId) {
       total_cash_out += parseFloat(stats.total_cash_out) || 0;
     });
 
-    // Net profit is the sum of all customer net results
+    // Net profit is the sum of all customer win/loss (total_buy_in - total_cash_out)
+    // This represents the total win/loss from customer perspective
     const net_profit = total_win_loss;
 
     return {
@@ -482,7 +491,7 @@ async function updateTripSharing(tripId, tripStats) {
     // Get rolling commission data from trip customer stats
     const { data: customerStats, error: statsError } = await supabase
       .from('trip_customer_stats')
-      .select('customer_id, rolling_amount, commission_earned, net_result')
+      .select('customer_id, rolling_amount, commission_rate, commission_earned, net_result')
       .eq('trip_id', tripId);
 
     if (statsError) {
@@ -539,9 +548,8 @@ async function updateTripSharing(tripId, tripStats) {
     
     if (hasCustomers) {
       netCashFlow = (tripStats.total_cash_out || 0) - (tripStats.total_buy_in || 0);
-      // Net result from company perspective: house win - agent commission - rolling commission - expenses
-      const houseWinLoss = -(tripStats.net_profit || 0); // Convert customer loss to house win
-      netResult = houseWinLoss - totalRollingCommission - totalExpenses;
+      // Net result for trip_sharing: total_win_loss - total_expenses - total_rolling_commission
+      netResult = (tripStats.total_win_loss || 0) - totalExpenses - totalRollingCommission;
     } else {
       // No customers: cash flow is 0, result is negative expenses only
       netCashFlow = 0;
@@ -828,47 +836,60 @@ router.get('/my-schedule', authenticateToken, async (req, res) => {
         let trips = [];
         
         if (userRole === 'staff') {
-            // For staff, first get the staff_id from users table
-            const { data: userRecord, error: userError } = await supabase
-                .from('users')
-                .select('staff_id')
-                .eq('id', userId)
-                .single();
-                
-            if (userError || !userRecord?.staff_id) {
+            // For staff, get trips through trip_staff relationship table
+            const staffId = req.user.staff_id;
+            
+            if (!staffId) {
                 return res.status(400).json({
-                    error: 'Staff ID not found for user',
-                    details: userError?.message
+                    error: 'Staff ID not found for user'
                 });
             }
             
-            // For staff, get trips where they are assigned as staff_id
-            const { data: staffTrips, error: staffError } = await supabase
-                .from('trips')
-                .select(`
-                    id,
-                    trip_name,
-                    destination,
-                    start_date,
-                    end_date,
-                    status,
-                    total_budget,
-                    created_at,
-                    updated_at,
-                    activecustomerscount
-                `)
-                .eq('staff_id', userRecord.staff_id)
-                .eq('status', 'active');
-                
-            if (staffError) {
+            // First get trip IDs from trip_staff table
+            const { data: tripStaffData, error: tripStaffError } = await supabase
+                .from('trip_staff')
+                .select('trip_id')
+                .eq('staff_id', staffId);
+            
+            if (tripStaffError) {
                 return res.status(500).json({
-                    error: 'Failed to fetch staff trips',
-                    details: staffError.message
+                    error: 'Failed to fetch staff trip assignments',
+                    details: tripStaffError.message
                 });
             }
             
-            // Use trips directly since we already filtered by status
-            trips = staffTrips || [];
+            const tripIds = tripStaffData.map(ts => ts.trip_id);
+            
+            if (tripIds.length === 0) {
+                trips = [];
+            } else {
+                // Get trip details for assigned trips
+                const { data: staffTrips, error: staffError } = await supabase
+                    .from('trips')
+                    .select(`
+                        id,
+                        trip_name,
+                        destination,
+                        start_date,
+                        end_date,
+                        status,
+                        total_budget,
+                        created_at,
+                        updated_at,
+                        activecustomerscount
+                    `)
+                    .in('id', tripIds)
+                    .eq('status', 'active');
+                    
+                if (staffError) {
+                    return res.status(500).json({
+                        error: 'Failed to fetch staff trips',
+                        details: staffError.message
+                    });
+                }
+                
+                trips = staffTrips || [];
+            }
         } else {
             // For admin/other roles, get all active trips
             const { data: allTrips, error } = await supabase
@@ -941,7 +962,32 @@ router.get('/', authenticateToken, async (req, res) => {
         `);
         // Staff can only see their assigned trips
         if (userRole === 'staff') {
-            query = query.eq('staff_id', userId);
+            // Query trips through trip_staff relationship table
+            const staffId = req.user.staff_id;
+            const { data: tripStaffData, error: tripStaffError } = await supabase
+                .from('trip_staff')
+                .select('trip_id')
+                .eq('staff_id', staffId);
+            
+            if (tripStaffError) {
+                return res.status(500).json({
+                    error: 'Failed to fetch staff trips',
+                    details: tripStaffError.message
+                });
+            }
+            
+            const tripIds = tripStaffData.map(ts => ts.trip_id);
+            if (tripIds.length === 0) {
+                // No trips assigned to this staff
+                return res.json({
+                    success: true,
+                    data: [],
+                    userRole,
+                    totalTrips: 0
+                });
+            }
+            
+            query = query.in('id', tripIds);
         }
         const { data: trips, error } = await query;
         if (error) {
@@ -1389,11 +1435,10 @@ router.post('/:id/customers', authenticateToken, canAccessTrip, async (req, res)
         customer_id: customer_id,
         total_buy_in: 0,
         total_cash_out: 0,
-        total_win: 0,
-        total_loss: 0,
+        total_win_loss: 0,
         net_result: 0,
         rolling_amount: 0,
-        commission_earned: 0
+        commission_rate: 0.014 // 1.4% default commission rate
       });
 
     if (statsError) {
@@ -1663,10 +1708,10 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
         customer_id,
         total_buy_in,
         total_cash_out,
-        total_win,
-        total_loss,
+        total_win_loss,
         net_result,
         rolling_amount,
+        commission_rate,
         commission_earned
       `)
       .eq('trip_id', tripId)
@@ -1709,10 +1754,10 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
       const customerStats = statsMap[customerId] || {
         total_buy_in: 0,
         total_cash_out: 0,
-        total_win: 0,
-        total_loss: 0,
+        total_win_loss: 0,
         net_result: 0,
         rolling_amount: 0,
+        commission_rate: 0.014,
         commission_earned: 0
       };
       
@@ -2264,18 +2309,68 @@ router.get('/:id/staff', authenticateToken, canAccessTrip, async (req, res) => {
       }
     }
 
-    // Transform data for frontend by combining trip staff with staff details
-    const transformedStaff = (tripStaff || []).map(ts => {
+    // Get shift photos for each staff member for this trip
+    const transformedStaff = await Promise.all((tripStaff || []).map(async (ts) => {
       const staffInfo = staffDetails.find(s => s.id === ts.staff_id);
+      
+      // Get shift photos for this staff member during this trip
+      const { data: shiftPhotos, error: shiftError } = await supabase
+        .from('staff_shifts')
+        .select('id, check_in_photo, check_out_photo, shift_date, created_at')
+        .eq('staff_id', ts.staff_id)
+        .gte('shift_date', new Date(new Date().setDate(new Date().getDate() - 30)).toISOString()) // Last 30 days
+        .order('shift_date', { ascending: false });
+      
+      if (shiftError) {
+        console.error('Error fetching shift photos for staff:', ts.staff_id, shiftError);
+      }
+      
+      // Transform shift photos for PhotoDisplay component
+      const shift_photos = [];
+      if (shiftPhotos) {
+        shiftPhotos.forEach(shift => {
+          if (shift.check_in_photo) {
+            shift_photos.push({
+              id: `${shift.id}-checkin`,
+              photo_data: shift.check_in_photo,
+              data: shift.check_in_photo,
+              filename: `check-in-${shift.shift_date}`,
+              type: 'image/jpeg',
+              status: 'approved',
+              upload_date: shift.created_at,
+              shift_date: shift.shift_date
+            });
+          }
+          if (shift.check_out_photo) {
+            shift_photos.push({
+              id: `${shift.id}-checkout`,
+              photo_data: shift.check_out_photo,
+              data: shift.check_out_photo,
+              filename: `check-out-${shift.shift_date}`,
+              type: 'image/jpeg',
+              status: 'approved',
+              upload_date: shift.created_at,
+              shift_date: shift.shift_date
+            });
+          }
+        });
+      }
+      
       return {
         id: ts.id,
         staffId: ts.staff_id,
         staff_id: ts.staff_id,
+        name: staffInfo?.name,
+        email: staffInfo?.email,
+        position: staffInfo?.position,
         staffName: staffInfo?.name,
+        staffEmail: staffInfo?.email,
+        staffPosition: staffInfo?.position,
         staff: staffInfo,
-        created_at: ts.created_at
+        created_at: ts.created_at,
+        shift_photos: shift_photos
       };
-    });
+    }));
 
     res.json({
       success: true,
@@ -2582,7 +2677,8 @@ router.post('/:id/transactions', authenticateToken, canAccessTrip, async (req, r
       transaction_type, 
       venue, 
       status = 'completed',
-      recorded_by_staff_id 
+      recorded_by_staff_id,
+      updated_at
     } = req.body;
     
     console.log('🔄 Transaction request received:', {
@@ -2683,10 +2779,15 @@ router.post('/:id/transactions', authenticateToken, canAccessTrip, async (req, r
       venue: venue || null,
       recorded_by_staff_id: recordedByStaffId, // Can be null
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      updated_at: updated_at || new Date().toISOString() // Use provided updated_at or current time as fallback
     };
 
     console.log('🔄 Inserting transaction:', transactionData);
+    console.log('🔍 Updated_at value being inserted:', {
+      original: updated_at,
+      processed: updated_at || new Date().toISOString(),
+      final: transactionData.updated_at
+    });
 
     const { data: transaction, error } = await supabase
       .from('transactions')
@@ -3063,8 +3164,7 @@ router.get('/:id/customers/:customerId/stats', authenticateToken, canAccessTrip,
           customer,
           ...calculatedStats,
           rolling_amount: 0,
-          commission_earned: 0,
-          notes: null
+          commission_rate: 0.014
         }
       });
     }
@@ -3092,16 +3192,14 @@ router.put('/:id/customers/:customerId/stats', authenticateToken, canAccessTrip,
     const { 
       total_buy_in, 
       total_cash_out, 
-      total_win, 
-      total_loss, 
+      total_win_loss, 
       rolling_amount, 
-      commission_earned, 
-      notes 
+      commission_rate = 0.014
     } = req.body;
 
-    // Calculate net result
-    const net_result = (parseFloat(total_cash_out) + parseFloat(total_win)) - 
-                      (parseFloat(total_buy_in) + parseFloat(total_loss));
+    // Calculate net result: total_win_loss - commission
+    const commission_earned = (parseFloat(rolling_amount) || 0) * (parseFloat(commission_rate) || 0.014);
+    const net_result = (parseFloat(total_win_loss) || 0) - commission_earned;
 
     const { data: stats, error } = await supabase
       .from('trip_customer_stats')
@@ -3110,12 +3208,10 @@ router.put('/:id/customers/:customerId/stats', authenticateToken, canAccessTrip,
         customer_id: customerId,
         total_buy_in: parseFloat(total_buy_in) || 0,
         total_cash_out: parseFloat(total_cash_out) || 0,
-        total_win: parseFloat(total_win) || 0,
-        total_loss: parseFloat(total_loss) || 0,
+        total_win_loss: parseFloat(total_win_loss) || 0,
         net_result,
         rolling_amount: parseFloat(rolling_amount) || 0,
-        commission_earned: parseFloat(commission_earned) || 0,
-        notes,
+        commission_rate: parseFloat(commission_rate) || 0.014,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'trip_id,customer_id'
@@ -3237,7 +3333,8 @@ router.post('/:id/rolling-records', authenticateToken, requireAdmin, async (req,
       game_type,
       rolling_amount,
       venue,
-      attachment_id
+      attachment_id,
+      updated_at
     } = req.body;
 
     // Validate required fields
@@ -3272,7 +3369,9 @@ router.post('/:id/rolling-records', authenticateToken, requireAdmin, async (req,
         game_type: game_type,
         rolling_amount: parseFloat(rolling_amount),
         venue: venue || null,
-        attachment_id: attachment_id || null
+        attachment_id: attachment_id || null,
+        created_at: new Date().toISOString(),
+        updated_at: updated_at || new Date().toISOString() // Use provided updated_at or current time as fallback
       })
       .select()
       .single();
@@ -3454,6 +3553,83 @@ router.post('/recalculate-agent-statistics', authenticateToken, async (req, res)
     console.error('Error in recalculate-agent-statistics:', error);
     res.status(500).json({
       error: 'Internal server error during agent statistics recalculation',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * GET /trips/:id/customers/:customerId/photos
+ * Get customer photos (transaction and rolling photos) for a specific trip
+ */
+router.get('/:id/customers/:customerId/photos', authenticateToken, canAccessTrip, async (req, res) => {
+  try {
+    const { id: tripId, customerId } = req.params;
+
+    console.log('🔍 Loading customer photos for:', { tripId, customerId });
+
+    // Get customer photos from customer_photos table
+    const { data: photos, error } = await supabase
+      .from('customer_photos')
+      .select(`
+        id,
+        photo_type,
+        photo,
+        uploaded_by,
+        upload_date,
+        transaction_date,
+        status,
+        trip_id,
+        customer_id
+      `)
+      .eq('trip_id', tripId)
+      .eq('customer_id', customerId)
+      .order('upload_date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching customer photos:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch customer photos',
+        details: error.message
+      });
+    }
+
+    // Transform the data for frontend consumption
+    const transformedPhotos = (photos || []).map(photo => {
+      const photoData = photo.photo || {};
+      return {
+        id: photo.id,
+        file_name: photoData.filename || photoData.name || 'Unknown',
+        file_type: photoData.type || 'image/jpeg',
+        file_size: photoData.size || 0,
+        file_data: photoData.data || photoData.file_data,
+        type: photo.photo_type, // 'transaction' or 'rolling'
+        amount: photoData.amount || 0,
+        venue: photoData.venue || '',
+        uploaded_at: photo.upload_date,
+        uploaded_by: photo.uploaded_by,
+        transaction_date: photo.transaction_date,
+        status: photo.status
+      };
+    });
+
+    console.log('📸 Customer photos loaded successfully:', {
+      tripId,
+      customerId,
+      photoCount: transformedPhotos.length
+    });
+
+    res.json({
+      success: true,
+      data: transformedPhotos
+    });
+
+  } catch (error) {
+    console.error('Error in get customer photos:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while fetching customer photos',
       details: error.message
     });
   }
