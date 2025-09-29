@@ -467,7 +467,7 @@ export function Dashboard({ user }: DashboardProps) {
                 Company Gross Profit
               </CardTitle>
               {metrics.houseGrossWin >= 0 ? (
-                <Trophy className="h-4 w-4 text-green-600" />
+                <Trophy className="h-4 w-4 text-green-600" /> 
               ) : (
                 <TrendingDown className="h-4 w-4 text-red-600" />
               )}

@@ -52,6 +52,8 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
+  const [promotingCustomer, setPromotingCustomer] = useState<Customer | null>(null);
+  const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [imagePreview, setImagePreview] = useState<{
@@ -167,9 +169,9 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           details: customerDetails,
           // Get attachments from customer details instead of customer table
           attachments: customerDetails?.attachments || [],
-          // Backward compatibility
-          isAgent: customer.isAgent || false,
-          sourceAgentId: customer.sourceAgentId || undefined,
+          // Backward compatibility - map database fields to frontend fields
+          isAgent: (customer as any).is_agent || false,
+          sourceAgentId: (customer as any).source_agent_id || undefined,
           rollingPercentage: parseFloat(String(customer.rolling_percentage || 1.4)) || 1.4,
           creditLimit: parseFloat(String(customer.credit_limit || 0)) || 0,
           availableCredit: parseFloat(String(customer.available_credit || 0)) || 0
@@ -600,6 +602,45 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     }
   };
 
+  const handlePromoteToAgent = (customer: Customer) => {
+    setPromotingCustomer(customer);
+    setIsPromoteDialogOpen(true);
+  };
+
+  const confirmPromoteToAgent = async () => {
+    if (!promotingCustomer) return;
+
+    try {
+      setSaving(true);
+      clearError();
+      
+      console.log('🔄 Promoting customer to agent:', promotingCustomer.name, promotingCustomer.id);
+      
+      // Call backend API to promote customer to agent
+      // Backend will automatically use customer's agent_id as parent_agent_id
+      const response = await apiClient.promoteCustomerToAgent(promotingCustomer.id);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to promote customer to agent');
+      }
+      
+      console.log('✅ Customer promoted to agent successfully');
+      
+      // Refresh data to get updated customer and agent lists
+      await loadRealTimeData();
+      
+      // Close dialog and reset state
+      setIsPromoteDialogOpen(false);
+      setPromotingCustomer(null);
+      
+    } catch (error) {
+      console.error('❌ Error promoting customer to agent:', error);
+      showError(`Failed to promote customer to agent: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateCustomerAttachments = async (customerId: string, attachments: FileAttachment[]) => {
     try {
       console.log('🔍 Frontend - Updating customer attachments:', customerId, attachments.length);
@@ -906,6 +947,12 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             <Badge variant={customer.isActive ? "default" : "secondary"}>
                               {customer.isActive ? 'Active' : 'Inactive'}
                             </Badge>
+                            {customer.isAgent && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center space-x-1">
+                                <UserCheck className="w-3 h-3" />
+                                <span>Agent</span>
+                              </Badge>
+                            )}
                             {customer.attachments && customer.attachments.length > 0 && (
                               <Badge variant="outline" className="flex items-center space-x-1">
                                 <Paperclip className="w-3 h-3" />
@@ -1007,6 +1054,18 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                           <FileText className="w-4 h-4 mr-2" />
                           Edit Details
                         </Button>
+                        {isAdmin && !customer.isAgent && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handlePromoteToAgent(customer)} 
+                            disabled={saving}
+                            className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                          >
+                            <UserCheck className="w-4 h-4 mr-2" />
+                            Promote to Agent
+                          </Button>
+                        )}
                         {isAdmin && (
                           <AlertDialog open={deletingCustomer?.id === customer.id} onOpenChange={(open) => !open && setDeletingCustomer(null)}>
                             <AlertDialogTrigger asChild>
@@ -1886,7 +1945,45 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         </DialogContent>
       </Dialog>
 
-      {/* Image Preview Modal */}
+      {/* Promote to Agent Dialog */}
+      <AlertDialog open={isPromoteDialogOpen} onOpenChange={(open) => !open && setIsPromoteDialogOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center space-x-2">
+              <UserCheck className="w-5 h-5 text-green-600" />
+              <span>Promote Customer to Agent</span>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to make "{promotingCustomer?.name}" into an agent?
+              <br /><br />
+              <strong>Note:</strong> This action cannot be undone easily. The customer will retain all their existing trip history and financial records.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmPromoteToAgent}
+              className="bg-green-600 text-white hover:bg-green-700"
+              disabled={saving}
+            >
+              {saving ? (
+                <>
+                  <Save className="w-4 h-4 mr-2 animate-spin" />
+                  Promoting...
+                </>
+              ) : (
+                <>
+                  <UserCheck className="w-4 h-4 mr-2" />
+                  Promote to Agent
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Image Preview Dialog */}
       <Dialog open={imagePreview.isOpen} onOpenChange={closeImagePreview}>
         <DialogContent className="max-w-4xl max-h-[90vh] p-0">
           <DialogHeader className="p-6 pb-2">

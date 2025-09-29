@@ -43,10 +43,12 @@ router.get('/', authenticateToken, async (req, res) => {
           status,
           total_commission,
           total_trips,
+          parent_agent_id,
           created_at,
           updated_at
         `)
             .order('name');
+            
         if (error) {
             return res.status(500).json({
                 success: false,
@@ -54,9 +56,45 @@ router.get('/', authenticateToken, async (req, res) => {
                 error: error.message
             });
         }
+
+        // Manually fetch parent and child agent information for each agent
+        const agentsWithRelations = await Promise.all(agents.map(async (agent) => {
+            let parentAgent = null;
+            let childAgents = [];
+            
+            // Fetch parent agent if exists
+            if (agent.parent_agent_id) {
+                const { data: parent, error: parentError } = await supabase
+                    .from('agents')
+                    .select('id, name, email')
+                    .eq('id', agent.parent_agent_id)
+                    .single();
+                
+                if (!parentError && parent) {
+                    parentAgent = parent;
+                }
+            }
+            
+            // Fetch child agents
+            const { data: children, error: childrenError } = await supabase
+                .from('agents')
+                .select('id, name, email, status')
+                .eq('parent_agent_id', agent.id);
+            
+            if (!childrenError && children) {
+                childAgents = children;
+            }
+            
+            return {
+                ...agent,
+                parent_agent: parentAgent ? [parentAgent] : [],
+                child_agents: childAgents
+            };
+        }));
+        
         res.json({
             success: true,
-            data: agents,
+            data: agentsWithRelations,
             total: agents?.length || 0
         });
     }
@@ -68,6 +106,76 @@ router.get('/', authenticateToken, async (req, res) => {
         });
     }
 });
+
+/**
+ * GET /agents/hierarchy
+ * Get complete agent hierarchy tree
+ */
+router.get('/hierarchy', authenticateToken, async (req, res) => {
+    try {
+        // Get all agents with their parent information
+        const { data: agents, error } = await supabase
+            .from('agents')
+            .select(`
+                id,
+                name,
+                email,
+                phone,
+                commission_rate,
+                status,
+                total_commission,
+                total_trips,
+                parent_agent_id,
+                created_at
+            `)
+            .order('name');
+            
+        if (error) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to fetch agents hierarchy',
+                error: error.message
+            });
+        }
+        
+        // Build hierarchy tree
+        const agentMap = new Map();
+        const rootAgents = [];
+        
+        // First pass: create agent objects with children array
+        agents.forEach(agent => {
+            agentMap.set(agent.id, { ...agent, children: [] });
+        });
+        
+        // Second pass: build parent-child relationships
+        agents.forEach(agent => {
+            if (agent.parent_agent_id) {
+                const parent = agentMap.get(agent.parent_agent_id);
+                if (parent) {
+                    parent.children.push(agentMap.get(agent.id));
+                }
+            } else {
+                rootAgents.push(agentMap.get(agent.id));
+            }
+        });
+        
+        res.json({
+            success: true,
+            data: {
+                hierarchy: rootAgents,
+                total_agents: agents.length
+            }
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch agents hierarchy',
+            error: error.message
+        });
+    }
+});
+
 /**
  * GET /agents/:id
  * All roles can view specific agent
@@ -86,6 +194,18 @@ router.get('/:id', authenticateToken, async (req, res) => {
           status,
           total_commission,
           total_trips,
+          parent_agent_id,
+          parent_agent:agents!parent_agent_id(
+            id,
+            name,
+            email
+          ),
+          child_agents:agents!parent_agent_id(
+            id,
+            name,
+            email,
+            status
+          ),
           created_at,
           updated_at,
           trips:trip_agents(
@@ -133,7 +253,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
  */
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { name, email, phone, commission_rate, status } = req.body;
+        const { name, email, phone, commission_rate, status, parent_agent_id } = req.body;
 
         // Validate required fields
         if (!name || !email) {
@@ -167,6 +287,22 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
             });
         }
 
+        // Validate parent_agent_id if provided
+        if (parent_agent_id) {
+            const { data: parentAgent, error: parentError } = await supabase
+                .from('agents')
+                .select('id')
+                .eq('id', parent_agent_id)
+                .single();
+            
+            if (parentError || !parentAgent) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid parent agent ID'
+                });
+            }
+        }
+
         // Create new agent
         const { data: agent, error: agentError } = await supabase
             .from('agents')
@@ -175,8 +311,9 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
                 email,
                 phone,
                 commission_rate: commission_rate || 0,
-      status: status || 'active',
-      created_by: req.user.id  // ⚠️ 先确认表里有这个列
+                status: status || 'active',
+                parent_agent_id,
+                created_by: req.user.id
             })
             .select()
             .single();
@@ -270,6 +407,31 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
                 });
             }
         }
+        // Validate parent_agent_id if being updated
+        if (updateData.parent_agent_id) {
+            // Check if parent agent exists
+            const { data: parentAgent, error: parentError } = await supabase
+                .from('agents')
+                .select('id')
+                .eq('id', updateData.parent_agent_id)
+                .single();
+            
+            if (parentError || !parentAgent) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid parent agent ID'
+                });
+            }
+            
+            // Prevent circular reference (agent cannot be its own parent or descendant)
+            if (updateData.parent_agent_id === agentId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Agent cannot be its own parent'
+                });
+            }
+        }
+
         // Update agent
         const { data: agent, error } = await supabase
             .from('agents')
@@ -366,6 +528,26 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
                 message: 'Cannot delete agent with associated trips'
             });
         }
+        // First, update any customers that were promoted from this agent
+        // Reset their is_agent and source_agent_id fields
+        const { error: customerUpdateError } = await supabase
+            .from('customers')
+            .update({
+                is_agent: false,
+                source_agent_id: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('source_agent_id', agentId);
+
+        if (customerUpdateError) {
+            console.error('Error updating customers when deleting agent:', customerUpdateError);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to update related customers',
+                error: customerUpdateError.message
+            });
+        }
+
         // Delete agent
         const { error } = await supabase
             .from('agents')
@@ -508,6 +690,163 @@ router.put('/:id/commission', authenticateToken, requireAdmin, async (req, res) 
         });
     }
 });
+
+/**
+ * GET /agents/:id/children
+ * Get all child agents for a specific agent
+ */
+router.get('/:id/children', authenticateToken, async (req, res) => {
+    try {
+        const agentId = req.params.id;
+        
+        // Check if agent exists
+        const { data: agent, error: agentError } = await supabase
+            .from('agents')
+            .select('id, name')
+            .eq('id', agentId)
+            .single();
+            
+        if (!agent) {
+            return res.status(404).json({
+                success: false,
+                message: 'Agent not found'
+            });
+        }
+        
+        // Get child agents
+        const { data: children, error } = await supabase
+            .from('agents')
+            .select(`
+                id,
+                name,
+                email,
+                phone,
+                commission_rate,
+                status,
+                total_commission,
+                total_trips,
+                created_at
+            `)
+            .eq('parent_agent_id', agentId)
+            .order('name');
+            
+        if (error) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to fetch child agents',
+                error: error.message
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: {
+                parent: agent,
+                children: children || []
+            }
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch child agents',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * PUT /agents/:id/parent
+ * Update agent's parent (Admin only)
+ */
+router.put('/:id/parent', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const agentId = req.params.id;
+        const { parent_agent_id } = req.body;
+        
+        // Check if agent exists
+        const { data: existingAgent, error: checkError } = await supabase
+            .from('agents')
+            .select('id')
+            .eq('id', agentId)
+            .single();
+            
+        if (!existingAgent) {
+            return res.status(404).json({
+                success: false,
+                message: 'Agent not found'
+            });
+        }
+        
+        // Validate parent_agent_id if provided
+        if (parent_agent_id) {
+            // Check if parent agent exists
+            const { data: parentAgent, error: parentError } = await supabase
+                .from('agents')
+                .select('id')
+                .eq('id', parent_agent_id)
+                .single();
+                
+            if (parentError || !parentAgent) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid parent agent ID'
+                });
+            }
+            
+            // Prevent circular reference
+            if (parent_agent_id === agentId) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Agent cannot be its own parent'
+                });
+            }
+        }
+        
+        // Update parent
+        const { data: agent, error } = await supabase
+            .from('agents')
+            .update({
+                parent_agent_id,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', agentId)
+            .select(`
+                id,
+                name,
+                email,
+                parent_agent_id,
+                parent_agent:agents!parent_agent_id(
+                    id,
+                    name,
+                    email
+                )
+            `)
+            .single();
+            
+        if (error) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to update agent parent',
+                error: error.message
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Agent parent updated successfully',
+            data: agent
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update agent parent',
+            error: error.message
+        });
+    }
+});
+
 // Debug endpoint to check table structure using Supabase
 router.get('/debug/tables', authenticateToken, async (req, res) => {
     try {

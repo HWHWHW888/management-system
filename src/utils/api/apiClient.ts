@@ -313,6 +313,21 @@ class ApiClient {
     }, customToken);
   }
 
+  async getAgentChildren(id: string, customToken?: string) {
+    return this.request(`/agents/${id}/children`, {}, customToken);
+  }
+
+  async getAgentHierarchy(customToken?: string) {
+    return this.request('/agents/hierarchy', {}, customToken);
+  }
+
+  async updateAgentParent(id: string, parentAgentId: string | null, customToken?: string) {
+    return this.request(`/agents/${id}/parent`, {
+      method: 'PUT',
+      body: JSON.stringify({ parent_agent_id: parentAgentId }),
+    }, customToken);
+  }
+
   // Trips endpoints
   async getTrips() {
     return this.request('/trips');
@@ -441,6 +456,14 @@ class ApiClient {
     return this.request(`/customers/${customerId}/passport`, {
       method: 'POST',
       body: JSON.stringify(passportData)
+    });
+  }
+
+  // Customer to Agent promotion
+  async promoteCustomerToAgent(customerId: string, parentAgentId?: string): Promise<ApiResponse<any>> {
+    return this.request(`/customers/${customerId}/promote-to-agent`, {
+      method: 'POST',
+      body: JSON.stringify({ parent_agent_id: parentAgentId })
     });
   }
 

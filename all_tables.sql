@@ -12,8 +12,12 @@ create table public.agents (
   updated_at timestamp with time zone null default now(),
   total_commission numeric(15, 2) null default 0.00,
   total_trips integer null default 0,
-  constraint agents_pkey primary key (id)
+  parent_agent_id uuid null,
+  constraint agents_pkey primary key (id),
+  constraint agents_parent_fkey foreign KEY (parent_agent_id) references agents (id) on delete set null
 ) TABLESPACE pg_default;
+
+create index IF not exists idx_agents_parent_agent_id on public.agents using btree (parent_agent_id) TABLESPACE pg_default;
 
 create index IF not exists idx_agents_customer_id on public.agents using btree (customer_id) TABLESPACE pg_default;
 

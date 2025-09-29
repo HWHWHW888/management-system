@@ -1087,5 +1087,128 @@ router.post('/:id/passport', authenticateToken, async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /customers/:id/promote-to-agent
+ * Promote customer to agent (Admin only)
+ */
+router.post('/:id/promote-to-agent', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const customerId = req.params.id;
+    const { parent_agent_id } = req.body;
+
+    // Check if customer exists
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', customerId)
+      .single();
+
+    if (customerError || !customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found'
+      });
+    }
+
+    // Check if customer is already an agent
+    if (customer.is_agent && customer.source_agent_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer is already an agent'
+      });
+    }
+
+    // Determine parent agent ID
+    let finalParentAgentId = parent_agent_id;
+    
+    // If no parent_agent_id provided, use customer's current agent_id as parent
+    if (!finalParentAgentId && customer.agent_id) {
+      finalParentAgentId = customer.agent_id;
+    }
+    
+    // Validate parent_agent_id if it exists
+    if (finalParentAgentId) {
+      const { data: parentAgent, error: parentError } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('id', finalParentAgentId)
+        .single();
+      
+      if (parentError || !parentAgent) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid parent agent ID'
+        });
+      }
+    }
+
+    // Create agent record
+    const { data: newAgent, error: agentError } = await supabase
+      .from('agents')
+      .insert({
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        commission_rate: 0,
+        status: 'active',
+        parent_agent_id: finalParentAgentId || null,
+        created_by: req.user.id
+      })
+      .select()
+      .single();
+
+    if (agentError) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to create agent record',
+        error: agentError.message
+      });
+    }
+
+    // Update customer record to mark as agent
+    const { data: updatedCustomer, error: updateError } = await supabase
+      .from('customers')
+      .update({
+        is_agent: true,
+        source_agent_id: newAgent.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', customerId)
+      .select()
+      .single();
+
+    if (updateError) {
+      // Rollback: delete the created agent if customer update fails
+      await supabase
+        .from('agents')
+        .delete()
+        .eq('id', newAgent.id);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to update customer record',
+        error: updateError.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Customer successfully promoted to agent',
+      data: {
+        customer: updatedCustomer,
+        agent: newAgent
+      }
+    });
+
+  } catch (error) {
+    console.error('Error promoting customer to agent:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
   
   export default router;

@@ -29,6 +29,13 @@ export interface Agent {
   customerId?: string; // If agent is also a customer
   commissionRate?: number;
   attachments?: FileAttachment[]; // Passport, photo, and other documents
+  parent_agent_id?: string; // Parent agent ID for hierarchical structure
+  parentAgent?: {
+    id: string;
+    name: string;
+    email: string;
+  }; // Parent agent details
+  children?: Agent[]; // Child agents
 }
 
 export interface Staff {

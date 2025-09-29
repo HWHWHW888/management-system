@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
@@ -31,7 +32,8 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phone: ''
+    phone: '',
+    parent_agent_id: 'none'
   });
 
   const loadAllData = useCallback(async () => {
@@ -53,12 +55,21 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
         ...agent,
         isCustomer: true, // All agents are customers by default
         attachments: agent.attachments || [],
-        createdAt: new Date(agent.created_at).toLocaleDateString()
+        createdAt: new Date(agent.created_at).toLocaleDateString(),
+        // Map parent agent data from API response
+        parentAgent: agent.parent_agent && agent.parent_agent.length > 0 ? {
+          id: agent.parent_agent[0].id,
+          name: agent.parent_agent[0].name,
+          email: agent.parent_agent[0].email
+        } : null,
+        // Map child agents data from API response
+        children: agent.child_agents || []
       }));
 
       setAgents(processedAgents);
       
       console.log(`✅ Loaded ${processedAgents.length} agents from backend API`);
+      console.log('🔍 Agents with children:', processedAgents.filter(a => a.children && a.children.length > 0));
       
     } catch (error) {
       console.error('❌ Error loading agent data:', error);
@@ -83,14 +94,15 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
       setSaving(true);
       if (editingAgent) {
         // Update existing agent - only send required fields to backend
-        const updateData = {
+        const agentData = {
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
+          parent_agent_id: formData.parent_agent_id === 'none' ? null : formData.parent_agent_id,
           status: 'active'
         };
         
-        const response = await apiClient.updateAgent(editingAgent.id, updateData);
+        const response = await apiClient.updateAgent(editingAgent.id, agentData);
         if (!response.success) {
           throw new Error(response.error || 'Failed to update agent');
         }
@@ -103,6 +115,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
+          parent_agent_id: formData.parent_agent_id === 'none' ? null : formData.parent_agent_id,
           commission_rate: 0,
           status: 'active'
         };
@@ -118,7 +131,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
       }
 
       // Reset form and close dialog
-      setFormData({ name: '', email: '', phone: '' });
+      setFormData({ name: '', email: '', phone: '', parent_agent_id: 'none' });
       setEditingAgent(null);
       setIsDialogOpen(false);
       
@@ -134,7 +147,8 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
     setFormData({
       name: agent.name,
       email: agent.email,
-      phone: agent.phone
+      phone: agent.phone,
+      parent_agent_id: agent.parent_agent_id || 'none'
     });
     setIsDialogOpen(true);
   };
@@ -177,7 +191,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
 
   const openNewAgentDialog = () => {
     setEditingAgent(null);
-    setFormData({ name: '', email: '', phone: '' });
+    setFormData({ name: '', email: '', phone: '', parent_agent_id: 'none' });
     setIsDialogOpen(true);
   };
 
@@ -290,6 +304,32 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                   />
                 </div>
 
+                <div>
+                  <Label htmlFor="parent_agent">Parent Agent (Optional)</Label>
+                  <Select
+                    value={formData.parent_agent_id}
+                    onValueChange={(value) => setFormData({...formData, parent_agent_id: value})}
+                    disabled={saving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select parent agent (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No parent agent</SelectItem>
+                      {agents
+                        .filter(agent => agent.id !== editingAgent?.id) // Don't allow self as parent
+                        .map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            {agent.name} ({agent.email})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Select a parent agent to create a hierarchical structure. Leave empty for top-level agents.
+                  </p>
+                </div>
+
                 <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                   <p className="text-xs text-green-700">
                     <strong>Note:</strong> All agents are automatically registered as customers and can participate in trips and gambling activities.
@@ -352,6 +392,20 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                               {agent.status ? 'Active' : 'Inactive'}
                             </Badge>
 
+                            {agent.parentAgent && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center space-x-1">
+                                <UserCheck className="w-3 h-3" />
+                                <span>Sub-Agent</span>
+                              </Badge>
+                            )}
+
+                            {agent.children && agent.children.length > 0 && (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 flex items-center space-x-1">
+                                <UserCheck className="w-3 h-3" />
+                                <span>{agent.children.length} Sub</span>
+                              </Badge>
+                            )}
+
                             {agent.attachments && agent.attachments.length > 0 && (
                               <Badge variant="outline" className="flex items-center space-x-1">
                                 <Paperclip className="w-3 h-3" />
@@ -368,6 +422,11 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                           </CardTitle>
                           <CardDescription>
                             Agent since {agent.createdAt}
+                            {agent.parentAgent && (
+                              <span className="block text-blue-600 font-medium mt-1">
+                                Under: {agent.parentAgent.name}
+                              </span>
+                            )}
                           </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -391,6 +450,22 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                         <Phone className="w-4 h-4 text-gray-400" />
                         <span className="text-sm">{agent.phone}</span>
                       </div>
+                      {agent.parentAgent && (
+                        <div className="flex items-center space-x-2 md:col-span-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                          <UserCheck className="w-4 h-4 text-blue-600" />
+                          <span className="text-sm text-blue-800">
+                            <span className="font-medium">Under:</span> <strong>{agent.parentAgent.name}</strong> ({agent.parentAgent.email})
+                          </span>
+                        </div>
+                      )}
+                      {agent.children && agent.children.length > 0 && (
+                        <div className="flex items-center space-x-2 md:col-span-2">
+                          <UserCheck className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm">
+                            Child Agents: <strong>{agent.children.length}</strong> agent{agent.children.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {!isReadOnly && (
