@@ -1210,5 +1210,5 @@ router.post('/:id/promote-to-agent', authenticateToken, requireAdmin, async (req
     });
   }
 });
-  
+
   export default router;

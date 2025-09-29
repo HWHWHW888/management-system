@@ -35,7 +35,7 @@ router.get('/', authenticateToken, async (req, res) => {
                 staff_id,
                 game_type,
                 rolling_amount,
-                notes,
+                venue,
                 attachment_id,
                 created_at,
                 updated_at
@@ -199,7 +199,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
                 staff_id,
                 game_type,
                 rolling_amount,
-                notes,
+                venue,
                 attachment_id,
                 created_at,
                 updated_at
@@ -255,7 +255,7 @@ router.post('/', authenticateToken, async (req, res) => {
             staff_id,
             game_type,
             rolling_amount,
-            notes,
+            venue,
             attachment_id
         } = req.body;
 
@@ -296,7 +296,7 @@ router.post('/', authenticateToken, async (req, res) => {
             staff_id,
             game_type,
             rolling_amount,
-            notes,
+            venue,
             attachment_id
         };
 

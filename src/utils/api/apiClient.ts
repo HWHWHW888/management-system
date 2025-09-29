@@ -385,6 +385,44 @@ class ApiClient {
     });
   }
 
+  // Customer transaction history - use existing transactions endpoint
+  async getCustomerTransactions(customerId: string, tripId?: string) {
+    const params = tripId ? `?trip_id=${tripId}` : '';
+    return this.request(`/transactions/customer/${customerId}${params}`);
+  }
+
+  // Rolling records endpoints
+  async getRollingRecords() {
+    return this.request('/rolling-records');
+  }
+
+  async createRolling(rollingData: any) {
+    return this.request('/rolling-records', {
+      method: 'POST',
+      body: JSON.stringify(rollingData),
+    });
+  }
+
+  async updateRolling(id: string, rollingData: any) {
+    return this.request(`/rolling-records/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(rollingData),
+    });
+  }
+
+  async deleteRolling(id: string) {
+    return this.request(`/rolling-records/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Customer rolling history - use existing rolling-records endpoint with customer_id filter
+  async getCustomerRollings(customerId: string, tripId?: string) {
+    const params = new URLSearchParams({ customer_id: customerId });
+    if (tripId) params.append('trip_id', tripId);
+    return this.request(`/rolling-records?${params.toString()}`);
+  }
+
   // Reports endpoints
   async getReports() {
     return this.request('/reports');

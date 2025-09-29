@@ -26,7 +26,7 @@ import {
 } from '../utils/currency';
 import { 
   MapPin, RefreshCw, Users, DollarSign, Settings, Plus, Trash2, Eye,
-  BarChart, UserCheck, X, Share2, AlertTriangle, Camera, Image, CheckCircle
+  BarChart, UserCheck, X, Share2, AlertTriangle, Camera, Image, CheckCircle, ChevronDown
 } from 'lucide-react';
 
 
@@ -77,6 +77,15 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [showAddRolling, setShowAddRolling] = useState(false);
   const [selectedCustomerForTransaction, setSelectedCustomerForTransaction] = useState<any>(null);
   const [selectedCustomerForRolling, setSelectedCustomerForRolling] = useState<any>(null);
+  
+  // Edit transaction/rolling states
+  const [showEditTransaction, setShowEditTransaction] = useState(false);
+  const [showEditRolling, setShowEditRolling] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
+  const [editingRolling, setEditingRolling] = useState<any>(null);
+  const [showHistory, setShowHistory] = useState<{[key: string]: boolean}>({});
+  const [customerTransactions, setCustomerTransactions] = useState<{[key: string]: any[]}>({});
+  const [customerRollings, setCustomerRollings] = useState<{[key: string]: any[]}>({});
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showEditExpense, setShowEditExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -825,6 +834,203 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     }
   };
 
+
+  // Load customer transaction history
+  const loadCustomerTransactions = async (customerId: string, tripId: string) => {
+    try {
+      const response = await apiClient.getCustomerTransactions(customerId, tripId);
+      if (response.success) {
+        setCustomerTransactions(prev => ({
+          ...prev,
+          [customerId]: Array.isArray(response.data) ? response.data : []
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading customer transactions:', error);
+    }
+  };
+
+  // Load customer rolling history
+  const loadCustomerRollings = async (customerId: string, tripId: string) => {
+    try {
+      const response = await apiClient.getCustomerRollings(customerId, tripId);
+      if (response.success) {
+        setCustomerRollings(prev => ({
+          ...prev,
+          [customerId]: Array.isArray(response.data) ? response.data : []
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading customer rollings:', error);
+    }
+  };
+
+  // Toggle history visibility (both transaction and rolling)
+  const toggleHistoryVisibility = async (customerId: string) => {
+    const isCurrentlyShown = showHistory[customerId];
+    setShowHistory(prev => ({
+      ...prev,
+      [customerId]: !isCurrentlyShown
+    }));
+    
+    if (!isCurrentlyShown && selectedTrip) {
+      // Load both transaction and rolling history when expanding
+      await loadCustomerTransactions(customerId, selectedTrip.id);
+      await loadCustomerRollings(customerId, selectedTrip.id);
+    }
+  };
+
+  // Handle edit transaction
+  const handleEditTransaction = (transaction: any) => {
+    setEditingTransaction(transaction);
+    setTransactionForm({
+      type: transaction.transaction_type || transaction.type,
+      amount: String(transaction.amount || ''),
+      venue: transaction.venue || '',
+      datetime: transaction.created_at ? new Date(transaction.created_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16)
+    });
+    setShowEditTransaction(true);
+  };
+
+  // Handle update transaction
+  const handleUpdateTransaction = async () => {
+    if (!editingTransaction || !selectedTrip) return;
+    
+    setSaving(true);
+    try {
+      const transactionData = {
+        transaction_type: transactionForm.type,
+        amount: parseFloat(transactionForm.amount),
+        venue: transactionForm.venue || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const response = await apiClient.updateTransaction(editingTransaction.id, transactionData);
+      if (response.success) {
+        // Refresh data
+        await selectTrip(selectedTrip);
+        const customerId = editingTransaction.customer_id || editingTransaction.customerId;
+        if (customerId) {
+          await loadCustomerTransactions(customerId, selectedTrip.id);
+        }
+        setShowEditTransaction(false);
+        setEditingTransaction(null);
+        setTransactionForm({ type: 'buy-in', amount: '', venue: '', datetime: new Date().toISOString().slice(0, 16) });
+      } else {
+        showError('Failed to update transaction');
+      }
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      showError('Failed to update transaction');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle delete transaction
+  const handleDeleteTransaction = async (transaction: any) => {
+    if (!selectedTrip || !window.confirm('Are you sure you want to delete this transaction?')) return;
+    
+    setSaving(true);
+    try {
+      const response = await apiClient.deleteTransaction(transaction.id);
+      if (response.success) {
+        // Refresh data
+        await selectTrip(selectedTrip);
+        const customerId = transaction.customer_id || transaction.customerId;
+        if (customerId) {
+          await loadCustomerTransactions(customerId, selectedTrip.id);
+        }
+      } else {
+        showError('Failed to delete transaction');
+      }
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      showError('Failed to delete transaction');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle edit rolling
+  const handleEditRolling = (rolling: any) => {
+    setEditingRolling(rolling);
+    setRollingForm({
+      amount: String(rolling.rolling_amount || rolling.amount || ''),
+      staff_id: rolling.staff_id || '',
+      game_type: rolling.game_type || 'baccarat',
+      venue: rolling.venue || '',
+      datetime: rolling.created_at ? new Date(rolling.created_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16)
+    });
+    setShowEditRolling(true);
+  };
+
+  // Handle update rolling
+  const handleUpdateRolling = async () => {
+    if (!editingRolling || !selectedTrip) return;
+    
+    setSaving(true);
+    try {
+      const rollingData = {
+        rolling_amount: parseFloat(rollingForm.amount),
+        staff_id: rollingForm.staff_id,
+        game_type: rollingForm.game_type,
+        venue: rollingForm.venue || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const response = await apiClient.updateRolling(editingRolling.id, rollingData);
+      if (response.success) {
+        // Refresh data
+        await selectTrip(selectedTrip);
+        const customerId = editingRolling.customer_id || editingRolling.customerId;
+        if (customerId) {
+          await loadCustomerRollings(customerId, selectedTrip.id);
+        }
+        setShowEditRolling(false);
+        setEditingRolling(null);
+        setRollingForm({ 
+          amount: '', 
+          staff_id: '', 
+          game_type: 'baccarat', 
+          venue: '', 
+          datetime: new Date().toISOString().slice(0, 16) 
+        });
+      } else {
+        showError('Failed to update rolling');
+      }
+    } catch (error) {
+      console.error('Error updating rolling:', error);
+      showError('Failed to update rolling');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle delete rolling
+  const handleDeleteRolling = async (rolling: any) => {
+    if (!selectedTrip || !window.confirm('Are you sure you want to delete this rolling record?')) return;
+    
+    setSaving(true);
+    try {
+      const response = await apiClient.deleteRolling(rolling.id);
+      if (response.success) {
+        // Refresh data
+        await selectTrip(selectedTrip);
+        const customerId = rolling.customer_id || rolling.customerId;
+        if (customerId) {
+          await loadCustomerRollings(customerId, selectedTrip.id);
+        }
+      } else {
+        showError('Failed to delete rolling');
+      }
+    } catch (error) {
+      console.error('Error deleting rolling:', error);
+      showError('Failed to delete rolling');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Handle transaction operations
   const handleAddTransaction = async () => {
@@ -1812,7 +2018,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex gap-2">
+                              <div className="flex gap-2 flex-wrap">
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1840,6 +2046,14 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  onClick={() => toggleHistoryVisibility(tripCustomer.customerId || tripCustomer.customer_id)}
+                                  disabled={saving}
+                                >
+                                  <ChevronDown className={`w-3 h-3 transition-transform ${showHistory[tripCustomer.customerId || tripCustomer.customer_id] ? 'rotate-180' : ''}`} />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
                                   onClick={() => handleViewCustomerPhotos(tripCustomer)}
                                   disabled={saving}
                                 >
@@ -1856,6 +2070,76 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                 </Button>
                               </div>
                             </div>
+
+                            {/* Combined History (Transaction & Rolling) */}
+                            {showHistory[tripCustomer.customerId || tripCustomer.customer_id] && (
+                              <div className="mt-4 border-t pt-4">
+                                {/* Transaction History Section */}
+                                <div className="mb-4">
+                                  <h5 className="font-medium mb-2 text-blue-600">Transaction History</h5>
+                                  {customerTransactions[tripCustomer.customerId || tripCustomer.customer_id]?.map((transaction: any) => (
+                                    <div key={transaction.id} className="flex items-center justify-between p-2 bg-blue-50 rounded border mb-2">
+                                      <div className="flex-1">
+                                        <div className="flex items-center space-x-2">
+                                          <Badge variant={transaction.transaction_type === 'buy-in' ? 'default' : 'secondary'}>
+                                            {transaction.transaction_type === 'buy-in' ? 'Buy-in' : 'Cash-out'}
+                                          </Badge>
+                                          <span className="font-medium">
+                                            {formatCurrency(transaction.amount, viewingCurrency, selectedTrip)}
+                                          </span>
+                                          <span className="text-sm text-gray-500">{transaction.venue}</span>
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-1">
+                                          {new Date(transaction.created_at).toLocaleString()}
+                                        </div>
+                                      </div>
+                                      {!isReadOnly && (
+                                        <div className="flex gap-1">
+                                          <Button variant="ghost" size="sm" onClick={() => handleEditTransaction(transaction)}>
+                                            <Settings className="w-3 h-3" />
+                                          </Button>
+                                          <Button variant="ghost" size="sm" onClick={() => handleDeleteTransaction(transaction)} className="text-red-600">
+                                            <Trash2 className="w-3 h-3" />
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Rolling History Section */}
+                                <div>
+                                  <h5 className="font-medium mb-2 text-orange-600">Rolling History</h5>
+                                  {customerRollings[tripCustomer.customerId || tripCustomer.customer_id]?.map((rolling: any) => (
+                                    <div key={rolling.id} className="flex items-center justify-between p-2 bg-orange-50 rounded border mb-2">
+                                      <div className="flex-1">
+                                        <div className="flex items-center space-x-2">
+                                          <Badge variant="outline" className="bg-orange-100 text-orange-700">Rolling</Badge>
+                                          <span className="font-medium">
+                                            {formatCurrency(rolling.rolling_amount || rolling.amount, viewingCurrency, selectedTrip)}
+                                          </span>
+                                          <span className="text-sm text-gray-500">{rolling.venue}</span>
+                                          <span className="text-xs text-gray-400">({rolling.game_type})</span>
+                                        </div>
+                                        <div className="text-xs text-gray-400 mt-1">
+                                          {new Date(rolling.created_at).toLocaleString()}
+                                        </div>
+                                      </div>
+                                      {!isReadOnly && (
+                                        <div className="flex gap-1">
+                                          <Button variant="ghost" size="sm" onClick={() => handleEditRolling(rolling)}>
+                                            <Settings className="w-3 h-3" />
+                                          </Button>
+                                          <Button variant="ghost" size="sm" onClick={() => handleDeleteRolling(rolling)} className="text-red-600">
+                                            <Trash2 className="w-3 h-3" />
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
                       ))}
@@ -3130,6 +3414,176 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
           <div className="flex justify-end mt-4">
             <Button variant="outline" onClick={() => setShowCustomerPhotos(false)}>
               Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog open={showEditTransaction} onOpenChange={setShowEditTransaction}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Transaction</DialogTitle>
+            <DialogDescription>
+              Edit transaction details
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="editTransactionType">Transaction Type</Label>
+              <Select
+                value={transactionForm.type}
+                onValueChange={(value) => setTransactionForm({...transactionForm, type: value})}
+              >
+                <SelectTrigger id="editTransactionType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="buy-in">Buy In</SelectItem>
+                  <SelectItem value="cash-out">Cash Out</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="editTransactionAmount">Amount (HK$)</Label>
+              <Input
+                id="editTransactionAmount"
+                type="number"
+                placeholder="Enter amount"
+                value={transactionForm.amount}
+                onChange={(e) => setTransactionForm({...transactionForm, amount: e.target.value})}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="editTransactionVenue">Venue</Label>
+              <Select
+                value={transactionForm.venue}
+                onValueChange={(value) => setTransactionForm({...transactionForm, venue: value})}
+              >
+                <SelectTrigger id="editTransactionVenue">
+                  <SelectValue placeholder="Select venue" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Hoe Win VIP">Hoe Win VIP</SelectItem>
+                  <SelectItem value="House Casino">House Casino</SelectItem>
+                  <SelectItem value="Competition">Competition</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="editTransactionDateTime">Date & Time</Label>
+              <Input
+                id="editTransactionDateTime"
+                type="datetime-local"
+                value={transactionForm.datetime}
+                onChange={(e) => setTransactionForm({...transactionForm, datetime: e.target.value})}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2 mt-6">
+            <Button variant="outline" onClick={() => setShowEditTransaction(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateTransaction} disabled={saving || !transactionForm.amount}>
+              {saving ? 'Updating...' : 'Update Transaction'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Rolling Dialog */}
+      <Dialog open={showEditRolling} onOpenChange={setShowEditRolling}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Rolling</DialogTitle>
+            <DialogDescription>
+              Edit rolling record details
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="editRollingAmount">Amount (HK$)</Label>
+              <Input
+                id="editRollingAmount"
+                type="number"
+                placeholder="Enter amount"
+                value={rollingForm.amount}
+                onChange={(e) => setRollingForm({...rollingForm, amount: e.target.value})}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="editRollingStaff">Staff Member</Label>
+              <Select
+                value={rollingForm.staff_id}
+                onValueChange={(value) => setRollingForm({...rollingForm, staff_id: value})}
+              >
+                <SelectTrigger id="editRollingStaff">
+                  <SelectValue placeholder="Select staff member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(selectedTrip as any)?.staff?.map((staffMember: any) => (
+                    <SelectItem 
+                      key={staffMember.staffId || staffMember.staff_id} 
+                      value={staffMember.staffId || staffMember.staff_id}
+                    >
+                      {staffMember.staffName || staffMember.staff?.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="editRollingGameType">Game Type</Label>
+              <Select
+                value={rollingForm.game_type}
+                onValueChange={(value) => setRollingForm({...rollingForm, game_type: value})}
+              >
+                <SelectTrigger id="editRollingGameType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="baccarat">Baccarat</SelectItem>
+                  <SelectItem value="blackjack">Blackjack</SelectItem>
+                  <SelectItem value="roulette">Roulette</SelectItem>
+                  <SelectItem value="poker">Poker</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="editRollingVenue">Venue</Label>
+              <Select
+                value={rollingForm.venue}
+                onValueChange={(value) => setRollingForm({...rollingForm, venue: value})}
+              >
+                <SelectTrigger id="editRollingVenue">
+                  <SelectValue placeholder="Select venue" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Hoe Win VIP">Hoe Win VIP</SelectItem>
+                  <SelectItem value="House Casino">House Casino</SelectItem>
+                  <SelectItem value="Competition">Competition</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="editRollingDateTime">Date & Time</Label>
+              <Input
+                id="editRollingDateTime"
+                type="datetime-local"
+                value={rollingForm.datetime}
+                onChange={(e) => setRollingForm({...rollingForm, datetime: e.target.value})}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end space-x-2 mt-6">
+            <Button variant="outline" onClick={() => setShowEditRolling(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateRolling} disabled={saving || !rollingForm.amount}>
+              {saving ? 'Updating...' : 'Update Rolling'}
             </Button>
           </div>
         </DialogContent>

@@ -320,10 +320,10 @@ create table public.transactions (
   amount numeric(15, 2) not null,
   transaction_type character varying(50) not null,
   status character varying(20) null default 'completed'::character varying,
-  venue text null,
+  notes text null,
   recorded_by_staff_id uuid null,
   created_at timestamp with time zone null default now(),
-  updated_at timestamp with time zone null,
+  updated_at timestamp with time zone null default now(),
   constraint transactions_pkey primary key (id),
   constraint transactions_agent_id_fkey foreign KEY (agent_id) references agents (id),
   constraint fk_transactions_customer foreign KEY (customer_id) references customers (id),
@@ -361,6 +361,7 @@ create index IF not exists idx_transactions_trip_id on public.transactions using
 create index IF not exists idx_transactions_customer_id on public.transactions using btree (customer_id) TABLESPACE pg_default;
 
 create index IF not exists idx_transactions_agent_id on public.transactions using btree (agent_id) TABLESPACE pg_default;
+
 create table public.trip_agent_customers (
   id uuid not null default gen_random_uuid (),
   trip_id uuid not null,
