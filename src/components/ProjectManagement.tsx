@@ -65,7 +65,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   // Trip expenses and sharing states
   const [tripExpenses, setTripExpenses] = useState<any[]>([]);
   const [tripSharing, setTripSharing] = useState<any>(null);
-  const [agentProfits, setAgentProfits] = useState<any[]>([]);
   const [agentSummary, setAgentSummary] = useState<any[]>([]);
   
   // Form states

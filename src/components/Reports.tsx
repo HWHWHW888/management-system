@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, AreaChart, Area, Line } from 'recharts';
-import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpCircle, ArrowUpDown, Database } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Area, Line } from 'recharts';
+import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpDown, Database } from 'lucide-react';
 import { tokenManager } from '../utils/auth/tokenManager';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
-import { User, Agent, Customer, Trip, RollingRecord, BuyInOutRecord } from '../types';
+import { User, Agent, Customer, Trip, RollingRecord } from '../types';
 
 // Real-time refresh interval (30 seconds)
 const REAL_TIME_REFRESH_INTERVAL = 30000;
