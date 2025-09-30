@@ -186,7 +186,7 @@ export interface TripAgent {
   agentId: string;
   agent_id?: string; // Alternative field name from backend
   agentName: string;
-  agent?: {
+  agent: {
     id: string;
     name: string;
     email: string;

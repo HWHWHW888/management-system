@@ -74,6 +74,12 @@ export const calculateTripSharingLegacy = (
   const legacyAgent: TripAgent = {
     agentId: 'legacy',
     agentName: 'Legacy Agent',
+    agent: {
+      id: 'legacy',
+      name: 'Legacy Agent',
+      email: '',
+      commission_rate: 0
+    },
     sharePercentage: agentSharePercentage,
     calculatedShare: 0
   };

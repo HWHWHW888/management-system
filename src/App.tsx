@@ -7,6 +7,7 @@ import { StaffManagement } from './components/StaffManagement';
 import { StaffSelfService } from './components/StaffSelfService';
 import ProjectManagement from './components/ProjectManagement';
 import { DataManagement } from './components/DataManagement';
+import { Reports } from './components/Reports';
 import { Button } from './components/ui/button';
 import { LogOut, Users, UserCheck, BarChart3, MapPin, ShieldCheck, Clock, Database, Settings, AlertTriangle, CheckCircle, Wifi, RefreshCw, Bug, Shield } from 'lucide-react';
 import { User } from './types';
@@ -489,8 +490,23 @@ function AppContent() {
             </button>
           )}
 
-          {/* Data Management - Admin and boss */}
+          {/* Reports - Admin and boss */}
           {(isAdmin || isBoss) && (
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'reports'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              {t('reports')}
+            </button>
+          )}
+
+          {/* Data Management - Admin only */}
+          {isAdmin && (
             <button
               onClick={() => setActiveTab('data')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -504,18 +520,6 @@ function AppContent() {
             </button>
           )}
 
-          {/* Reports - For all users - TEMPORARILY HIDDEN */}
-          {/* <button
-            onClick={() => setActiveTab('reports')}
-            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'reports'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Reports
-          </button> */}
         </div>
 
         {/* Content */}
@@ -525,8 +529,8 @@ function AppContent() {
         {activeTab === 'staff' && (isAdmin || isBoss) && <StaffManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'checkinout' && isStaff && <StaffSelfService user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'projects' && (isAdmin || isAgent || isBoss) && <ProjectManagement user={currentUser} />}
-        {activeTab === 'data' && (isAdmin || isBoss) && <DataManagement user={currentUser} />}
-        {/* {activeTab === 'reports' && <Reports user={currentUser} />} */}
+        {activeTab === 'reports' && (isAdmin || isBoss) && <Reports user={currentUser} />}
+        {activeTab === 'data' && isAdmin && <DataManagement user={currentUser} />}
       </div>
     </div>
   );

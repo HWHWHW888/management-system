@@ -66,6 +66,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [tripExpenses, setTripExpenses] = useState<any[]>([]);
   const [tripSharing, setTripSharing] = useState<any>(null);
   const [agentProfits, setAgentProfits] = useState<any[]>([]);
+  const [agentSummary, setAgentSummary] = useState<any[]>([]);
   
   // Form states
   const [showCreateTrip, setShowCreateTrip] = useState(false);
@@ -86,6 +87,11 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [showHistory, setShowHistory] = useState<{[key: string]: boolean}>({});
   const [customerTransactions, setCustomerTransactions] = useState<{[key: string]: any[]}>({});
   const [customerRollings, setCustomerRollings] = useState<{[key: string]: any[]}>({});
+  
+  // Profit sharing rate edit states
+  const [showEditProfitSharing, setShowEditProfitSharing] = useState(false);
+  const [editingProfitSharing, setEditingProfitSharing] = useState<any>(null);
+  const [newProfitSharingRate, setNewProfitSharingRate] = useState(0);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showEditExpense, setShowEditExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -218,6 +224,26 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     }
   }, [showError]);
 
+  // Load agent summary data from trip_agent_summary table
+  const loadAgentSummary = useCallback(async (tripId: string) => {
+    try {
+      console.log('📊 Loading agent summary for trip:', tripId);
+      const response = await apiClient.getTripAgentSummary(tripId);
+      console.log('📊 Agent summary API response:', response);
+      if (response.success) {
+        console.log('✅ Agent summary data:', response.data);
+        setAgentSummary(Array.isArray(response.data) ? response.data : []);
+      } else {
+        console.log('❌ Agent summary API failed:', response);
+        setAgentSummary([]);
+      }
+    } catch (error) {
+      console.error('Error loading agent summary:', error);
+      showError('Failed to load agent summary');
+      setAgentSummary([]);
+    }
+  }, [showError]);
+
   // Load customer photos (transaction and rolling photos)
   const loadCustomerPhotos = useCallback(async (customerId: string, tripId: string) => {
     try {
@@ -256,12 +282,13 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       setSaving(true);
       const response = await apiClient.put(`/trips/${selectedTrip.id}/agents/${agentId}/commission`, {
         customer_id: customerId,
-        commission_rate: commissionRate
+        profit_sharing_rate: commissionRate
       });
       
       if (response.success) {
-        // Reload agent profits to reflect the change
+        // Reload agent profits and agent summary to reflect the change
         await loadAgentProfits(selectedTrip.id);
+        await loadAgentSummary(selectedTrip.id);
         console.log('Commission rate updated successfully');
       } else {
         showError('Failed to update commission rate');
@@ -272,6 +299,41 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Handle opening profit sharing rate edit dialog
+  const handleEditProfitSharing = (agentId: string, customer: any, agentName: string) => {
+    setEditingProfitSharing({
+      agentId,
+      customerId: customer.customer_id,
+      customerName: customer.customer_name,
+      agentName,
+      currentRate: customer.profit_sharing_rate || 0,
+      customerNetResult: 0 // Will be calculated from customer stats
+    });
+    setNewProfitSharingRate(customer.profit_sharing_rate || 0);
+    setShowEditProfitSharing(true);
+  };
+
+  // Handle updating profit sharing rate from dialog
+  const handleUpdateProfitSharing = async () => {
+    if (!editingProfitSharing) return;
+    
+    await updateCommissionRate(
+      editingProfitSharing.agentId,
+      editingProfitSharing.customerId,
+      newProfitSharingRate
+    );
+    
+    setShowEditProfitSharing(false);
+    setEditingProfitSharing(null);
+    setNewProfitSharingRate(0);
+  };
+
+  // Calculate projected profit share based on customer net result and sharing rate
+  const calculateProjectedProfitShare = (customerNetResult: number, sharingRate: number) => {
+    if (customerNetResult <= 0) return 0; // Only positive net results generate profit share
+    return (customerNetResult * sharingRate) / 100;
   };
 
   const addTripExpense = async (tripId: string, expenseData: any) => {
@@ -682,6 +744,9 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       
       // Load agent profits for the selected trip
       await loadAgentProfits(trip.id);
+      
+      // Load agent summary data from trip_agent_summary table
+      await loadAgentSummary(trip.id);
       
       // Backend data status is already included in the initial backendData object
       
@@ -2011,9 +2076,9 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                   <div>
                                     <span className="text-sm text-gray-500">Net Result:</span>
                                     <div className={`font-medium ${
-                                      ((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) - (tripCustomer.rolling_amount || 0)) > 0 ? 'text-green-600' : 'text-red-600'
+                                      (tripCustomer.net_result || 0) > 0 ? 'text-green-600' : 'text-red-600'
                                     }`}>
-                                      {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) - (tripCustomer.rolling_amount || 0)), viewingCurrency, selectedTrip)}
+                                      {formatCurrency(Math.abs(tripCustomer.net_result || 0), viewingCurrency, selectedTrip)}
                                     </div>
                                   </div>
                                 </div>
@@ -2150,7 +2215,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                 {/* Agent Profits Tab */}
                 <TabsContent value="agents" className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-medium">Agent Individual Profits</h3>
+                    <h3 className="text-lg font-medium">Agent Profit Sharing Summary</h3>
                     <Button 
                       size="sm" 
                       variant="outline"
@@ -2158,6 +2223,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                         if (selectedTrip) {
                           console.log('🔄 Manual refresh clicked for trip:', selectedTrip.id);
                           loadAgentProfits(selectedTrip.id);
+                          loadAgentSummary(selectedTrip.id);
                         }
                       }}
                       disabled={loading}
@@ -2167,20 +2233,20 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                     </Button>
                   </div>
 
-                  {false ? (
+                  {loading ? (
                     <Card>
                       <CardContent className="text-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                        <p className="text-gray-500">Loading agent profits...</p>
+                        <p className="text-gray-500">Loading agent summary...</p>
                       </CardContent>
                     </Card>
-                  ) : !agentProfits || agentProfits.length === 0 ? (
+                  ) : !agentSummary || agentSummary.length === 0 ? (
                     <div className="space-y-4">
                       <Card>
                         <CardContent className="text-center py-8">
                           <UserCheck className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                          <p className="text-gray-500">No agents with customers in this trip</p>
-                          <p className="text-xs text-gray-400 mt-2">Agents are automatically added when their customers join the trip</p>
+                          <p className="text-gray-500">No agent profit sharing data available</p>
+                          <p className="text-xs text-gray-400 mt-2">Agent summaries are created when trip sharing is calculated</p>
                         </CardContent>
                       </Card>
                       
@@ -2192,115 +2258,110 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                             <div>Trip ID: {selectedTrip?.id}</div>
                             <div>Customers in trip: {selectedTrip?.customers?.length || 0}</div>
                             <div>Agents in trip: {selectedTrip?.agents?.length || 0}</div>
-                            <div>Agent profits loaded: {agentProfits?.length || 0}</div>
-                            <div>Agent profits state: {JSON.stringify(agentProfits)}</div>
+                            <div>Agent summary loaded: {agentSummary?.length || 0}</div>
+                            <div>Agent summary state: {JSON.stringify(agentSummary)}</div>
                           </div>
-                          {selectedTrip?.customers && selectedTrip.customers.length > 0 && (
-                            <div className="mt-3">
-                              <div className="text-sm font-medium text-yellow-800">Customers:</div>
-                              {selectedTrip.customers.map((customer: any, index: number) => (
-                                <div key={index} className="text-xs text-yellow-600">
-                                  {customer.customerName || customer.customer?.name || 'Unknown'} (ID: {customer.customerId || customer.customer_id})
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </CardContent>
                       </Card>
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {agentProfits.map((agentProfit: any) => (
-                        <Card key={agentProfit.agent_id}>
+                      {agentSummary.map((summary: any) => (
+                        <Card key={summary.agent_id}>
                           <CardHeader>
                             <div className="flex justify-between items-start">
                               <div>
-                                <CardTitle className="text-lg">{agentProfit.agent_name}</CardTitle>
-                                <CardDescription>{agentProfit.agent_email}</CardDescription>
+                                <CardTitle className="text-lg">{summary.agent_name}</CardTitle>
+                                <CardDescription>
+                                  Base Commission Rate: {summary.agent_commission_rate}%
+                                </CardDescription>
                               </div>
                               <div className="text-right">
                                 <div className="text-2xl font-bold text-blue-600">
-                                  {formatCurrency(agentProfit.total_agent_commission || agentProfit.total_commission || 0, viewingCurrency, selectedTrip)}
+                                  {formatCurrency(summary.agent_profit_share || 0, viewingCurrency, selectedTrip)}
                                 </div>
-                                <p className="text-sm text-gray-500">Total Commission</p>
+                                <p className="text-sm text-gray-500">Agent Profit Share</p>
                               </div>
                             </div>
                           </CardHeader>
                           <CardContent>
                             <div className="space-y-4">
-                              <div className="grid grid-cols-2 gap-4 mb-4">
+                              {/* Summary Statistics */}
+                              <div className="grid grid-cols-3 gap-4 mb-4">
                                 <div className="p-3 bg-blue-50 rounded">
-                                  <div className="text-sm text-gray-600">Customer Net Result</div>
+                                  <div className="text-sm text-gray-600">Total Win/Loss</div>
                                   <div className={`text-lg font-bold ${
-                                    agentProfit.total_customer_net >= 0 ? 'text-green-600' : 'text-red-600'
+                                    summary.total_win_loss >= 0 ? 'text-green-600' : 'text-red-600'
                                   }`}>
-                                    {formatCurrencyWithSign(agentProfit.total_customer_net, viewingCurrency, selectedTrip)}
+                                    {formatCurrencyWithSign(summary.total_win_loss || 0, viewingCurrency, selectedTrip)}
                                   </div>
                                 </div>
                                 <div className="p-3 bg-green-50 rounded">
-                                  <div className="text-sm text-gray-600">Total Customers</div>
+                                  <div className="text-sm text-gray-600">Total Commission</div>
                                   <div className="text-lg font-bold text-gray-800">
-                                    {agentProfit.customers.length}
+                                    {formatCurrency(summary.total_commission || 0, viewingCurrency, selectedTrip)}
+                                  </div>
+                                </div>
+                                <div className="p-3 bg-purple-50 rounded">
+                                  <div className="text-sm text-gray-600">Total Profit</div>
+                                  <div className={`text-lg font-bold ${
+                                    summary.total_profit >= 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    {formatCurrencyWithSign(summary.total_profit || 0, viewingCurrency, selectedTrip)}
                                   </div>
                                 </div>
                               </div>
 
+                              {/* Customer Details */}
                               <div>
-                                <h4 className="font-medium mb-3">Customer Breakdown</h4>
+                                <h4 className="font-medium mb-3">
+                                  Customer Details ({summary.customer_count || summary.customers?.length || 0} customers)
+                                </h4>
                                 <div className="space-y-3">
-                                  {agentProfit.customers.map((customer: any) => (
+                                  {summary.customers && summary.customers.map((customer: any) => (
                                     <div key={customer.customer_id} className="border rounded p-3">
                                       <div className="flex justify-between items-start mb-2">
                                         <div>
                                           <div className="font-medium">{customer.customer_name}</div>
                                           <div className="text-sm text-gray-500">
-                                            Buy-in: HK${safeFormatNumber(customer.buy_in)} | 
-                                            Cash-out: HK${safeFormatNumber(customer.cash_out)}
-                                          </div>
-                                        </div>
-                                        <div className="text-right">
-                                          <div className={`font-bold ${
-                                            customer.net_result > 0 ? 'text-green-600' : 'text-red-600'
-                                          }`}>
-                                            HK${safeFormatNumber(Math.abs(customer.net_result))}
-                                          </div>
-                                          <div className="text-sm text-gray-500">Net Result</div>
-                                        </div>
-                                      </div>
-                                      
-                                      <div className="flex justify-between items-center pt-2 border-t">
-                                        <div className="flex items-center space-x-4">
-                                          <div className="text-sm">
-                                            <span className="text-gray-500">Rolling:</span>
-                                            <span className="font-medium ml-1">HK${safeFormatNumber(customer.rolling_amount)}</span>
-                                          </div>
-                                          <div className="flex items-center space-x-2">
-                                            <span className="text-sm text-gray-500">Commission Rate:</span>
-                                            <Input
-                                              type="number"
-                                              value={customer.commission_rate}
-                                              onChange={(e) => {
-                                                const newRate = parseFloat(e.target.value) || 0;
-                                                console.log('🔄 Commission rate changed:', { agentId: agentProfit.agent_id, customerId: customer.customer_id, newRate });
-                                                updateCommissionRate(agentProfit.agent_id, customer.customer_id, newRate);
-                                              }}
-                                              className="w-20 h-8 text-sm"
-                                              min="0"
-                                              max="100"
-                                              step="0.1"
-                                            />
-                                            <span className="text-sm text-gray-500">%</span>
+                                            Net Result: <span className={`font-medium ${
+                                              (customer.net_result || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                                            }`}>
+                                              {formatCurrency(Math.abs(customer.net_result || 0), viewingCurrency, selectedTrip)}
+                                            </span>
                                           </div>
                                         </div>
                                         <div className="text-right">
                                           <div className="font-bold text-blue-600">
-                                            HK${safeFormatNumber(customer.agent_commission || customer.commission_earned || 0)}
+                                            {customer.profit_sharing_rate}%
                                           </div>
-                                          <div className="text-xs text-gray-500">Commission</div>
+                                          <div className="text-sm text-gray-500">Profit Sharing Rate</div>
                                         </div>
                                       </div>
+                                      
+                                      {!isReadOnly && (
+                                        <div className="flex justify-center pt-2 border-t">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleEditProfitSharing(summary.agent_id, customer, summary.agent_name)}
+                                            className="text-sm"
+                                          >
+                                            <Settings className="w-4 h-4 mr-1" />
+                                            Edit Profit Sharing Rate
+                                          </Button>
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
+                                </div>
+                              </div>
+
+                              {/* Summary Information */}
+                              <div className="bg-gray-50 p-3 rounded">
+                                <div className="text-sm text-gray-600 space-y-1">
+                                  <div>Created: {new Date(summary.created_at).toLocaleDateString()}</div>
+                                  <div>Last Updated: {new Date(summary.updated_at).toLocaleDateString()}</div>
                                 </div>
                               </div>
                             </div>
@@ -3029,7 +3090,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                 <div key={agentId} className="flex justify-between items-center p-3 border rounded">
                                   <div>
                                     <div className="font-medium">{agentData.agent_name}</div>
-                                    <div className="text-sm text-gray-500">Commission Rate: {agentData.commission_rate}%</div>
+                                    <div className="text-sm text-gray-500">Profit Sharing Rate: {agentData.profit_sharing_rate}%</div>
                                   </div>
                                   <div className={`font-bold ${
                                     agentData.share_amount >= 0 ? 'text-green-600' : 'text-red-600'
@@ -3584,6 +3645,124 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
             </Button>
             <Button onClick={handleUpdateRolling} disabled={saving || !rollingForm.amount}>
               {saving ? 'Updating...' : 'Update Rolling'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Profit Sharing Rate Dialog */}
+      <Dialog open={showEditProfitSharing} onOpenChange={setShowEditProfitSharing}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Profit Sharing Rate</DialogTitle>
+            <DialogDescription>
+              Adjust the profit sharing rate for this agent-customer relationship
+            </DialogDescription>
+          </DialogHeader>
+          
+          {editingProfitSharing && (
+            <div className="space-y-4">
+              {/* Agent and Customer Info */}
+              <div className="bg-gray-50 p-3 rounded">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium text-gray-700">Agent:</span>
+                    <div>{editingProfitSharing.agentName}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Customer:</span>
+                    <div>{editingProfitSharing.customerName}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Rate */}
+              <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
+                <span className="font-medium text-blue-800">Current Rate:</span>
+                <span className="text-xl font-bold text-blue-600">{editingProfitSharing.currentRate}%</span>
+              </div>
+
+              {/* New Rate Input */}
+              <div className="space-y-2">
+                <Label htmlFor="newRate">New Profit Sharing Rate (%)</Label>
+                <Input
+                  id="newRate"
+                  type="number"
+                  value={newProfitSharingRate}
+                  onChange={(e) => setNewProfitSharingRate(parseFloat(e.target.value) || 0)}
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  className="text-lg"
+                />
+              </div>
+
+              {/* Customer Net Result and Projected Share */}
+              {(() => {
+                // Find customer stats for this customer
+                const customerStats = selectedTrip?.customers?.find((c: any) => 
+                  c.customer_id === editingProfitSharing.customerId || c.customerId === editingProfitSharing.customerId
+                );
+                const netResult = (customerStats as any)?.net_result || 0;
+                const projectedShare = calculateProjectedProfitShare(netResult, newProfitSharingRate);
+
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-3 bg-gray-50 rounded">
+                        <div className="text-sm text-gray-600">Customer Net Result</div>
+                        <div className={`text-lg font-bold ${
+                          netResult >= 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {formatCurrencyWithSign(netResult, viewingCurrency, selectedTrip)}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-green-50 rounded">
+                        <div className="text-sm text-gray-600">Projected Profit Share</div>
+                        <div className="text-lg font-bold text-green-600">
+                          {formatCurrency(projectedShare, viewingCurrency, selectedTrip)}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {netResult <= 0 && (
+                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+                        <div className="text-sm text-yellow-800">
+                          <strong>Note:</strong> Customer has negative or zero net result. 
+                          Profit sharing only applies to positive customer profits.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Rate Change Summary */}
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded">
+                <div className="text-sm text-indigo-800">
+                  <strong>Rate Change:</strong> {editingProfitSharing.currentRate}% → {newProfitSharingRate}%
+                  <span className="ml-2">
+                    ({newProfitSharingRate > editingProfitSharing.currentRate ? '+' : ''}
+                    {(newProfitSharingRate - editingProfitSharing.currentRate).toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowEditProfitSharing(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateProfitSharing}
+              disabled={saving || !editingProfitSharing}
+            >
+              {saving ? 'Updating...' : 'Update Rate'}
             </Button>
           </div>
         </DialogContent>

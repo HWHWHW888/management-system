@@ -556,10 +556,10 @@ async function updateTripSharing(tripId, tripStats) {
       netResult = -totalExpenses; // Only expenses affect the result
     }
 
-    // Get actual agent commission rates from trip_agent_customers table
+    // Get actual agent profit sharing rates from trip_agent_customers table
     const { data: agentCustomers, error: agentError } = await supabase
       .from('trip_agent_customers')
-      .select('agent_id, customer_id, commission_rate')
+      .select('agent_id, customer_id, profit_sharing_rate')
       .eq('trip_id', tripId);
 
     if (agentError) {
@@ -635,15 +635,15 @@ async function updateTripSharing(tripId, tripStats) {
           const winLossAmount = Math.abs(customerNet);
           let agentCommission = 0;
           
-          console.log(`💰 Customer ${ac.customer_id}: net=${customerNet}, winLoss=${winLossAmount}, rate=${ac.commission_rate}%`);
+          console.log(`💰 Customer ${ac.customer_id}: net=${customerNet}, winLoss=${winLossAmount}, rate=${ac.profit_sharing_rate}%`);
           
           if (customerNet < 0) {
             // Customer lost, agent gets commission
-            agentCommission = (winLossAmount * parseFloat(ac.commission_rate) / 100);
+            agentCommission = (winLossAmount * parseFloat(ac.profit_sharing_rate) / 100);
             console.log(`📈 Customer lost, agent gets commission: ${agentCommission}`);
           } else if (customerNet > 0) {
             // Customer won, agent bears loss
-            agentCommission = -(winLossAmount * parseFloat(ac.commission_rate) / 100);
+            agentCommission = -(winLossAmount * parseFloat(ac.profit_sharing_rate) / 100);
             console.log(`📉 Customer won, agent bears loss: ${agentCommission}`);
           } else {
             console.log(`⚖️ Customer broke even, no commission`);
@@ -652,7 +652,7 @@ async function updateTripSharing(tripId, tripStats) {
           if (!agentBreakdownMap[ac.agent_id]) {
             agentBreakdownMap[ac.agent_id] = {
               agent_id: ac.agent_id,
-              commission_rate: parseFloat(ac.commission_rate),
+              profit_sharing_rate: parseFloat(ac.profit_sharing_rate),
               share_amount: 0
             };
           }
@@ -667,10 +667,13 @@ async function updateTripSharing(tripId, tripStats) {
     const agentBreakdown = Object.values(agentBreakdownMap);
     const totalAgentCommission = agentBreakdown.reduce((sum, agent) => sum + agent.share_amount, 0);
     
-    // Calculate from company perspective: house_winloss - agent_commission - rolling_commission - expenses
-    const houseWinLoss = -(tripStats.net_profit || 0); // Convert customer loss to house win (company perspective)
-    // Rolling commission is a cost to the company, so it should be subtracted
-    const companyShare = houseWinLoss - totalAgentCommission - totalRollingCommission - totalExpenses;
+    // Calculate from company perspective using total win/loss (positive = company wins, negative = company loses)
+    const houseWinLoss = tripStats.total_win_loss || 0; // Direct win/loss from company perspective
+    
+    // Agent share = actual profit sharing they get from customers (use absolute value for company calculation)
+    // Company share = house win/loss - |agent profit sharing| - rolling commission - expenses
+    const actualAgentEarnings = Math.abs(totalAgentCommission); // Agent's actual earnings (always positive)
+    const companyShare = houseWinLoss - actualAgentEarnings - totalRollingCommission - totalExpenses;
     
     // Calculate total amount for percentage calculation
     const totalAmount = Math.abs(totalAgentCommission) + Math.abs(companyShare);
@@ -685,15 +688,17 @@ async function updateTripSharing(tripId, tripStats) {
     }
     
     console.log('💰 Company Perspective Calculation:');
-    console.log('- Customer net_profit (customer perspective):', tripStats.net_profit || 0);
-    console.log('- House win/loss (company perspective):', houseWinLoss);
-    console.log('- Agent commission:', totalAgentCommission);
+    console.log('- Total win/loss (positive=company wins, negative=company loses):', houseWinLoss);
+    console.log('- Agent profit sharing (from customers):', totalAgentCommission);
+    console.log('- Agent actual earnings (absolute value):', actualAgentEarnings);
     console.log('- Rolling commission:', totalRollingCommission);
     console.log('- Total expenses:', totalExpenses);
     console.log('- Net result = house_winloss - rolling_commission - expenses');
     console.log(`- Net result = ${houseWinLoss} - ${totalRollingCommission} - ${totalExpenses} = ${netResult}`);
-    console.log('- Company share = house_winloss - agent_commission - rolling_commission - expenses');
-    console.log(`- Company share = ${houseWinLoss} - ${totalAgentCommission} - ${totalRollingCommission} - ${totalExpenses} = ${companyShare}`);
+    console.log('- Agent share = agent profit sharing from customers');
+    console.log(`- Agent share = ${totalAgentCommission}`);
+    console.log('- Company share = house_winloss - |agent_earnings| - rolling_commission - expenses');
+    console.log(`- Company share = ${houseWinLoss} - ${actualAgentEarnings} - ${totalRollingCommission} - ${totalExpenses} = ${companyShare}`);
     console.log('- Total amount for percentage:', totalAmount);
     console.log('- Agent percentage:', agentSharePercentage + '%');
     console.log('- Company percentage:', companySharePercentage + '%');
@@ -731,6 +736,9 @@ async function updateTripSharing(tripId, tripStats) {
       
       // Update agent statistics in agents table
       await updateAgentStatistics(tripId, agentBreakdown);
+      
+      // Update trip_agent_summary table with detailed agent profit sharing
+      await updateTripAgentSummary(tripId, agentBreakdown, tripStats);
     }
     
   } catch (error) {
@@ -820,6 +828,101 @@ async function updateAgentStatistics(tripId, agentBreakdown) {
     console.error('Error in updateAgentStatistics:', error);
   }
 }
+
+// Helper function to update trip_agent_summary table
+async function updateTripAgentSummary(tripId, agentBreakdown, tripStats) {
+  try {
+    console.log('📊 Updating trip_agent_summary for trip:', tripId);
+    
+    // Get all customer stats for this trip to calculate agent-specific totals
+    const { data: customerStats, error: customerError } = await supabase
+      .from('trip_customer_stats')
+      .select('*')
+      .eq('trip_id', tripId);
+    
+    if (customerError) {
+      console.error('Error fetching customer stats:', customerError);
+      return;
+    }
+    
+    // Get agent-customer relationships with profit sharing rates
+    const { data: agentCustomers, error: agentError } = await supabase
+      .from('trip_agent_customers')
+      .select('agent_id, customer_id, profit_sharing_rate')
+      .eq('trip_id', tripId);
+    
+    if (agentError) {
+      console.error('Error fetching agent customers:', agentError);
+      return;
+    }
+    
+    // Calculate detailed summary for each agent
+    for (const agentData of agentBreakdown) {
+      const agentId = agentData.agent_id;
+      
+      // Get customers managed by this agent
+      const agentCustomerIds = agentCustomers
+        .filter(ac => ac.agent_id === agentId)
+        .map(ac => ac.customer_id);
+      
+      // Calculate totals for customers managed by this agent
+      const agentCustomerStats = customerStats.filter(cs => 
+        agentCustomerIds.includes(cs.customer_id)
+      );
+      
+      const totalWinLoss = agentCustomerStats.reduce((sum, cs) => 
+        sum + (cs.total_win_loss || 0), 0
+      );
+      
+      const totalProfit = agentCustomerStats.reduce((sum, cs) => 
+        sum + (cs.net_result || 0), 0
+      );
+      
+      // Agent's commission from this trip (from agentBreakdown)
+      const totalCommission = agentData.share_amount || 0;
+      
+      // Agent's profit share = their commission
+      const agentProfitShare = totalCommission;
+      
+      console.log(`💰 Agent ${agentId} summary:`, {
+        totalWinLoss,
+        totalCommission,
+        totalProfit,
+        agentProfitShare,
+        customerCount: agentCustomerStats.length
+      });
+      
+      // Upsert to trip_agent_summary table
+      const summaryData = {
+        trip_id: tripId,
+        agent_id: agentId,
+        total_win_loss: totalWinLoss,
+        total_commission: totalCommission,
+        total_profit: totalProfit,
+        agent_profit_share: agentProfitShare,
+        updated_at: new Date().toISOString()
+      };
+      
+      const { data: summaryResult, error: summaryError } = await supabase
+        .from('trip_agent_summary')
+        .upsert(summaryData, { 
+          onConflict: 'trip_id,agent_id',
+          ignoreDuplicates: false 
+        })
+        .select();
+      
+      if (summaryError) {
+        console.error(`Error updating trip_agent_summary for agent ${agentId}:`, summaryError);
+      } else {
+        console.log(`✅ Trip agent summary updated for agent ${agentId}:`, summaryResult);
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error in updateTripAgentSummary:', error);
+  }
+}
+
 // =====================================================
 // TRIPS API ENDPOINTS
 // =====================================================
@@ -1490,7 +1593,7 @@ router.post('/:id/customers', authenticateToken, canAccessTrip, async (req, res)
             trip_id: tripId,
             agent_id: customerCheck.agent_id,
             customer_id: customer_id,
-            commission_rate: agentData?.commission_rate || 0
+            profit_sharing_rate: agentData?.commission_rate || 0
           });
 
       } catch (agentError) {
@@ -1527,19 +1630,19 @@ router.post('/:id/customers', authenticateToken, canAccessTrip, async (req, res)
 router.put('/:id/agents/:agentId/commission', authenticateToken, canAccessTrip, async (req, res) => {
   try {
     const { id: tripId, agentId } = req.params;
-    const { customer_id, commission_rate } = req.body;
+    const { customer_id, profit_sharing_rate } = req.body;
 
-    if (!customer_id || commission_rate === undefined) {
+    if (!customer_id || profit_sharing_rate === undefined) {
       return res.status(400).json({
-        error: 'Customer ID and commission rate are required'
+        error: 'Customer ID and profit sharing rate are required'
       });
     }
 
-    // Update commission rate in trip_agent_customers table
+    // Update the profit sharing rate for this agent-customer relationship
     const { data, error } = await supabase
       .from('trip_agent_customers')
       .update({
-        commission_rate: commission_rate,
+        profit_sharing_rate: profit_sharing_rate,
         updated_at: new Date().toISOString()
       })
       .eq('trip_id', tripId)
@@ -1550,14 +1653,23 @@ router.put('/:id/agents/:agentId/commission', authenticateToken, canAccessTrip, 
 
     if (error) {
       return res.status(500).json({
-        error: 'Failed to update commission rate',
+        error: 'Failed to update profit sharing rate',
         details: error.message
       });
     }
 
+    // Recalculate trip sharing after profit sharing rate change
+    try {
+      const tripStats = await calculateTripStats(tripId);
+      await updateTripSharing(tripId, tripStats);
+      console.log('✅ Trip sharing recalculated after profit sharing rate update');
+    } catch (sharingError) {
+      console.error('⚠️ Failed to recalculate trip sharing:', sharingError);
+    }
+
     res.json({
       success: true,
-      message: 'Commission rate updated successfully',
+      message: 'Profit sharing rate updated successfully',
       data
     });
 
@@ -1632,7 +1744,7 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
                 trip_id: tripId,
                 agent_id: customer.agent_id,
                 customer_id: customer.id,
-                commission_rate: agentData?.commission_rate || 0
+                profit_sharing_rate: agentData?.commission_rate || 0
               });
 
             console.log('🔍 Insert result:', insertResult);
@@ -1661,7 +1773,7 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
       .select(`
         agent_id,
         customer_id,
-        commission_rate
+        profit_sharing_rate
       `)
       .eq('trip_id', tripId);
 
@@ -1747,7 +1859,7 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
     agentCustomers.forEach(item => {
       const agentId = item.agent_id;
       const customerId = item.customer_id;
-      const commissionRate = item.commission_rate || 0;
+      const commissionRate = item.profit_sharing_rate || 0;
       
       const agent = agentMap[agentId];
       const customer = customerMap[customerId];
@@ -1779,40 +1891,39 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
       const buyIn = customerStats.total_buy_in || 0;
       const cashOut = customerStats.total_cash_out || 0;
       
-      // Agent Commission: Based on customer win/loss
-      const winLossAmount = Math.abs(customerNet);
+      // Agent Commission: Based on customer profit sharing
       let agentCommission = 0;
       
-      if (customerNet < 0) {
-        // Customer lost money (buyin > cashout), junket wins, agent gets commission
-        agentCommission = (winLossAmount * commissionRate / 100);
-      } else if (customerNet > 0) {
-        // Customer won money (cashout > buyin), junket loses, agent bears loss
-        agentCommission = -(winLossAmount * commissionRate / 100);
+      if (customerNet > 0) {
+        // Customer made profit, agent gets profit sharing percentage
+        agentCommission = (customerNet * commissionRate / 100);
+      } else if (customerNet < 0) {
+        // Customer lost money, agent shares the loss (negative commission)
+        agentCommission = (customerNet * commissionRate / 100);
       }
+      // If customerNet = 0, agentCommission remains 0
       
       // Rolling Commission: Junket revenue based on customer rolling amount (default 1.4%)
       const rollingCommissionRate = 1.4; // Default 1.4%, can be made configurable later
       const rollingCommission = (rollingAmount * rollingCommissionRate / 100);
       
-      console.log(`💰 Commission calculation for ${customer ? customer.name : customerId}:`, {
+      console.log(`💰 Profit sharing calculation for ${customer ? customer.name : customerId}:`, {
         commissionRate,
         buyIn,
         cashOut,
         customerNet,
         rollingAmount,
-        winLossAmount,
         agentCommission,
         rollingCommission,
         rollingCommissionRate,
-        scenario: customerNet < 0 ? 'Customer lost - Agent gets commission' : 
-                 customerNet > 0 ? 'Customer won - Agent bears loss' : 'Break even'
+        scenario: customerNet > 0 ? 'Customer profit - Agent gets share' : 
+                 customerNet < 0 ? 'Customer loss - Agent shares loss' : 'Break even'
       });
 
       agentProfitMap[agentId].customers.push({
         customer_id: customerId,
         customer_name: customer ? customer.name : 'Unknown Customer',
-        commission_rate: commissionRate,
+        profit_sharing_rate: commissionRate,
         net_result: customerNet,
         rolling_amount: rollingAmount,
         agent_commission: agentCommission,
@@ -2958,14 +3069,18 @@ router.put('/:id/sharing', authenticateToken, canAccessTrip, async (req, res) =>
 
     const netResult = currentSharing?.net_result || 0;
 
+    // Calculate agent share and company share
+    const agentShare = netResult * agent_share_percentage / 100;
+    const companyShare = netResult - agentShare; // company_share = net_result - agent_share
+    
     // Update with custom percentages
     const { data: sharing, error } = await supabase
       .from('trip_sharing')
       .update({
         agent_share_percentage,
         company_share_percentage,
-        total_agent_share: netResult * agent_share_percentage / 100,
-        company_share: netResult * company_share_percentage / 100
+        total_agent_share: agentShare,
+        company_share: companyShare
       })
       .eq('trip_id', tripId)
       .select()
@@ -3630,6 +3745,109 @@ router.get('/:id/customers/:customerId/photos', authenticateToken, canAccessTrip
     res.status(500).json({
       success: false,
       error: 'Internal server error while fetching customer photos',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * GET /trips/:id/agent-summary
+ * Get detailed agent profit sharing summary for a specific trip
+ */
+router.get('/:id/agent-summary', authenticateToken, canAccessTrip, async (req, res) => {
+  try {
+    const { id: tripId } = req.params;
+    
+    console.log('📊 Loading agent summary for trip:', tripId);
+    
+    // Get trip agent summary data
+    const { data: agentSummaries, error: summaryError } = await supabase
+      .from('trip_agent_summary')
+      .select(`
+        *,
+        agents!fk_trip_agent_summary_agent (
+          id,
+          name,
+          commission_rate
+        )
+      `)
+      .eq('trip_id', tripId)
+      .order('created_at', { ascending: false });
+    
+    if (summaryError) {
+      console.error('Error fetching agent summaries:', summaryError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to fetch agent summaries',
+        details: summaryError.message
+      });
+    }
+    
+    // Get agent-customer relationships for additional context
+    const { data: agentCustomers, error: acError } = await supabase
+      .from('trip_agent_customers')
+      .select(`
+        agent_id,
+        customer_id,
+        profit_sharing_rate,
+        customers!fk_trip_agent_customers_customer (
+          id,
+          name
+        )
+      `)
+      .eq('trip_id', tripId);
+    
+    if (acError) {
+      console.error('Error fetching agent-customer relationships:', acError);
+    }
+
+    // Get customer statistics to include net_result
+    const { data: customerStats, error: customerStatsError } = await supabase
+      .from('trip_customer_stats')
+      .select('customer_id, net_result')
+      .eq('trip_id', tripId);
+    
+    if (customerStatsError) {
+      console.error('Error fetching customer stats:', customerStatsError);
+    }
+    
+    // Enrich agent summaries with customer details
+    const enrichedSummaries = agentSummaries.map(summary => {
+      const agentCustomerRelations = agentCustomers?.filter(ac => 
+        ac.agent_id === summary.agent_id
+      ) || [];
+      
+      return {
+        ...summary,
+        agent_name: summary.agents?.name || 'Unknown Agent',
+        agent_commission_rate: summary.agents?.commission_rate || 0,
+        customers: agentCustomerRelations.map(ac => {
+          const customerStat = customerStats?.find(cs => cs.customer_id === ac.customer_id);
+          return {
+            customer_id: ac.customer_id,
+            customer_name: ac.customers?.name || 'Unknown Customer',
+            profit_sharing_rate: ac.profit_sharing_rate,
+            net_result: customerStat?.net_result || 0
+          };
+        }),
+        customer_count: agentCustomerRelations.length
+      };
+    });
+    
+    console.log(`✅ Found ${enrichedSummaries.length} agent summaries for trip ${tripId}`);
+    
+    res.json({
+      success: true,
+      data: enrichedSummaries,
+      trip_id: tripId,
+      total_agents: enrichedSummaries.length
+    });
+    
+  } catch (error) {
+    console.error('Error in get agent summary:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while fetching agent summary',
       details: error.message
     });
   }

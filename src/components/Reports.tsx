@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, AreaChart, Area, Line } from 'recharts';
-import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpCircle, ArrowUpDown } from 'lucide-react';
+import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpCircle, ArrowUpDown, Database } from 'lucide-react';
 import { tokenManager } from '../utils/auth/tokenManager';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -23,8 +23,8 @@ export function Reports({ user }: ReportsProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
-  const [, setRollingRecords] = useState<RollingRecord[]>([]);
-  const [, setBuyInOutRecords] = useState<BuyInOutRecord[]>([]);
+  const [rollingRecords, setRollingRecords] = useState<RollingRecord[]>([]);
+  const [transactionRecords, setTransactionRecords] = useState<any[]>([]);
   
   // Filter states
   const [dateRange, setDateRange] = useState('30'); // days
@@ -70,7 +70,7 @@ export function Reports({ user }: ReportsProps) {
       }
       
       // Load all required data from backend API in parallel
-      const [agentsResponse, customersResponse, tripsResponse] = await Promise.all([
+      const [agentsResponse, customersResponse, tripsResponse, rollingRecordsResponse, transactionsResponse] = await Promise.all([
         fetch(`${API_URL}/agents`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
@@ -79,22 +79,36 @@ export function Reports({ user }: ReportsProps) {
         }),
         fetch(`${API_URL}/trips`, {
           headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/rolling-records`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/transactions`, {
+          headers: { 'Authorization': `Bearer ${token}` }
         })
       ]);
       
-      if (!agentsResponse.ok || !customersResponse.ok || !tripsResponse.ok) {
+      if (!agentsResponse.ok || !customersResponse.ok || !tripsResponse.ok || !rollingRecordsResponse.ok || !transactionsResponse.ok) {
         throw new Error('Failed to fetch data from backend API');
       }
       
-      const [agentsResult, customersResult, tripsResult] = await Promise.all([
+      const [agentsResult, customersResult, tripsResult, rollingRecordsResult, transactionsResult] = await Promise.all([
         agentsResponse.json(),
         customersResponse.json(),
-        tripsResponse.json()
+        tripsResponse.json(),
+        rollingRecordsResponse.json(),
+        transactionsResponse.json()
       ]);
       
       const agentsData = agentsResult.data || [];
       const customersData = customersResult.data || [];
       const tripsData = tripsResult.data || []; // This includes trip_sharing data
+      const rollingRecordsData = rollingRecordsResult.data || [];
+      const transactionRecordsData = transactionsResult.data || [];
+      
+      console.log('📊 Loaded transaction data:');
+      console.log('  - Rolling records:', rollingRecordsData.length);
+      console.log('  - Transaction records:', transactionRecordsData.length);
 
 
       // Process customers with data from backend (already includes totals)
@@ -164,8 +178,8 @@ export function Reports({ user }: ReportsProps) {
       setAgents(agentsData);
       setCustomers(processedCustomers);
       setTrips(processedTrips);
-      setRollingRecords([]); // Not used anymore
-      setBuyInOutRecords([]); // Not used anymore
+      setRollingRecords(rollingRecordsData);
+      setTransactionRecords(transactionRecordsData);
       setLastSyncTime(new Date());
       setConnectionStatus('connected');
       
@@ -214,8 +228,8 @@ export function Reports({ user }: ReportsProps) {
   const getFilteredData = () => {
     let filteredCustomers = customers;
     let filteredTrips = trips;
-    let filteredRollingRecords: any[] = []; // Not used anymore
-    let filteredBuyInOutRecords: any[] = []; // Not used anymore
+    let filteredRollingRecords = rollingRecords;
+    let filteredTransactionRecords = transactionRecords;
 
     // Apply user role filter
     if (user.role === 'agent' && user.agentId) {
@@ -241,6 +255,25 @@ export function Reports({ user }: ReportsProps) {
         (t.agents && t.agents.some(agent => agent.agentId === selectedAgent)) ||
         t.agentId === selectedAgent
       );
+      filteredRollingRecords = filteredRollingRecords.filter(r => r.agentId === selectedAgent);
+      filteredTransactionRecords = filteredTransactionRecords.filter(b => {
+        const customer = customers.find(c => c.id === b.customerId);
+        return customer?.agentId === selectedAgent;
+      });
+    }
+    
+    // Apply role-based filtering for transaction records
+    if (user.role === 'agent' && user.agentId) {
+      filteredRollingRecords = filteredRollingRecords.filter(r => r.agentId === user.agentId);
+      filteredTransactionRecords = filteredTransactionRecords.filter(b => {
+        const customer = customers.find(c => c.id === b.customerId);
+        return customer?.agentId === user.agentId;
+      });
+    } else if (user.role === 'staff' && user.staffId) {
+      // Staff can see records from their assigned trips
+      const staffTripIds = filteredTrips.map(t => t.id);
+      filteredRollingRecords = filteredRollingRecords.filter(r => r.tripId && staffTripIds.includes(r.tripId));
+      filteredTransactionRecords = filteredTransactionRecords.filter(b => b.tripId && staffTripIds.includes(b.tripId));
     }
 
   // Apply date range filter - but show ALL data regardless of date for now
@@ -262,10 +295,10 @@ export function Reports({ user }: ReportsProps) {
     return tripDate && !isNaN(new Date(tripDate).getTime()) && new Date(tripDate) >= cutoffDate;
   });
 
-    return { filteredCustomers, filteredTrips, filteredRollingRecords, filteredBuyInOutRecords };
+    return { filteredCustomers, filteredTrips, filteredRollingRecords, filteredTransactionRecords };
   };
 
-  const { filteredCustomers, filteredTrips, filteredRollingRecords, filteredBuyInOutRecords } = getFilteredData();
+  const { filteredCustomers, filteredTrips, filteredRollingRecords, filteredTransactionRecords } = getFilteredData();
 
   // Calculate comprehensive metrics from trip_sharing data
   const calculateMetrics = () => {
@@ -282,6 +315,38 @@ export function Reports({ user }: ReportsProps) {
     
     const isCompanyProfitable = companyProfitLoss > 0;
 
+    // Company totals from trip_sharing data - using correct field names
+    const companyTotalRolling = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.total_rolling), 0); // trip_sharing.total_rolling
+    const companyTotalWinLoss = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.total_win_loss), 0); // trip_sharing.total_win_loss
+    // const companyTotalBuyIn = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalBuyIn), 0);
+    // const companyTotalBuyOut = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalBuyOut), 0);
+    const companyTotalExpenses = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalExpenses), 0);
+    const companyNetResult = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.netResult), 0);
+    const companyShare = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.companyShare), 0); // trip_sharing.companyShare
+    // Try multiple field name formats for commission
+    const totalRollingCommission = filteredTrips.reduce((sum: number, t: any) => {
+      const commission = t.sharing?.total_rolling_commission || t.sharing?.totalRollingCommission || 0;
+      return sum + safeNumber(commission);
+    }, 0);
+
+    // Customer metrics
+    const totalCustomers = filteredCustomers.length;
+    // Active customers = customers who have rolling amount (check multiple field names)
+    const activeCustomers = filteredCustomers.filter((c: any) => {
+      const rolling = c.totalRolling || c.total_rolling || 0;
+      return rolling > 0;
+    }).length;
+
+    // Trip totals for display
+    const tripTotalRolling = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.totalRolling), 0);
+    const tripTotalWinLoss = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.totalWinLoss), 0);
+    const totalExpenses = companyTotalExpenses;
+
+    // House performance from company perspective (trip_sharing data)
+    // const houseGrossWin = Math.abs(companyTotalWinLoss); // Always show absolute value
+    const houseNetWin = Math.abs(companyNetResult - totalExpenses); // Company net after expenses
+    const houseFinalProfit = Math.abs(companyShare); // Final company share
+
     // 🔍 DEBUG: Log calculated aggregated metrics
     console.group('📊 Calculated Aggregated Metrics');
     console.log('💰 Total Win/Loss:', totalWinLoss);
@@ -292,31 +357,11 @@ export function Reports({ user }: ReportsProps) {
     console.log('📈 Is Company Profitable:', isCompanyProfitable);
     console.log('🔢 Filtered Trips Count:', filteredTrips.length);
     console.groupEnd();
-
-    // Company totals from trip_sharing data
-    const companyTotalRolling = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalRollingCommission), 0);
-    const companyTotalWinLoss = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalWinLoss), 0);
-    const companyTotalBuyIn = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalBuyIn), 0);
-    const companyTotalBuyOut = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalBuyOut), 0);
-    const companyTotalExpenses = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.totalExpenses), 0);
-    const companyNetResult = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.netResult), 0);
-    const companyShare = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.sharing?.companyShare), 0);
-
-
-    // Trip totals for display
-    const tripTotalRolling = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.totalRolling), 0);
-    const tripTotalWinLoss = filteredTrips.reduce((sum: number, t: any) => sum + safeNumber(t.totalWinLoss), 0);
-    const totalRollingCommission = companyTotalRolling;
-    const totalExpenses = companyTotalExpenses;
-
-    // House performance from company perspective (trip_sharing data)
-    const houseGrossWin = Math.abs(companyTotalWinLoss); // Always show absolute value
-    const houseNetWin = Math.abs(companyNetResult - totalExpenses); // Company net after expenses
-    const houseFinalProfit = Math.abs(companyShare); // Final company share
-
-    // Customer metrics
-    const totalCustomers = filteredCustomers.length;
-    const activeCustomers = filteredCustomers.filter((c: any) => c.isActive).length;
+    console.log('🔍 Company Total Win/Loss (from sharing):', companyTotalWinLoss);
+    console.log('🔍 Total Rolling Commission (from sharing):', totalRollingCommission);
+    console.log('🔍 Active Customers (with rolling):', activeCustomers);
+    console.log('🔍 Total Customers:', totalCustomers);
+    console.groupEnd();
 
     // Agent metrics
     const totalAgents = agents.length;
@@ -333,20 +378,57 @@ export function Reports({ user }: ReportsProps) {
       ? filteredCustomers.reduce((sum: number, c: any) => sum + c.rollingPercentage, 0) / filteredCustomers.length
       : 1.4;
 
+    // Add debug logging for trip_sharing commission data
+    console.log('🔍 Trip Sharing Commission Debug:');
+    filteredTrips.forEach((trip, i) => {
+      const sharing = trip.sharing || {};
+      console.log(`  Trip ${i+1} (${trip.name || trip.id}):`, {
+        total_rolling_commission: sharing.total_rolling_commission,
+        totalRollingCommission: sharing.totalRollingCommission,
+        total_rolling: sharing.total_rolling,
+        totalRolling: sharing.totalRolling,
+        companyShare: sharing.companyShare,
+        company_share: sharing.company_share
+      });
+    });
+    
+    // Add debug logging for final metrics
+    console.log('🔍 Final Metrics Debug:');
+    console.log('  - Total Rolling (trip.totalRolling):', totalRolling);
+    console.log('  - Company Total Rolling (sharing.total_rolling):', companyTotalRolling);
+    console.log('  - Total Rolling Commission (sum of trip_sharing.total_rolling_commission):', totalRollingCommission);
+    console.log('  - Company Profit/Loss (sharing.companyShare):', companyProfitLoss);
+    console.log('  - Active Customers (with rolling > 0):', activeCustomers);
+    console.log('  - Total Customers:', totalCustomers);
+    
+    // Debug customer data
+    console.log('🔍 Customer Debug:');
+    console.log('  - Total Customers Found:', filteredCustomers.length);
+    filteredCustomers.slice(0, 5).forEach((c, i) => {
+      console.log(`  Customer ${i+1}:`, {
+        name: c.name,
+        totalRolling: c.totalRolling,
+        total_rolling: c.total_rolling,
+        isActive: c.isActive,
+        hasRolling: (c.totalRolling || c.total_rolling || 0) > 0
+      });
+    });
+
     return {
-      customerTotalRolling: companyTotalRolling,
-      customerTotalWinLoss: companyTotalWinLoss,
-      customerTotalBuyIn: companyTotalBuyIn,
-      customerTotalBuyOut: companyTotalBuyOut,
+      // Main metrics - use actual data sources that have values
+      customerTotalRolling: totalRolling, // Use trip.totalRolling which has actual data (26,562,555)
+      customerTotalWinLoss: Math.abs(totalWinLoss), // Use trip.totalWinLoss which has actual data (813,939)
+      customerTotalBuyIn: totalBuyIn, // Use trip.totalBuyIn which has actual data
+      customerTotalBuyOut: totalBuyOut, // Use trip.totalBuyOut which has actual data
       tripTotalRolling,
       tripTotalWinLoss,
-      totalRollingCommission,
+      totalRollingCommission, // Sum of trip_sharing.total_rolling_commission from all trips
       totalExpenses,
-      houseGrossWin,
+      houseGrossWin: Math.abs(totalWinLoss), // Based on trip.totalWinLoss which has actual data
       houseNetWin,
       houseFinalProfit,
       totalCustomers,
-      activeCustomers,
+      activeCustomers, // Customers with rolling > 0
       totalAgents,
       activeAgents,
       totalTrips,
@@ -355,11 +437,11 @@ export function Reports({ user }: ReportsProps) {
       profitMargin,
       averageRollingPercentage,
       totalRollingRecords: filteredTrips.length, // Number of trips with sharing data
-      totalBuyInOutRecords: filteredTrips.filter(t => ((t.sharing?.totalBuyIn || 0) > 0) || ((t.sharing?.totalBuyOut || 0) > 0)).length,
+      totalBuyInOutRecords: filteredTrips.filter(t => ((t.totalBuyIn || 0) > 0) || ((t.totalBuyOut || 0) > 0)).length,
       // Company performance indicators
       companyNetResult,
-      companyShare,
-      isCompanyProfitable: companyShare > 0
+      companyShare: companyProfitLoss, // Use companyProfitLoss which has actual data (305,951.23)
+      isCompanyProfitable: companyProfitLoss > 0
     };
   };
 
@@ -370,13 +452,21 @@ export function Reports({ user }: ReportsProps) {
     const dailyData: {[key: string]: any} = {};
 
     // Process trips by date using trip_sharing data
-    filteredTrips.forEach(trip => {
+    console.log('🔍 Processing trips for chart data:', filteredTrips.length);
+    filteredTrips.forEach((trip, i) => {
       const tripDate = trip.date || (trip as any).start_date || (trip as any).created_at;
       if (!tripDate) {
-        console.warn('Trip has no valid date:', trip);
+        console.warn(`Trip ${i+1} has no valid date:`, {
+          id: trip.id,
+          name: trip.name,
+          date: trip.date,
+          start_date: (trip as any).start_date,
+          created_at: (trip as any).created_at
+        });
         return;
       }
       const date = tripDate.split('T')[0]; // Get date part only
+      console.log(`Trip ${i+1} date: ${tripDate} -> ${date}`);
       if (!dailyData[date]) {
         dailyData[date] = { 
           date, 
@@ -393,17 +483,25 @@ export function Reports({ user }: ReportsProps) {
         };
       }
       
-      // Use trip_sharing data
+      // Use actual trip data (which has values) instead of empty trip_sharing data
       const sharing = trip.sharing || {};
-      dailyData[date].rolling += safeNumber(sharing.totalRollingCommission);
-      dailyData[date].winLoss += safeNumber(sharing.totalWinLoss);
-      dailyData[date].commission += safeNumber(sharing.totalRollingCommission);
-      dailyData[date].buyIn += safeNumber(sharing.totalBuyIn);
-      dailyData[date].buyOut += safeNumber(sharing.totalBuyOut);
+      
+      // Use trip data for rolling and winLoss (which have actual values)
+      dailyData[date].rolling += safeNumber(trip.totalRolling); // Use trip.totalRolling (has data)
+      dailyData[date].winLoss += safeNumber(trip.totalWinLoss); // Use trip.totalWinLoss (has data)
+      
+      // Calculate commission from rolling if trip_sharing is empty
+      const sharingCommission = safeNumber(sharing.total_rolling_commission) || safeNumber(sharing.totalRollingCommission);
+      const calculatedCommission = sharingCommission > 0 ? sharingCommission : (safeNumber(trip.totalRolling) * 0.014);
+      dailyData[date].commission += calculatedCommission;
+      
+      // Use trip data for buy-in/out
+      dailyData[date].buyIn += safeNumber(trip.totalBuyIn);
+      dailyData[date].buyOut += safeNumber(trip.totalBuyOut);
       dailyData[date].expenses += safeNumber(sharing.totalExpenses);
       dailyData[date].companyShare += safeNumber(sharing.companyShare);
-      dailyData[date].netCashFlow += safeNumber(sharing.netCashFlow);
-      dailyData[date].recordCount += 1;
+      dailyData[date].netCashFlow += safeNumber(trip.totalBuyOut - trip.totalBuyIn);
+      dailyData[date].recordCount += 1; // Trip count
       dailyData[date].transactions += (((sharing.totalBuyIn || 0) > 0) || ((sharing.totalBuyOut || 0) > 0)) ? 1 : 0;
     });
 
@@ -413,6 +511,65 @@ export function Reports({ user }: ReportsProps) {
   };
 
   const chartData = getDailyChartData();
+  
+  // Add actual transaction records count to chart data
+  const enhancedChartData = chartData.map((dayData: any) => {
+    // Count rolling records for this date
+    const dayRollingRecords = filteredRollingRecords.filter((record: any) => {
+      const recordDate = record.updated_at || record.created_at || record.recordedAt || record.sessionStartTime || record.createdAt;
+      if (!recordDate) return false;
+      const recordDateOnly = recordDate.split('T')[0];
+      return recordDateOnly === dayData.date;
+    }).length;
+    
+    // Count transaction records for this date  
+    const dayTransactionRecords = filteredTransactionRecords.filter((record: any) => {
+      const recordDate = record.updated_at || record.created_at || record.createdAt;
+      if (!recordDate) return false;
+      const recordDateOnly = recordDate.split('T')[0];
+      return recordDateOnly === dayData.date;
+    }).length;
+    
+    return {
+      ...dayData,
+      actualTransactionRecords: dayRollingRecords + dayTransactionRecords,
+      rollingRecordsCount: dayRollingRecords,
+      transactionRecordsCount: dayTransactionRecords
+    };
+  });
+  
+  // Debug chart data
+  console.log('🔍 Enhanced Chart Data Debug:');
+  console.log('  - Chart data length:', enhancedChartData.length);
+  console.log('  - Total rolling records available:', filteredRollingRecords.length);
+  console.log('  - Total transaction records available:', filteredTransactionRecords.length);
+  console.log('  - Chart date range:', enhancedChartData.map(d => d.date));
+  enhancedChartData.slice(0, 3).forEach((day: any, i) => {
+    console.log(`  Day ${i+1} (${day.date}):`, {
+      tripCount: day.recordCount,
+      actualTransactionRecords: day.actualTransactionRecords,
+      rollingRecords: day.rollingRecordsCount,
+      transactionRecords: day.transactionRecordsCount
+    });
+  });
+  
+  // Debug sample transaction records to check date format
+  console.log('🔍 Sample Transaction Records (date fields):');
+  if (filteredTransactionRecords.length > 0) {
+    const record = filteredTransactionRecords[0];
+    console.log('  Transaction 1 date fields:', {
+      updated_at: record.updated_at,
+      created_at: record.created_at,
+      createdAt: record.createdAt,
+      extractedDate: (record.updated_at || record.created_at || record.createdAt || '').split('T')[0]
+    });
+  }
+  
+  console.log('🔍 Sample Rolling Records (all fields):');
+  if (filteredRollingRecords.length > 0) {
+    console.log('  Rolling 1 all fields:', filteredRollingRecords[0]);
+    console.log('  Available fields:', Object.keys(filteredRollingRecords[0]));
+  }
 
   // Agent performance data (admin only)
   const getAgentPerformanceData = () => {
@@ -421,7 +578,7 @@ export function Reports({ user }: ReportsProps) {
     return agents.map(agent => {
       const agentCustomers = filteredCustomers.filter(c => c.agentId === agent.id);
       const agentRollingRecords = filteredRollingRecords.filter(r => r.agentId === agent.id);
-      const agentBuyInOutRecords = filteredBuyInOutRecords.filter(b => {
+      const agentBuyInOutRecords = filteredTransactionRecords.filter(b => {
         const customer = customers.find(c => c.id === b.customerId);
         return customer?.agentId === agent.id;
       });
@@ -451,7 +608,7 @@ export function Reports({ user }: ReportsProps) {
         commission: rolling * 0.014,
         trips: agentTrips.length,
         rollingRecords: agentRollingRecords.length,
-        buyInOutRecords: agentTrips.filter(t => ((t.sharing?.totalBuyIn || 0) > 0) || ((t.sharing?.totalBuyOut || 0) > 0)).length,
+        transactionRecords: agentTrips.filter(t => ((t.sharing?.totalBuyIn || 0) > 0) || ((t.sharing?.totalBuyOut || 0) > 0)).length,
         averageRollingPercentage: agentCustomers.length > 0 
           ? agentCustomers.reduce((sum, c) => sum + c.rollingPercentage, 0) / agentCustomers.length
           : 0
@@ -466,7 +623,7 @@ export function Reports({ user }: ReportsProps) {
     return filteredCustomers
       .map(customer => {
         const customerRollingRecords = filteredRollingRecords.filter(r => r.customerId === customer.id);
-        const customerBuyInOutRecords = filteredBuyInOutRecords.filter(b => b.customerId === customer.id);
+        const customerBuyInOutRecords = filteredTransactionRecords.filter(b => b.customerId === customer.id);
         
         const rolling = customerRollingRecords.reduce((sum, r) => sum + safeNumber(r.rollingAmount), 0);
         const winLoss = customerRollingRecords.reduce((sum, r) => sum + safeNumber(r.winLoss), 0);
@@ -511,7 +668,7 @@ export function Reports({ user }: ReportsProps) {
         customers: filteredCustomers.length,
         trips: filteredTrips.length,
         rollingRecords: filteredRollingRecords.length,
-        buyInOutRecords: filteredBuyInOutRecords.length
+        transactionRecords: filteredTransactionRecords.length
       }
     };
 
@@ -673,6 +830,23 @@ export function Reports({ user }: ReportsProps) {
       <div>
         <h3 className="text-lg font-medium mb-4">Key Performance Metrics</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          {/* 1. Total Win/Loss */}
+          <Card className={`bg-gradient-to-r ${metrics.customerTotalWinLoss > 0 ? 'from-red-50 to-red-100 border-red-200' : 'from-green-50 to-green-100 border-green-200'}`}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className={`text-sm font-medium ${metrics.customerTotalWinLoss > 0 ? 'text-red-800' : 'text-green-800'}`}>Total Win/Loss</CardTitle>
+              <ArrowUpDown className={`h-4 w-4 ${metrics.customerTotalWinLoss > 0 ? 'text-red-600' : 'text-green-600'}`} />
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${metrics.customerTotalWinLoss > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                HK${safeFormatNumber(metrics.customerTotalWinLoss)}
+              </div>
+              <p className={`text-xs ${metrics.customerTotalWinLoss > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {metrics.customerTotalWinLoss > 0 ? 'Customer Win (Company Loss)' : 'Customer Loss (Company Win)'}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* 2. Total Rolling */}
           <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-blue-800">Total Rolling</CardTitle>
@@ -686,53 +860,41 @@ export function Reports({ user }: ReportsProps) {
             </CardContent>
           </Card>
 
+          {/* 3. Rolling Commission */}
           <Card className="bg-gradient-to-r from-purple-50 to-purple-100 border-purple-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-purple-800">Commission</CardTitle>
+              <CardTitle className="text-sm font-medium text-purple-800">Rolling Commission</CardTitle>
               <Percent className="h-4 w-4 text-purple-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-purple-700">HK${safeFormatNumber(metrics.customerTotalRolling * 0.014)}</div>
+              <div className="text-2xl font-bold text-purple-700">HK${safeFormatNumber(metrics.totalRollingCommission)}</div>
               <p className="text-xs text-purple-600">
-                {metrics.averageRollingPercentage.toFixed(1)}% avg rolling rate
+                From trip_sharing data
               </p>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-r from-green-50 to-green-100 border-green-200">
+          {/* 4. House P&L */}
+          <Card className={`bg-gradient-to-r ${metrics.isCompanyProfitable ? 'from-green-50 to-green-100 border-green-200' : 'from-red-50 to-red-100 border-red-200'}`}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-green-800">House P&L</CardTitle>
-              {metrics.houseGrossWin >= 0 ? (
+              <CardTitle className={`text-sm font-medium ${metrics.isCompanyProfitable ? 'text-green-800' : 'text-red-800'}`}>House P&L</CardTitle>
+              {metrics.isCompanyProfitable ? (
                 <Trophy className="h-4 w-4 text-green-600" />
               ) : (
                 <TrendingDown className="h-4 w-4 text-red-600" />
               )}
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                HK${safeFormatNumber(Math.abs(metrics.houseGrossWin))}
+              <div className={`text-2xl font-bold ${metrics.isCompanyProfitable ? 'text-green-600' : 'text-red-600'}`}>
+                HK${safeFormatNumber(Math.abs(metrics.companyShare))}
               </div>
-              <p className="text-xs text-green-600">
-                {metrics.houseGrossWin >= 0 ? 'House Win' : 'Customer Win'}
+              <p className={`text-xs ${metrics.isCompanyProfitable ? 'text-green-600' : 'text-red-600'}`}>
+                {metrics.isCompanyProfitable ? 'Company Profit (Customer Loss)' : 'Company Loss (Customer Win)'}
               </p>
             </CardContent>
           </Card>
 
-          <Card className="bg-gradient-to-r from-orange-50 to-orange-100 border-orange-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-orange-800">Cash Flow</CardTitle>
-              <ArrowUpCircle className="h-4 w-4 text-orange-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-700">
-                HK${safeFormatNumber(metrics.customerTotalBuyOut - metrics.customerTotalBuyIn)}
-              </div>
-              <p className="text-xs text-orange-600">
-                Net: Buy-out - Buy-in
-              </p>
-            </CardContent>
-          </Card>
-
+          {/* 5. Active Customers */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Customers</CardTitle>
@@ -751,53 +913,241 @@ export function Reports({ user }: ReportsProps) {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Daily Rolling Volume & Commission */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily Rolling Volume & Commission</CardTitle>
-            <CardDescription>Real-time rolling amounts and calculated commission over time</CardDescription>
+        <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-blue-600" />
+                  Daily Business Overview
+                </CardTitle>
+                <CardDescription className="text-gray-600 mt-1">
+                  Rolling volume, cash flow, and profit analysis
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                  <span className="text-gray-600">Rolling</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <span className="text-gray-600">Buy-in</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                  <span className="text-gray-600">Buy-out</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                  <span className="text-gray-600">Profit</span>
+                </div>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
+          <CardContent className="pt-0">
+            <ResponsiveContainer width="100%" height={350}>
+              <ComposedChart 
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <defs>
+                  <linearGradient id="rollingGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                  </linearGradient>
+                  <linearGradient id="buyInGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0.3}/>
+                  </linearGradient>
+                  <linearGradient id="buyOutGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#F97316" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#F97316" stopOpacity={0.3}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.5} />
+                <XAxis 
+                  dataKey="date" 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#6B7280' }}
+                  tickFormatter={(value) => {
+                    const date = new Date(value);
+                    return `${date.getMonth() + 1}/${date.getDate()}`;
+                  }}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#6B7280' }}
+                  tickFormatter={(value) => {
+                    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                    if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+                    return value.toString();
+                  }}
+                />
                 <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                    padding: '12px'
+                  }}
                   formatter={(value, name) => [
                     `HK$${Number(value).toLocaleString()}`, 
-                    name === 'rolling' ? 'Rolling' : name === 'commission' ? 'Commission' : 'Win/Loss'
-                  ]} 
+                    name === 'rolling' ? '🎲 Rolling Volume' : 
+                    name === 'buyIn' ? '💰 Buy-in' : 
+                    name === 'buyOut' ? '💸 Buy-out' :
+                    name === 'companyShare' ? '📈 Profit' :
+                    '📊 Data'
+                  ]}
+                  labelFormatter={(label) => {
+                    const date = new Date(label);
+                    return `📅 ${date.toLocaleDateString('en-US', { 
+                      weekday: 'short', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}`;
+                  }}
                 />
-                <Bar dataKey="rolling" fill="#8884d8" name="rolling" />
-                <Bar dataKey="commission" fill="#82ca9d" name="commission" />
-                <Line type="monotone" dataKey="winLoss" stroke="#ff7c7c" strokeWidth={2} name="winLoss" />
+                <Bar 
+                  dataKey="rolling" 
+                  fill="url(#rollingGradient)" 
+                  name="rolling"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={50}
+                />
+                <Bar 
+                  dataKey="buyIn" 
+                  fill="url(#buyInGradient)" 
+                  name="buyIn"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={50}
+                />
+                <Bar 
+                  dataKey="buyOut" 
+                  fill="url(#buyOutGradient)" 
+                  name="buyOut"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={50}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="companyShare" 
+                  stroke="#8B5CF6" 
+                  strokeWidth={3}
+                  name="companyShare"
+                  dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, stroke: '#8B5CF6', strokeWidth: 2, fill: 'white' }}
+                />
               </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Buy-in/Buy-out Cash Flow */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Daily Cash Flow Analysis</CardTitle>
-            <CardDescription>Buy-in vs Buy-out amounts and net cash flow</CardDescription>
+        {/* Expenses & Commission Analysis */}
+        <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-purple-600" />
+                  Daily Cost & Revenue Analysis
+                </CardTitle>
+                <CardDescription className="text-gray-600 mt-1">
+                  Operating expenses and rolling commission trends
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <span className="text-gray-600">Expenses</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <span className="text-gray-600">Commission</span>
+                </div>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
+          <CardContent className="pt-0">
+            <ResponsiveContainer width="100%" height={350}>
+              <ComposedChart 
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <defs>
+                  <linearGradient id="expensesGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#EF4444" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#EF4444" stopOpacity={0.2}/>
+                  </linearGradient>
+                  <linearGradient id="commissionAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0.2}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.5} />
+                <XAxis 
+                  dataKey="date" 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#6B7280' }}
+                  tickFormatter={(value) => {
+                    const date = new Date(value);
+                    return `${date.getMonth() + 1}/${date.getDate()}`;
+                  }}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: '#6B7280' }}
+                  tickFormatter={(value) => {
+                    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                    if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+                    return value.toString();
+                  }}
+                />
                 <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                    padding: '12px'
+                  }}
                   formatter={(value, name) => [
                     `HK$${Number(value).toLocaleString()}`, 
-                    name === 'buyIn' ? 'Buy-in' : name === 'buyOut' ? 'Buy-out' : 'Net Flow'
-                  ]} 
+                    name === 'expenses' ? '💸 Expenses' : 
+                    name === 'commission' ? '💰 Rolling Commission' :
+                    '📊 Data'
+                  ]}
+                  labelFormatter={(label) => {
+                    const date = new Date(label);
+                    return `📅 ${date.toLocaleDateString('en-US', { 
+                      weekday: 'short', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}`;
+                  }}
                 />
-                <Area type="monotone" dataKey="buyIn" stackId="1" stroke="#8884d8" fill="#8884d8" name="buyIn" />
-                <Area type="monotone" dataKey="buyOut" stackId="1" stroke="#82ca9d" fill="#82ca9d" name="buyOut" />
-                <Line type="monotone" dataKey="netCashFlow" stroke="#ff7c7c" strokeWidth={2} name="netCashFlow" />
-              </AreaChart>
+                <Area 
+                  type="monotone" 
+                  dataKey="expenses" 
+                  stroke="#EF4444" 
+                  fill="url(#expensesGradient)" 
+                  name="expenses"
+                  strokeWidth={2}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="commission" 
+                  stroke="#10B981" 
+                  fill="url(#commissionAreaGradient)" 
+                  name="commission"
+                  strokeWidth={2}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
@@ -805,20 +1155,80 @@ export function Reports({ user }: ReportsProps) {
 
       {/* Operational Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Transaction Volume</CardTitle>
-            <CardDescription>Daily activity levels</CardDescription>
+        <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-blue-50">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-blue-600" />
+                  Daily Trip Records
+                </CardTitle>
+                <CardDescription className="text-gray-600 mt-1">
+                  Daily transaction records from database
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <span className="text-gray-600">Transaction Records</span>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="recordCount" fill="#8884d8" name="Rolling Records" />
-                <Bar dataKey="transactions" fill="#82ca9d" name="Buy-in/out" />
+          <CardContent className="pt-0">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart 
+                data={enhancedChartData}
+                margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
+              >
+                <defs>
+                  <linearGradient id="tripRecordsGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.9}/>
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.4}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.5} />
+                <XAxis 
+                  dataKey="date" 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                  tickFormatter={(value) => {
+                    const date = new Date(value);
+                    return `${date.getMonth() + 1}/${date.getDate()}`;
+                  }}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 11, fill: '#6B7280' }}
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    padding: '8px 12px'
+                  }}
+                  formatter={(value, name) => [
+                    `${Number(value)} records`, 
+                    '🗂️ Transaction Records'
+                  ]}
+                  labelFormatter={(label) => {
+                    const date = new Date(label);
+                    return `📅 ${date.toLocaleDateString('en-US', { 
+                      weekday: 'short', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}`;
+                  }}
+                />
+                <Bar 
+                  dataKey="actualTransactionRecords" 
+                  fill="url(#tripRecordsGradient)" 
+                  name="actualTransactionRecords"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={40}
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -919,9 +1329,14 @@ export function Reports({ user }: ReportsProps) {
                     <div>
                       <div className="text-gray-500">Win/Loss</div>
                       <div className={`font-medium ${
-                        customer.periodWinLoss >= 0 ? 'text-red-600' : 'text-green-600'
+                        customer.periodWinLoss > 0 ? 'text-red-600' : 'text-green-600'
                       }`}>
-                        {customer.periodWinLoss >= 0 ? '+' : ''}HK${safeFormatNumber(customer.periodWinLoss)}
+                        HK${safeFormatNumber(Math.abs(customer.periodWinLoss))}
+                      </div>
+                      <div className={`text-xs ${
+                        customer.periodWinLoss > 0 ? 'text-red-500' : 'text-green-500'
+                      }`}>
+                        {customer.periodWinLoss > 0 ? 'Customer Win' : 'Company Win'}
                       </div>
                     </div>
                     <div>
@@ -1002,9 +1417,14 @@ export function Reports({ user }: ReportsProps) {
                         HK${safeFormatNumber(agent.commission)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <span className={agent.winLoss >= 0 ? 'text-red-600' : 'text-green-600'}>
-                          {agent.winLoss >= 0 ? '+' : ''}HK${safeFormatNumber(agent.winLoss)}
-                        </span>
+                        <div className={agent.winLoss > 0 ? 'text-red-600' : 'text-green-600'}>
+                          HK${safeFormatNumber(Math.abs(agent.winLoss))}
+                        </div>
+                        <div className={`text-xs ${
+                          agent.winLoss > 0 ? 'text-red-500' : 'text-green-500'
+                        }`}>
+                          {agent.winLoss > 0 ? 'Customer Win' : 'Company Win'}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className={`font-medium ${agent.netCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -1016,7 +1436,7 @@ export function Reports({ user }: ReportsProps) {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div>{agent.rollingRecords} rolling</div>
-                        <div className="text-xs text-gray-400">{agent.buyInOutRecords} buy-in/out</div>
+                        <div className="text-xs text-gray-400">{agent.transactionRecords} buy-in/out</div>
                       </td>
                     </tr>
                   ))}

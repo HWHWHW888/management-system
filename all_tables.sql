@@ -367,7 +367,7 @@ create table public.trip_agent_customers (
   trip_id uuid not null,
   agent_id uuid not null,
   customer_id uuid not null,
-  commission_rate numeric(5, 2) null default 0.00,
+  profit_sharing_rate numeric(5, 2) null default 0.00,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   constraint trip_agent_customers_pkey primary key (id),
@@ -643,3 +643,21 @@ COMMENT ON COLUMN public.customer_photos.photo_type IS '照片类型：transacti
 COMMENT ON COLUMN public.customer_photos.photo IS '照片JSON数据，包含照片内容和元数据';
 COMMENT ON COLUMN public.customer_photos.transaction_date IS '交易或滚码的实际日期，由staff在上传时提供';
 COMMENT ON COLUMN public.customer_photos.status IS '照片状态：pending（待审核）、approved（已批准）或rejected（已拒绝）';
+
+
+
+create table public.trip_agent_summary (
+  id uuid not null default gen_random_uuid (),
+  trip_id uuid not null,
+  agent_id uuid not null,
+  total_win_loss numeric(15, 2) not null default 0,
+  total_commission numeric(15, 2) not null default 0,
+  total_profit numeric(15, 2) not null default 0,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  agent_profit_share numeric(15, 2) not null default 0,
+  constraint trip_agent_summary_pkey primary key (id),
+  constraint trip_agent_summary_unique unique (trip_id, agent_id),
+  constraint fk_trip_agent_summary_agent foreign KEY (agent_id) references agents (id) on delete CASCADE,
+  constraint fk_trip_agent_summary_trip foreign KEY (trip_id) references trips (id) on delete CASCADE
+) TABLESPACE pg_default;

@@ -360,6 +360,12 @@ class ApiClient {
     });
   }
 
+  // Trip agent summary endpoint
+  async getTripAgentSummary(tripId: string) {
+    console.log('📊 ApiClient: Fetching agent summary for trip:', tripId);
+    return this.request(`/trips/${tripId}/agent-summary`);
+  }
+
   // Transactions endpoints
   async getTransactions() {
     return this.request('/transactions');

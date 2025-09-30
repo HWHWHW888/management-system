@@ -454,6 +454,32 @@ export interface Database {
           created_at?: string
         }
       }
+      trip_agent_customers: {
+        Row: {
+          id: number
+          trip_id: number
+          agent_id: number
+          profit_sharing_rate?: number
+          status?: string
+          created_at?: string
+        }
+        Insert: {
+          id?: number
+          trip_id: number
+          agent_id: number
+          profit_sharing_rate?: number
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          trip_id?: number
+          agent_id?: number
+          profit_sharing_rate?: number
+          status?: string
+          created_at?: string
+        }
+      }
       trip_expenses: {
         Row: {
           id: number
