@@ -202,26 +202,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     }
   }, [showError]);
 
-  const loadAgentProfits = useCallback(async (tripId: string) => {
-    try {
-      console.log('🔍 Loading agent profits for trip:', tripId);
-      const response = await apiClient.get(`/trips/${tripId}/agents/profits`);
-      console.log('📊 Agent profits API response:', response);
-      if (response.success) {
-        console.log('✅ Agent profits data:', response.data);
-        console.log('✅ Setting agentProfits state to:', response.data);
-        setAgentProfits(response.data || []);
-        console.log('✅ AgentProfits state updated');
-      } else {
-        console.log('❌ Agent profits API failed:', response);
-        setAgentProfits([]);
-      }
-    } catch (error) {
-      console.error('Error loading agent profits:', error);
-      showError('Failed to load agent profits');
-      setAgentProfits([]);
-    }
-  }, [showError]);
 
   // Load agent summary data from trip_agent_summary table
   const loadAgentSummary = useCallback(async (tripId: string) => {
@@ -285,8 +265,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       });
       
       if (response.success) {
-        // Reload agent profits and agent summary to reflect the change
-        await loadAgentProfits(selectedTrip.id);
+        // Reload agent summary to reflect the change
         await loadAgentSummary(selectedTrip.id);
         console.log('Commission rate updated successfully');
       } else {
@@ -573,9 +552,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       });
       loadTripExpenses(selectedTrip.id);
       loadTripSharing(selectedTrip.id);
-      loadAgentProfits(selectedTrip.id);
     }
-  }, [selectedTrip, loadTripExpenses, loadTripSharing, loadAgentProfits]);
+  }, [selectedTrip, loadTripExpenses, loadTripSharing]);
 
   // Filter trips based on user role
   const getFilteredTrips = () => {
@@ -740,9 +718,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       // Update state variables for tabs to display backend data
       setTripExpenses(enrichedTrip.expenses || []);
       setTripSharing(enrichedTrip.sharing || null);
-      
-      // Load agent profits for the selected trip
-      await loadAgentProfits(trip.id);
       
       // Load agent summary data from trip_agent_summary table
       await loadAgentSummary(trip.id);
@@ -2221,7 +2196,6 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                       onClick={() => {
                         if (selectedTrip) {
                           console.log('🔄 Manual refresh clicked for trip:', selectedTrip.id);
-                          loadAgentProfits(selectedTrip.id);
                           loadAgentSummary(selectedTrip.id);
                         }
                       }}
