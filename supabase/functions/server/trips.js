@@ -598,12 +598,12 @@ async function updateTripSharing(tripId, tripStats) {
               const winLossAmount = Math.abs(customerNet);
               let agentCommission = 0;
               
-              if (customerNet < 0) {
-                // Customer lost, agent gets commission
-                agentCommission = (winLossAmount * parseFloat(agent.commission_rate) / 100);
-              } else if (customerNet > 0) {
-                // Customer won, agent bears loss
-                agentCommission = -(winLossAmount * parseFloat(agent.commission_rate) / 100);
+              if (customerNet > 0) {
+                // Customer won, agent gets profit share (positive)
+                agentCommission = (customerNet * parseFloat(agent.commission_rate) / 100);
+              } else if (customerNet < 0) {
+                // Customer lost, agent shares the loss (negative)
+                agentCommission = (customerNet * parseFloat(agent.commission_rate) / 100);
               }
               
               if (!agentBreakdownMap[customer.agent_id]) {
@@ -637,14 +637,14 @@ async function updateTripSharing(tripId, tripStats) {
           
           console.log(`💰 Customer ${ac.customer_id}: net=${customerNet}, winLoss=${winLossAmount}, rate=${ac.profit_sharing_rate}%`);
           
-          if (customerNet < 0) {
-            // Customer lost, agent gets commission
-            agentCommission = (winLossAmount * parseFloat(ac.profit_sharing_rate) / 100);
-            console.log(`📈 Customer lost, agent gets commission: ${agentCommission}`);
-          } else if (customerNet > 0) {
-            // Customer won, agent bears loss
-            agentCommission = -(winLossAmount * parseFloat(ac.profit_sharing_rate) / 100);
-            console.log(`📉 Customer won, agent bears loss: ${agentCommission}`);
+          if (customerNet > 0) {
+            // Customer won, agent gets profit share (positive)
+            agentCommission = (customerNet * parseFloat(ac.profit_sharing_rate) / 100);
+            console.log(`📈 Customer won, agent gets profit share: ${agentCommission}`);
+          } else if (customerNet < 0) {
+            // Customer lost, agent shares the loss (negative)
+            agentCommission = (customerNet * parseFloat(ac.profit_sharing_rate) / 100);
+            console.log(`📉 Customer lost, agent shares loss: ${agentCommission}`);
           } else {
             console.log(`⚖️ Customer broke even, no commission`);
           }
@@ -667,38 +667,46 @@ async function updateTripSharing(tripId, tripStats) {
     const agentBreakdown = Object.values(agentBreakdownMap);
     const totalAgentCommission = agentBreakdown.reduce((sum, agent) => sum + agent.share_amount, 0);
     
-    // Calculate from company perspective using total win/loss (positive = company wins, negative = company loses)
-    const houseWinLoss = tripStats.total_win_loss || 0; // Direct win/loss from company perspective
+    // Get total_agent_share from trip_agent_summary table (sum of all agents' total_commission)
+    const { data: agentSummaries, error: summaryError } = await supabase
+      .from('trip_agent_summary')
+      .select('total_commission')
+      .eq('trip_id', tripId);
     
-    // Agent share = actual profit sharing they get from customers (use absolute value for company calculation)
-    // Company share = house win/loss - |agent profit sharing| - rolling commission - expenses
-    const actualAgentEarnings = Math.abs(totalAgentCommission); // Agent's actual earnings (always positive)
-    const companyShare = houseWinLoss - actualAgentEarnings - totalRollingCommission - totalExpenses;
+    if (summaryError) {
+      console.error('Error fetching agent summaries for trip sharing:', summaryError);
+    }
     
-    // Calculate total amount for percentage calculation
-    const totalAmount = Math.abs(totalAgentCommission) + Math.abs(companyShare);
+    // Calculate total_agent_share from trip_agent_summary table
+    const totalAgentShare = agentSummaries?.reduce((sum, summary) => 
+      sum + (parseFloat(summary.total_commission) || 0), 0
+    ) || 0;
+    
+    console.log('📊 Agent share calculation:');
+    console.log('- Agent summaries from trip_agent_summary:', agentSummaries);
+    console.log('- Total agent share (from trip_agent_summary):', totalAgentShare);
+    console.log('- Total agent commission (from current calculation):', totalAgentCommission);
+    
+    // Calculate company_share = net_result - total_agent_share
+    const companyShare = netResult - totalAgentShare;
+    
+    // Calculate total amount for percentage calculation using totalAgentShare
+    const totalAmount = Math.abs(totalAgentShare) + Math.abs(companyShare);
     
     // Calculate percentages using |amount|/|total|, direction indicated by total amount sign
     let agentSharePercentage = 0;
     let companySharePercentage = 0;
     
     if (totalAmount > 0) {
-      agentSharePercentage = Math.round((Math.abs(totalAgentCommission) / totalAmount) * 10000) / 100;
+      agentSharePercentage = Math.round((Math.abs(totalAgentShare) / totalAmount) * 10000) / 100;
       companySharePercentage = Math.round((Math.abs(companyShare) / totalAmount) * 10000) / 100;
     }
     
-    console.log('💰 Company Perspective Calculation:');
-    console.log('- Total win/loss (positive=company wins, negative=company loses):', houseWinLoss);
-    console.log('- Agent profit sharing (from customers):', totalAgentCommission);
-    console.log('- Agent actual earnings (absolute value):', actualAgentEarnings);
-    console.log('- Rolling commission:', totalRollingCommission);
-    console.log('- Total expenses:', totalExpenses);
-    console.log('- Net result = house_winloss - rolling_commission - expenses');
-    console.log(`- Net result = ${houseWinLoss} - ${totalRollingCommission} - ${totalExpenses} = ${netResult}`);
-    console.log('- Agent share = agent profit sharing from customers');
-    console.log(`- Agent share = ${totalAgentCommission}`);
-    console.log('- Company share = house_winloss - |agent_earnings| - rolling_commission - expenses');
-    console.log(`- Company share = ${houseWinLoss} - ${actualAgentEarnings} - ${totalRollingCommission} - ${totalExpenses} = ${companyShare}`);
+    console.log('💰 Trip Sharing Calculation (Updated Logic):');
+    console.log('- Net result:', netResult);
+    console.log('- Total agent share (from trip_agent_summary):', totalAgentShare);
+    console.log('- Company share = net_result - total_agent_share');
+    console.log(`- Company share = ${netResult} - ${totalAgentShare} = ${companyShare}`);
     console.log('- Total amount for percentage:', totalAmount);
     console.log('- Agent percentage:', agentSharePercentage + '%');
     console.log('- Company percentage:', companySharePercentage + '%');
@@ -714,7 +722,7 @@ async function updateTripSharing(tripId, tripStats) {
       total_buy_out: hasCustomers ? (tripStats.total_cash_out || 0) : 0,
       net_cash_flow: hasCustomers ? netCashFlow : 0,
       net_result: netResult,
-      total_agent_share: totalAgentCommission,
+      total_agent_share: totalAgentShare,
       company_share: companyShare,
       agent_share_percentage: agentSharePercentage,
       company_share_percentage: companySharePercentage,
@@ -881,7 +889,7 @@ async function updateTripAgentSummary(tripId, agentBreakdown, tripStats) {
       // Agent's commission from this trip (from agentBreakdown)
       const totalCommission = agentData.share_amount || 0;
       
-      // Agent's profit share = their commission
+      // Agent's profit share = their actual profit sharing amount (positive = profit, negative = loss)
       const agentProfitShare = totalCommission;
       
       console.log(`💰 Agent ${agentId} summary:`, {

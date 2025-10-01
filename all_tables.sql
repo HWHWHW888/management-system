@@ -29,68 +29,6 @@ create index IF not exists idx_agents_total_commission on public.agents using bt
 
 create index IF not exists idx_agents_total_trips on public.agents using btree (total_trips) TABLESPACE pg_default;
 
-
-create table public.buy_in_out_records (
-  id uuid not null default gen_random_uuid (),
-  customer_id uuid null,
-  customer_name text null,
-  staff_id uuid null,
-  staff_name text null,
-  transaction_type text null,
-  amount numeric null,
-  timestamp timestamp without time zone null,
-  venue text null,
-  table_number text null,
-  notes text null,
-  proof_photo uuid null,
-  shift_id uuid null,
-  trip_id uuid null,
-  constraint buy_in_out_records_pkey primary key (id),
-  constraint buy_in_out_records_proof_photo_fkey foreign KEY (proof_photo) references file_attachments (id),
-  constraint buy_in_out_records_staff_id_fkey foreign KEY (staff_id) references staff (id),
-  constraint buy_in_out_records_transaction_type_check check (
-    (
-      transaction_type = any (array['buy-in'::text, 'buy-out'::text])
-    )
-  )
-) TABLESPACE pg_default;
-
-create index IF not exists idx_buy_in_out_records_customer_id on public.buy_in_out_records using btree (customer_id) TABLESPACE pg_default;
-
-create index IF not exists idx_buy_in_out_records_staff_id on public.buy_in_out_records using btree (staff_id) TABLESPACE pg_default;
-
-create index IF not exists idx_buy_in_out_records_shift_id on public.buy_in_out_records using btree (shift_id) TABLESPACE pg_default;
-
-create index IF not exists idx_buy_in_out_records_trip_id on public.buy_in_out_records using btree (trip_id) TABLESPACE pg_default;
-
-create table public.chip_exchanges (
-  id uuid not null default gen_random_uuid (),
-  customer_id uuid null,
-  customer_name text null,
-  staff_id uuid null,
-  staff_name text null,
-  amount numeric null,
-  exchange_type text null,
-  timestamp timestamp without time zone null,
-  proof_photo uuid null,
-  constraint chip_exchanges_pkey primary key (id),
-  constraint chip_exchanges_proof_photo_fkey foreign KEY (proof_photo) references file_attachments (id),
-  constraint chip_exchanges_staff_id_fkey foreign KEY (staff_id) references staff (id),
-  constraint chip_exchanges_exchange_type_check check (
-    (
-      exchange_type = any (
-        array['cash-to-chips'::text, 'chips-to-cash'::text]
-      )
-    )
-  )
-) TABLESPACE pg_default;
-
-create index IF not exists idx_chip_exchanges_customer_id on public.chip_exchanges using btree (customer_id) TABLESPACE pg_default;
-
-create index IF not exists idx_chip_exchanges_staff_id on public.chip_exchanges using btree (staff_id) TABLESPACE pg_default;
-
-create index IF not exists idx_chip_exchanges_proof_photo on public.chip_exchanges using btree (proof_photo) TABLESPACE pg_default;
-
 create table public.customer_details (
   id uuid not null default gen_random_uuid (),
   customer_id uuid not null,
@@ -125,6 +63,8 @@ create table public.customer_details (
   constraint customer_details_customer_id_key unique (customer_id)
 ) TABLESPACE pg_default;
 
+create index IF not exists idx_customer_details_passport_photo on public.customer_details using gin (passport_photo) TABLESPACE pg_default;
+
 create index IF not exists idx_customer_details_customer_id on public.customer_details using btree (customer_id) TABLESPACE pg_default;
 
 create index IF not exists idx_customer_details_passport on public.customer_details using btree (passport_number) TABLESPACE pg_default
@@ -140,6 +80,60 @@ create index IF not exists idx_customer_details_attachments on public.customer_d
 create trigger trigger_update_customer_details_updated_at BEFORE
 update on customer_details for EACH row
 execute FUNCTION update_customer_details_updated_at ();
+
+create table public.customer_photos (
+  id uuid not null default gen_random_uuid (),
+  customer_id uuid not null,
+  trip_id uuid not null,
+  photo_type text not null,
+  photo jsonb not null,
+  uploaded_by uuid not null,
+  upload_date timestamp with time zone null default now(),
+  transaction_date date null,
+  status text not null default 'pending'::text,
+  constraint customer_photos_pkey primary key (id),
+  constraint customer_photos_customer_id_fkey foreign KEY (customer_id) references customers (id),
+  constraint customer_photos_trip_id_fkey foreign KEY (trip_id) references trips (id),
+  constraint customer_photos_uploaded_by_fkey foreign KEY (uploaded_by) references staff (id),
+  constraint customer_photos_photo_type_check check (
+    (
+      photo_type = any (array['transaction'::text, 'rolling'::text])
+    )
+  ),
+  constraint customer_photos_status_check check (
+    (
+      status = any (
+        array[
+          'pending'::text,
+          'approved'::text,
+          'rejected'::text
+        ]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_customer_id on public.customer_photos using btree (customer_id) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_trip_id on public.customer_photos using btree (trip_id) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_photo_type on public.customer_photos using btree (photo_type) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_uploaded_by on public.customer_photos using btree (uploaded_by) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_status on public.customer_photos using btree (status) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_trip_customer on public.customer_photos using btree (trip_id, customer_id) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_trip_customer_type on public.customer_photos using btree (trip_id, customer_id, photo_type) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_photo_filename on public.customer_photos using gin (((photo -> 'filename'::text))) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_photo_type_json on public.customer_photos using gin (((photo -> 'type'::text))) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_photo_uploaded_at on public.customer_photos using gin (((photo -> 'uploaded_at'::text))) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_transaction_date on public.customer_photos using btree (transaction_date) TABLESPACE pg_default;
 
 create table public.customers (
   id uuid not null default gen_random_uuid (),
@@ -199,54 +193,6 @@ create index IF not exists idx_customers_source_agent_id on public.customers usi
 create index IF not exists idx_customers_email on public.customers using btree (email) TABLESPACE pg_default;
 
 create index IF not exists idx_customers_status on public.customers using btree (status) TABLESPACE pg_default;
-
-create table public.file_attachments (
-  id uuid not null default gen_random_uuid (),
-  name text null,
-  size bigint null,
-  type text null,
-  data text null,
-  uploaded_at timestamp with time zone null default now(),
-  uploaded_by uuid null,
-  constraint file_attachments_pkey primary key (id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_file_attachments_uploaded_by on public.file_attachments using btree (uploaded_by) TABLESPACE pg_default;
-
-create table public.game_types (
-  id uuid not null default gen_random_uuid (),
-  name text null,
-  category text null,
-  is_active boolean null default true,
-  constraint game_types_pkey primary key (id),
-  constraint game_types_category_check check (
-    (
-      category = any (
-        array[
-          'table-games'::text,
-          'slots'::text,
-          'poker'::text,
-          'sports-betting'::text,
-          'other'::text
-        ]
-      )
-    )
-  )
-) TABLESPACE pg_default;
-
-create table public.ocr_data (
-  id uuid not null default gen_random_uuid (),
-  original_image_id uuid null,
-  extracted_text text null,
-  confidence numeric null,
-  extracted_fields jsonb null,
-  processed_at timestamp without time zone null,
-  ocr_engine text null,
-  constraint ocr_data_pkey primary key (id),
-  constraint ocr_data_original_image_id_fkey foreign KEY (original_image_id) references file_attachments (id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_ocr_data_original_image_id on public.ocr_data using btree (original_image_id) TABLESPACE pg_default;
 
 create table public.staff (
   id uuid not null default gen_random_uuid (),
@@ -320,10 +266,10 @@ create table public.transactions (
   amount numeric(15, 2) not null,
   transaction_type character varying(50) not null,
   status character varying(20) null default 'completed'::character varying,
-  notes text null,
+  venue text null,
   recorded_by_staff_id uuid null,
   created_at timestamp with time zone null default now(),
-  updated_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null,
   constraint transactions_pkey primary key (id),
   constraint transactions_agent_id_fkey foreign KEY (agent_id) references agents (id),
   constraint fk_transactions_customer foreign KEY (customer_id) references customers (id),
@@ -384,6 +330,22 @@ create index IF not exists idx_trip_agent_customers_agent_id on public.trip_agen
 create index IF not exists idx_trip_agent_customers_customer_id on public.trip_agent_customers using btree (customer_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_agent_customers_trip_agent on public.trip_agent_customers using btree (trip_id, agent_id) TABLESPACE pg_default;
+
+create table public.trip_agent_summary (
+  id uuid not null default gen_random_uuid (),
+  trip_id uuid not null,
+  agent_id uuid not null,
+  total_win_loss numeric(15, 2) not null default 0,
+  total_commission numeric(15, 2) not null default 0,
+  total_profit numeric(15, 2) not null default 0,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  agent_profit_share numeric(15, 2) not null default 0,
+  constraint trip_agent_summary_pkey primary key (id),
+  constraint trip_agent_summary_unique unique (trip_id, agent_id),
+  constraint fk_trip_agent_summary_agent foreign KEY (agent_id) references agents (id) on delete CASCADE,
+  constraint fk_trip_agent_summary_trip foreign KEY (trip_id) references trips (id) on delete CASCADE
+) TABLESPACE pg_default;
 
 create table public.trip_agents (
   id uuid not null default gen_random_uuid (),
@@ -458,6 +420,7 @@ create table public.trip_expenses (
 
 create index IF not exists idx_trip_expenses_trip_id on public.trip_expenses using btree (trip_id) TABLESPACE pg_default;
 
+
 create table public.trip_rolling (
   id uuid not null default gen_random_uuid (),
   trip_id uuid not null,
@@ -491,6 +454,7 @@ create index IF not exists idx_trip_rolling_trip_customer on public.trip_rolling
 create index IF not exists idx_trip_rolling_trip_staff on public.trip_rolling using btree (trip_id, staff_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_rolling_game_type on public.trip_rolling using btree (game_type) TABLESPACE pg_default;
+
 create table public.trip_sharing (
   trip_id uuid not null,
   total_win_loss numeric null,
@@ -511,6 +475,7 @@ create table public.trip_sharing (
 
 create index IF not exists idx_trip_sharing_trip_id on public.trip_sharing using btree (trip_id) TABLESPACE pg_default;
 
+
 create table public.trip_staff (
   id uuid not null default gen_random_uuid (),
   trip_id uuid not null,
@@ -528,6 +493,7 @@ create index IF not exists idx_trip_staff_trip_id on public.trip_staff using btr
 create index IF not exists idx_trip_staff_staff_id on public.trip_staff using btree (staff_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_staff_created_at on public.trip_staff using btree (created_at desc) TABLESPACE pg_default;
+
 
 create table public.trips (
   id uuid not null default gen_random_uuid (),
@@ -606,58 +572,3 @@ create table public.users (
   )
 ) TABLESPACE pg_default;
 
-
--- 创建简化版客户照片关联表
-CREATE TABLE public.customer_photos (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id uuid NOT NULL REFERENCES customers(id),
-  trip_id uuid NOT NULL REFERENCES trips(id),
-  photo_type TEXT NOT NULL CHECK (photo_type IN ('transaction', 'rolling')),
-  photo jsonb NOT NULL,         -- 存储照片为JSON格式，包含数据和元信息
-  uploaded_by uuid NOT NULL REFERENCES staff(id),
-  upload_date TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  transaction_date DATE,        -- 交易或滚码的实际日期
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected'))
-);
-
--- 创建索引以提高查询性能
-CREATE INDEX idx_customer_photos_customer_id ON public.customer_photos USING btree (customer_id);
-CREATE INDEX idx_customer_photos_trip_id ON public.customer_photos USING btree (trip_id);
-CREATE INDEX idx_customer_photos_photo_type ON public.customer_photos USING btree (photo_type);
-CREATE INDEX idx_customer_photos_uploaded_by ON public.customer_photos USING btree (uploaded_by);
-CREATE INDEX idx_customer_photos_status ON public.customer_photos USING btree (status);
-CREATE INDEX idx_customer_photos_transaction_date ON public.customer_photos USING btree (transaction_date);
-
--- 创建JSON索引以优化照片查询
-CREATE INDEX idx_customer_photos_photo_filename ON public.customer_photos USING gin ((photo -> 'filename'));
-CREATE INDEX idx_customer_photos_photo_type_json ON public.customer_photos USING gin ((photo -> 'type'));
-CREATE INDEX idx_customer_photos_photo_uploaded_at ON public.customer_photos USING gin ((photo -> 'uploaded_at'));
-
--- 创建复合索引以优化常见查询场景
-CREATE INDEX idx_customer_photos_trip_customer ON public.customer_photos USING btree (trip_id, customer_id);
-CREATE INDEX idx_customer_photos_trip_customer_type ON public.customer_photos USING btree (trip_id, customer_id, photo_type);
-
--- 添加注释
-COMMENT ON TABLE public.customer_photos IS '存储客户交易和滚码照片的关联信息，由staff上传，admin审核';
-COMMENT ON COLUMN public.customer_photos.photo_type IS '照片类型：transaction（交易）或rolling（滚码）';
-COMMENT ON COLUMN public.customer_photos.photo IS '照片JSON数据，包含照片内容和元数据';
-COMMENT ON COLUMN public.customer_photos.transaction_date IS '交易或滚码的实际日期，由staff在上传时提供';
-COMMENT ON COLUMN public.customer_photos.status IS '照片状态：pending（待审核）、approved（已批准）或rejected（已拒绝）';
-
-
-
-create table public.trip_agent_summary (
-  id uuid not null default gen_random_uuid (),
-  trip_id uuid not null,
-  agent_id uuid not null,
-  total_win_loss numeric(15, 2) not null default 0,
-  total_commission numeric(15, 2) not null default 0,
-  total_profit numeric(15, 2) not null default 0,
-  created_at timestamp with time zone not null default now(),
-  updated_at timestamp with time zone not null default now(),
-  agent_profit_share numeric(15, 2) not null default 0,
-  constraint trip_agent_summary_pkey primary key (id),
-  constraint trip_agent_summary_unique unique (trip_id, agent_id),
-  constraint fk_trip_agent_summary_agent foreign KEY (agent_id) references agents (id) on delete CASCADE,
-  constraint fk_trip_agent_summary_trip foreign KEY (trip_id) references trips (id) on delete CASCADE
-) TABLESPACE pg_default;
