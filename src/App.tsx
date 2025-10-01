@@ -505,18 +505,18 @@ function AppContent() {
             </button>
           )}
 
-          {/* Data Management - Admin only */}
+          {/* Settings - Admin only */}
           {isAdmin && (
             <button
-              onClick={() => setActiveTab('data')}
+              onClick={() => setActiveTab('settings')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === 'data'
+                activeTab === 'settings'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               <Settings className="w-4 h-4 mr-2" />
-              {t('data')}
+              {t('settings')}
             </button>
           )}
 
@@ -530,7 +530,7 @@ function AppContent() {
         {activeTab === 'checkinout' && isStaff && <StaffSelfService user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'projects' && (isAdmin || isAgent || isBoss) && <ProjectManagement user={currentUser} />}
         {activeTab === 'reports' && (isAdmin || isBoss) && <Reports user={currentUser} />}
-        {activeTab === 'data' && isAdmin && <DataManagement user={currentUser} />}
+        {activeTab === 'settings' && isAdmin && <DataManagement user={currentUser} />}
       </div>
     </div>
   );

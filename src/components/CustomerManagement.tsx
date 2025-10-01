@@ -17,6 +17,7 @@ import { PhotoDisplay } from './common/PhotoDisplay';
 import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
+import { useLanguage } from '../contexts/LanguageContext';
 import { 
   Plus, Edit, Mail, DollarSign, TrendingUp, TrendingDown, Paperclip, MapPin, Target, 
   ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, 
@@ -39,6 +40,7 @@ interface CustomerTripHistory {
 
 
 function CustomerManagementComponent({ user, showError, clearError }: CustomerManagementProps) {
+  const { t } = useLanguage();
   const isReadOnly = isReadOnlyRole(user.role);
   const canSeeFinancials = canViewFinancialData(user.role);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -801,7 +803,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
             <Eye className="w-5 h-5 text-blue-600 mr-2" />
             <div>
               <p className="text-sm font-medium text-blue-800">
-                Customer Information - View Only
+{t('customer_info')} - {t('view')} Only
               </p>
               <p className="text-xs text-blue-600">
                 You have read-only access to customer information, trip history, and documents.
@@ -813,7 +815,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
 
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Customer Management</h2>
+          <h2 className="text-2xl font-bold">{t('customer_management')}</h2>
           <p className="text-gray-600">
             {isAgent 
               ? 'Manage your customers with real-time rolling data and complete profile editing' 
@@ -828,33 +830,33 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
             <DialogTrigger asChild>
               <Button onClick={openNewCustomerDialog} disabled={saving}>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Customer
+{t('add_customer')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
+                  {editingCustomer ? t('edit_customer') : t('add_customer')}
                 </DialogTitle>
                 <DialogDescription>
-                  {editingCustomer ? 'Update basic customer information' : 'Add a new customer with basic details. You can add extended details after creation.'}
+                  {editingCustomer ? t('update_customer_info') : t('add_customer_desc')}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="name">{t('name')}</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder="Customer full name"
+                    placeholder={t('customer_full_name')}
                     required
                     disabled={saving}
                   />
                 </div>
                 
                 <div>
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t('email')}</Label>
                   <Input
                     id="email"
                     type="email"
@@ -867,7 +869,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                 </div>
                 
                 <div>
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">{t('phone')}</Label>
                   <Input
                     id="phone"
                     value={formData.phone}
@@ -879,14 +881,14 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                 </div>
                 
                 <div>
-                  <Label htmlFor="agent">Agent</Label>
+                  <Label htmlFor="agent">{t('agent')}</Label>
                   <Select 
                     value={formData.agentId} 
                     onValueChange={(value) => setFormData({...formData, agentId: value})}
                     disabled={user.role === 'agent' || saving}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select an agent" />
+                      <SelectValue placeholder={t('select_agent')} />
                     </SelectTrigger>
                     <SelectContent>
                       {availableAgents.map((agent) => (
@@ -900,17 +902,17 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
 
                 <div className="flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={saving}>
-                    Cancel
+{t('cancel')}
                   </Button>
                   <Button type="submit" disabled={saving}>
                     {saving ? (
                       <>
                         <Save className="w-4 h-4 mr-2 animate-spin" />
-                        Saving to Supabase...
+{t('saving')}...
                       </>
                     ) : (
                       <>
-                        {editingCustomer ? 'Update' : 'Add'} Customer
+{editingCustomer ? t('update') : t('add')} {t('customers')}
                       </>
                     )}
                   </Button>
@@ -925,7 +927,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         {filteredCustomers.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
-              <p className="text-gray-500">No customers found. {isStaff ? 'Contact an administrator to add customers.' : 'Add your first customer to get started.'}</p>
+              <p className="text-gray-500">{t('no_customers_found')}. {isStaff ? t('contact_admin') : t('add_first_customer')}</p>
             </CardContent>
           </Card>
         ) : (
@@ -945,12 +947,12 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                           <CardTitle className="flex items-center space-x-2">
                             <span>{customer.name}</span>
                             <Badge variant={customer.isActive ? "default" : "secondary"}>
-                              {customer.isActive ? 'Active' : 'Inactive'}
+                              {customer.isActive ? t('active') : t('inactive')}
                             </Badge>
                             {customer.isAgent && (
                               <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center space-x-1">
                                 <UserCheck className="w-3 h-3" />
-                                <span>Agent</span>
+                                <span>{t('agent')}</span>
                               </Badge>
                             )}
                             {customer.attachments && customer.attachments.length > 0 && (
@@ -962,34 +964,34 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             {tripHistory.length > 0 && (
                               <Badge variant="outline" className="flex items-center space-x-1">
                                 <MapPin className="w-3 h-3" />
-                                <span>{tripHistory.length} trips</span>
+                                <span>{tripHistory.length} {t('trips')}</span>
                               </Badge>
                             )}
                             {rollingHistory.length > 0 && (
                               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                                 <Receipt className="w-3 h-3 mr-1" />
-                                {rollingHistory.length} records
+{rollingHistory.length} {t('records')}
                               </Badge>
                             )}
                             {customer.isAgent && (
                               <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                                 <UserCheck className="w-3 h-3 mr-1" />
-                                Agent
+{t('agent')}
                               </Badge>
                             )}
                             {isStaff && (
                               <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
                                 <Eye className="w-3 h-3 mr-1" />
-                                View Only
+{t('view')} Only
                               </Badge>
                             )}
                             <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                               <Activity className="w-3 h-3 mr-1" />
-                              Live Data
+                              {t('live_data')}
                             </Badge>
                           </CardTitle>
                           <CardDescription>
-                            Customer since {customer.createdAt} • Agent: {customer.agentName}
+{t('customer_since')} {customer.createdAt} • {t('agent')}: {customer.agentName}
                                           </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -1011,14 +1013,14 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                         <span className="text-sm">{customer.email}</span>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <span className="text-sm text-gray-500">Phone:</span>
+                        <span className="text-sm text-gray-500">{t('phone')}:</span>
                         <span className="text-sm">{customer.phone}</span>
                       </div>
                       {/* Customer details status */}
                       <div className="flex items-center space-x-2">
                         <FileText className="w-4 h-4 text-gray-400" />
                         <span className="text-sm text-gray-500">
-                          {(customer as any).details ? 'Details available' : 'No details available'}
+                          {(customer as any).details ? t('details_available') : t('no_details_available')}
                         </span>
                       </div>
                       {/* Hide financial data for staff users, show for boss */}
@@ -1026,7 +1028,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                         <>
                           <div className="flex items-center space-x-2">
                             <DollarSign className="w-4 h-4 text-blue-600" />
-                            <span className="text-sm font-medium">Rolling: ${(customer.totalRolling || 0).toLocaleString()}</span>
+                            <span className="text-sm font-medium">{t('rolling')}: ${(customer.totalRolling || 0).toLocaleString()}</span>
                           </div>
                           <div className="flex items-center space-x-2">
                             {(customer.totalWinLoss || 0) >= 0 ? (
@@ -1037,7 +1039,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             <span className={`text-sm font-medium ${
                               (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}>
-                              W/L: ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
+                              {t('win_loss')}: ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
                             </span>
                           </div>
                         </>
@@ -1048,11 +1050,11 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                       <div className="flex space-x-2">
                         <Button variant="outline" size="sm" onClick={() => handleEdit(customer)} disabled={saving}>
                           <Edit className="w-4 h-4 mr-2" />
-                          Edit Basic Info
+{t('edit_basic_info')}
                         </Button>
                         <Button variant="outline" size="sm" onClick={() => handleEditDetails(customer)} disabled={saving}>
                           <FileText className="w-4 h-4 mr-2" />
-                          Edit Details
+{t('edit_details')}
                         </Button>
                         {isAdmin && !customer.isAgent && (
                           <Button 

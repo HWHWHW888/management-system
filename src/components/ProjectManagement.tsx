@@ -1384,7 +1384,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Trips Loaded</p>
+                <p className="text-sm text-gray-600">{t('trips_loaded')}</p>
                 <p className="text-2xl font-bold text-blue-600">{trips?.length || 0}</p>
               </div>
               <MapPin className="w-8 h-8 text-blue-400" />
@@ -1395,7 +1395,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Customers Available</p>
+                <p className="text-sm text-gray-600">{t('customers_available')}</p>
                 <p className="text-2xl font-bold text-green-600">{customers?.length || 0}</p>
               </div>
               <Users className="w-8 h-8 text-green-400" />
@@ -1406,7 +1406,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Agents Available</p>
+                <p className="text-sm text-gray-600">{t('agents_available')}</p>
                 <p className="text-2xl font-bold text-purple-600">{agents?.length || 0}</p>
               </div>
               <UserCheck className="w-8 h-8 text-purple-400" />
@@ -1420,7 +1420,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         <Alert className="border-red-200 bg-red-50">
           <AlertTriangle className="w-4 h-4 text-red-600" />
           <AlertDescription className="text-red-800">
-            <strong>Error:</strong> {errorMessage}
+            <strong>{t('error')}:</strong> {errorMessage}
             <Button
               onClick={() => loadAllRealTimeData(true)}
               size="sm"
@@ -1428,7 +1428,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               className="ml-3 text-red-800 border-red-300 hover:bg-red-100"
             >
               <RefreshCw className="w-3 h-3 mr-1" />
-              Retry
+              {t('retry')}
             </Button>
           </AlertDescription>
         </Alert>
@@ -1447,7 +1447,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         <TabsContent value="trips" className="space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-2xl font-bold">Project Management</h2>
+              <h2 className="text-2xl font-bold">{t('project_management')}</h2>
               <p className="text-gray-600">
                 Manage trips and project data with full CRUD functionality
                 {currentUser.role === 'agent' && ' (Your trips only)'}
@@ -1458,19 +1458,19 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="w-4 h-4 mr-2" />
-                    Create Trip
+{t('create_trip')}
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Create New Trip</DialogTitle>
+                    <DialogTitle>{t('create_new_trip')}</DialogTitle>
                     <DialogDescription>
-                      Create a new trip that will be saved to Supabase database.
+                      {t('create_trip_desc')}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div>
-                      <Label htmlFor="tripName">Trip Name *</Label>
+                      <Label htmlFor="tripName">{t('trip_name')} *</Label>
                       <Input
                         id="tripName"
                         value={newTrip.name}
@@ -1479,7 +1479,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="tripDescription">Description</Label>
+                      <Label htmlFor="tripDescription">{t('description')}</Label>
                       <Textarea
                         id="tripDescription"
                         value={newTrip.description}
@@ -1489,7 +1489,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="startDate">Start Date *</Label>
+                        <Label htmlFor="startDate">{t('start_date')} *</Label>
                         <Input
                           id="startDate"
                           type="date"
@@ -1498,7 +1498,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="endDate">End Date</Label>
+                        <Label htmlFor="endDate">{t('end_date')}</Label>
                         <Input
                           id="endDate"
                           type="date"
@@ -1615,10 +1615,10 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                         onClick={() => setShowCreateTrip(false)}
                         disabled={saving}
                       >
-                        Cancel
+                        {t('cancel')}
                       </Button>
                       <Button onClick={handleCreateTrip} disabled={saving}>
-                        {saving ? 'Creating...' : 'Create Trip'}
+                        {saving ? t('creating') : t('create_trip')}
                       </Button>
                     </div>
                   </div>
@@ -1632,7 +1632,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
             <Card>
               <CardContent className="text-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-500">Loading trips...</p>
+                <p className="text-gray-500">{t('loading_trips')}</p>
               </CardContent>
             </Card>
           ) : (filteredTrips?.length || 0) === 0 ? (

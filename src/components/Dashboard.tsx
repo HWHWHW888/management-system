@@ -5,102 +5,25 @@ import {
   Users, UserCheck, TrendingDown, DollarSign, Receipt, Trophy, Target, 
   MapPin, Activity, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
+import { User, Trip, Customer, Agent } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
+import { useLanguage } from '../contexts/LanguageContext';
 
-// Type definitions
-interface User {
-  id: string;
-  role: string;
-  agentId?: string;
-}
-
-interface Agent {
-  id: string;
-  status: string;
-}
-
-interface Customer {
-  id: string;
-  customerId?: string;
-  customer_id?: string;
-  name?: string;
-  agentName?: string;
-  isActive: boolean;
-  agentId?: string;
-  totalRolling?: number;
-  totalWinLoss?: number;
-  totalBuyIn?: number;
-  totalBuyOut?: number;
-  attachments?: any[];
-  isAgent?: boolean;
-  rollingPercentage?: number;
-  creditLimit?: number;
-  availableCredit?: number;
-}
-
-interface Trip {
-  id: string;
-  status: string;
-  agentId?: string;
-  agents?: any[];
-  customers?: any[];
-  expenses?: any[];
-  totalRolling?: number;
-  totalWinLoss?: number;
-  totalBuyIn?: number;
-  totalBuyOut?: number;
-  calculatedTotalRolling?: number;
-  attachments?: any[];
-  // Trip details
-  trip_name?: string;
-  name?: string;
-  destination?: string;
-  start_date?: string;
-  end_date?: string;
-  sharing?: {
-    // Support both camelCase (fallback) and snake_case (API response) formats
-    totalWinLoss?: number;
-    total_win_loss?: number;
-    totalExpenses?: number;
-    total_expenses?: number;
-    netResult?: number;
-    net_result?: number;
-    companyShare?: number;
-    company_share?: number;
-    agentShare?: number;
-    total_agent_share?: number;
-    totalRolling?: number;
-    total_rolling?: number;
-    totalRollingCommission?: number;
-    total_rolling_commission?: number;
-    totalBuyIn?: number;
-    total_buy_in?: number;
-    totalBuyOut?: number;
-    total_buy_out?: number;
-    netCashFlow?: number;
-    net_cash_flow?: number;
-    totalAgentShare?: number;
-    agentSharePercentage?: number;
-    agent_share_percentage?: number;
-    companySharePercentage?: number;
-    company_share_percentage?: number;
-    agentBreakdown?: any[];
-    agent_breakdown?: any[];
-  };
-}
-
+// Additional type definitions for Dashboard
 interface RollingRecord {
   id: string;
-  customerId?: string;
-  customer_id?: string;
-  tripId?: string;
-  trip_id?: string;
-  recordedAt: string;
-  rollingAmount?: number;
-  rolling_amount?: number;
-  winLoss?: number;
-  win_loss?: number;
+  customer_id: string;
+  trip_id: string;
+  amount: number;
+  game_type: string;
+  venue: string;
+  staff_id: string;
+  datetime: string;
+  created_at: string;
+  updated_at: string;
+  customer?: Customer;
+  trip?: Trip;
 }
 
 interface BuyInOutRecord {
@@ -121,6 +44,8 @@ interface DashboardProps {
 
 
 export function Dashboard({ user }: DashboardProps) {
+  const { t } = useLanguage();
+  
   // Data states with real-time updates
   const [agents, setAgents] = useState<Agent[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -279,7 +204,7 @@ export function Dashboard({ user }: DashboardProps) {
     // Total Rolling from trip_sharing table (should be positive by nature)
     const tripSharingTotalRolling = trips.reduce((sum, trip) => {
       const value = safeNumber(trip.sharing?.total_rolling || trip.sharing?.totalRolling);
-      console.log(`🔍 Trip ${trip.trip_name || trip.name}:`, {
+      console.log(`🔍 Trip ${trip.name}:`, {
         hasSharing: !!trip.sharing,
         total_rolling: trip.sharing?.total_rolling,
         totalRolling: trip.sharing?.totalRolling,
@@ -302,13 +227,13 @@ export function Dashboard({ user }: DashboardProps) {
     // Trip metrics
     const totalTrips = filteredTrips.length;
     const completedTrips = filteredTrips.filter(t => t.status === 'completed').length;
-    const ongoingTrips = filteredTrips.filter(t => t.status === 'ongoing').length;
-    const plannedTrips = filteredTrips.filter(t => t.status === 'planned').length;
+    const ongoingTrips = filteredTrips.filter(t => t.status === 'in-progress').length;
+    const plannedTrips = filteredTrips.filter(t => t.status === 'active').length;
 
     // Calculate metrics from trip_sharing table data (all trips, no filtering)
     console.log('🔍 Debug trips data for calculations:', trips.length);
     trips.forEach((trip, index) => {
-      console.log(`Trip ${index + 1} (${trip.trip_name}):`, {
+      console.log(`Trip ${index + 1} (${trip.name}):`, {
         hasSharing: !!trip.sharing,
         sharingKeys: trip.sharing ? Object.keys(trip.sharing) : 'no sharing',
         sharingData: trip.sharing
@@ -317,19 +242,19 @@ export function Dashboard({ user }: DashboardProps) {
     
     const tripSharingGrossProfit = trips.reduce((sum, trip) => {
       const value = safeNumber(trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss);
-      console.log(`Trip ${trip.trip_name}: total_win_loss = ${trip.sharing?.total_win_loss}, contributing ${value} to gross profit`);
+      console.log(`Trip ${trip.name}: total_win_loss = ${trip.sharing?.total_win_loss}, contributing ${value} to gross profit`);
       return sum + value;
     }, 0);
     
     const tripSharingExpenses = trips.reduce((sum, trip) => {
       const value = safeNumber(trip.sharing?.total_expenses || trip.sharing?.totalExpenses);
-      console.log(`Trip ${trip.trip_name}: total_expenses = ${trip.sharing?.total_expenses}, contributing ${value} to expenses`);
+      console.log(`Trip ${trip.name}: total_expenses = ${trip.sharing?.total_expenses}, contributing ${value} to expenses`);
       return sum + value;
     }, 0);
     
     const tripSharingNetProfit = trips.reduce((sum, trip) => {
       const value = safeNumber(trip.sharing?.company_share || trip.sharing?.companyShare);
-      console.log(`Trip ${trip.trip_name}: company_share = ${trip.sharing?.company_share}, contributing ${value} to net profit`);
+      console.log(`Trip ${trip.name}: company_share = ${trip.sharing?.company_share}, contributing ${value} to net profit`);
       return sum + value;
     }, 0);
     
@@ -351,7 +276,7 @@ export function Dashboard({ user }: DashboardProps) {
 
     // Recent activity metrics
     const recentRollingRecords = rollingRecords.filter(record => 
-      (Date.now() - new Date(record.recordedAt).getTime()) < 24 * 60 * 60 * 1000
+      (Date.now() - new Date(record.datetime || record.created_at).getTime()) < 24 * 60 * 60 * 1000
     ).length;
 
     const recentBuyInOutRecords = buyInOutRecords.filter(record => 
@@ -409,7 +334,7 @@ export function Dashboard({ user }: DashboardProps) {
   ).map(trip => {
     // Use trip_sharing data directly instead of enriching with calculations
     const tripCustomers = filteredCustomers.filter(c => 
-      trip.customers?.some(tc => tc.customerId === c.id || tc.customer_id === c.id)
+      trip.customers?.some(tc => tc.customerId === c.id)
     );
     
     return {
@@ -601,8 +526,8 @@ export function Dashboard({ user }: DashboardProps) {
                   const winLoss = trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss || 0;
                   
                   // Calculate progress based on dates
-                  const startDate = trip.start_date ? new Date(trip.start_date) : null;
-                  const endDate = trip.end_date ? new Date(trip.end_date) : null;
+                  const startDate = trip.date ? new Date(trip.date) : null;
+                  const endDate = startDate ? new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000) : null; // Assume 7 days duration
                   const now = new Date();
                   let progress = 0;
                   
@@ -617,27 +542,27 @@ export function Dashboard({ user }: DashboardProps) {
                       <div className="flex items-center space-x-4">
                         <div className="flex-shrink-0">
                           <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
-                            {trip.status === 'active' ? 'Active' : 'Ongoing'}
+                            {trip.status === 'active' ? t('active') : trip.status === 'in-progress' ? t('ongoing') : t('completed')}
                           </Badge>
                         </div>
                         <div>
-                          <p className="font-medium">{trip.trip_name || trip.name || 'Unnamed Trip'}</p>
+                          <p className="font-medium">{trip.name || 'Unnamed Trip'}</p>
                           <p className="text-sm text-gray-500 flex items-center">
                             <MapPin className="h-3 w-3 mr-1" />
-                            {trip.destination || 'Unknown Destination'} • {trip.customers?.length || 0} customers
+                            {trip.description || t('unknown_destination')} • {trip.customers?.length || 0} {t('customers')}
                           </p>
                           <p className="text-xs text-blue-600">
-                            Progress: {Math.round(progress)}% • {trip.start_date ? new Date(trip.start_date).toLocaleDateString() : 'TBD'} - {trip.end_date ? new Date(trip.end_date).toLocaleDateString() : 'TBD'}
+                            {t('progress')}: {Math.round(progress)}% • {trip.date ? new Date(trip.date).toLocaleDateString() : 'TBD'}
                           </p>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-6 text-right text-xs">
                         <div>
-                          <div className="text-gray-500">Rolling</div>
+                          <div className="text-gray-500">{t('rolling')}</div>
                           <div className="font-medium text-blue-600">HK${safeFormatNumber(Math.abs(totalRolling))}</div>
                         </div>
                         <div>
-                          <div className="text-gray-500">Win/Loss</div>
+                          <div className="text-gray-500">{t('win_loss')}</div>
                           <div className={`font-medium ${
                             winLoss < 0 ? 'text-red-600' : winLoss >= 0 ? 'text-green-600' : 'text-gray-600'
                           }`}>
@@ -659,20 +584,20 @@ export function Dashboard({ user }: DashboardProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Real-time Customer Performance</CardTitle>
+              <CardTitle>{t('customer_performance')}</CardTitle>
               <CardDescription>
-                All customers based on live rolling data {user.role === 'agent' ? 'you manage' : ''} ({filteredCustomers.length} customers)
+                {t('all_customers_based_on')} {user.role === 'agent' ? 'you manage' : ''} ({filteredCustomers.length} {t('customers')})
               </CardDescription>
             </div>
             <div className="flex items-center space-x-2">
               <div className="flex items-center space-x-1 text-sm">
-                <span className="text-gray-500">Sort by:</span>
+                <span className="text-gray-500">{t('sort_by')}</span>
                 <button
                   onClick={() => setSortBy(sortBy === 'rolling' ? 'winloss' : 'rolling')}
                   className="flex items-center space-x-1 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
                 >
                   <span className="font-medium">
-                    {sortBy === 'rolling' ? 'Rolling' : 'Win/Loss'}
+                    {sortBy === 'rolling' ? t('rolling') : t('win_loss')}
                   </span>
                   <ArrowUpDown className="h-3 w-3" />
                 </button>
@@ -712,20 +637,20 @@ export function Dashboard({ user }: DashboardProps) {
                       <div>
                         <p className="font-medium">{customer.name}</p>
                         <p className="text-sm text-gray-500">
-                          Agent: {customer.agentName} • {customer.isActive ? 'Active' : 'Inactive'}
+                          {t('agent')}: {customer.agentName} • {customer.isActive ? t('active') : t('inactive')}
                         </p>
                         <p className="text-xs text-purple-600">
-                          Commission Rate: {customer.rollingPercentage}%
+                          {t('commission_rate')}: {customer.rollingPercentage}%
                         </p>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-6 text-right text-xs">
                       <div>
-                        <div className="text-gray-500">Rolling</div>
+                        <div className="text-gray-500">{t('rolling')}</div>
                         <div className="font-medium text-blue-600">HK${safeFormatNumber(Math.abs(customer.totalRolling || 0))}</div>
                       </div>
                       <div>
-                        <div className="text-gray-500">Win/Loss</div>
+                        <div className="text-gray-500">{t('win_loss')}</div>
                         <div className={`font-medium ${
                           winLoss < 0 ? 'text-red-600' : winLoss > 0 ? 'text-green-600' : 'text-gray-600'
                         }`}>
@@ -734,7 +659,7 @@ export function Dashboard({ user }: DashboardProps) {
                         <div className={`text-xs ${
                           winLoss < 0 ? 'text-red-500' : winLoss > 0 ? 'text-green-500' : 'text-gray-500'
                         }`}>
-                          {winLoss < 0 ? '公司输钱' : winLoss > 0 ? '公司赢钱' : '持平'}
+                          {winLoss < 0 ? t('company_loss') : winLoss > 0 ? t('company_win') : t('break_even')}
                         </div>
                       </div>
                     </div>

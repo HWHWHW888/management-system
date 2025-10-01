@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Area, Line } from 'recharts';
-import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpDown, Database } from 'lucide-react';
+import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpDown, Database, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { tokenManager } from '../utils/auth/tokenManager';
+import { useLanguage } from '../contexts/LanguageContext';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -13,22 +14,20 @@ import { User, Agent, Customer, Trip, RollingRecord } from '../types';
 // Real-time refresh interval (30 seconds)
 const REAL_TIME_REFRESH_INTERVAL = 30000;
 
-interface ReportsProps {
-  user: User;
-}
 
-
-export function Reports({ user }: ReportsProps) {
-  // Data states with real-time updates
-  const [agents, setAgents] = useState<Agent[]>([]);
+export const Reports: React.FC<{ user: User }> = ({ user }) => {
+  const { t } = useLanguage();
+  
+  // State management
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [rollingRecords, setRollingRecords] = useState<RollingRecord[]>([]);
   const [transactionRecords, setTransactionRecords] = useState<any[]>([]);
   
-  // Filter states
-  const [dateRange, setDateRange] = useState('30'); // days
+  // UI state
   const [selectedAgent, setSelectedAgent] = useState('all');
+  const [dateRange, setDateRange] = useState('30');
   const [reportType, setReportType] = useState('overview'); // overview, financial, customer, agent, operational
   
   // Loading and sync states
@@ -38,6 +37,9 @@ export function Reports({ user }: ReportsProps) {
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'error'>('connected');
   const [errorMessage, setErrorMessage] = useState('');
   const [isRealTimeEnabled, setIsRealTimeEnabled] = useState(true);
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
+  const [hierarchySortBy, setHierarchySortBy] = useState<'totalRolling' | 'totalWinLoss' | 'customerCount' | 'averageRolling' | 'name'>('totalRolling');
+  const [hierarchySortOrder, setHierarchySortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Helper functions
   const safeFormatNumber = (value: number | undefined | null): string => {
@@ -65,6 +67,12 @@ export function Reports({ user }: ReportsProps) {
       const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
       const token = await tokenManager.getToken();
       
+      console.log('🔍 API Connection Debug:', {
+        API_URL,
+        hasToken: !!token,
+        tokenLength: token?.length || 0
+      });
+      
       if (!token) {
         throw new Error('No authentication token found. Please log in again.');
       }
@@ -89,7 +97,23 @@ export function Reports({ user }: ReportsProps) {
       ]);
       
       if (!agentsResponse.ok || !customersResponse.ok || !tripsResponse.ok || !rollingRecordsResponse.ok || !transactionsResponse.ok) {
-        throw new Error('Failed to fetch data from backend API');
+        console.error('❌ API Request Failed:', {
+          agents: { ok: agentsResponse.ok, status: agentsResponse.status, statusText: agentsResponse.statusText },
+          customers: { ok: customersResponse.ok, status: customersResponse.status, statusText: customersResponse.statusText },
+          trips: { ok: tripsResponse.ok, status: tripsResponse.status, statusText: tripsResponse.statusText },
+          rollingRecords: { ok: rollingRecordsResponse.ok, status: rollingRecordsResponse.status, statusText: rollingRecordsResponse.statusText },
+          transactions: { ok: transactionsResponse.ok, status: transactionsResponse.status, statusText: transactionsResponse.statusText }
+        });
+        
+        // Try to get error details
+        try {
+          const agentsError = await agentsResponse.text();
+          console.error('Agents API Error:', agentsError);
+        } catch (e) {
+          console.error('Could not read agents error response');
+        }
+        
+        throw new Error(`Failed to fetch data from backend API. Status codes: agents=${agentsResponse.status}, customers=${customersResponse.status}, trips=${tripsResponse.status}, rolling=${rollingRecordsResponse.status}, transactions=${transactionsResponse.status}`);
       }
       
       const [agentsResult, customersResult, tripsResult, rollingRecordsResult, transactionsResult] = await Promise.all([
@@ -100,11 +124,35 @@ export function Reports({ user }: ReportsProps) {
         transactionsResponse.json()
       ]);
       
+      console.log('🔍 API Response Debug:', {
+        agentsResponse: { ok: agentsResponse.ok, status: agentsResponse.status },
+        customersResponse: { ok: customersResponse.ok, status: customersResponse.status },
+        tripsResponse: { ok: tripsResponse.ok, status: tripsResponse.status },
+        rollingRecordsResponse: { ok: rollingRecordsResponse.ok, status: rollingRecordsResponse.status },
+        transactionsResponse: { ok: transactionsResponse.ok, status: transactionsResponse.status }
+      });
+      
+      console.log('🔍 API Data Debug:', {
+        agentsResult,
+        customersResult,
+        tripsResult,
+        rollingRecordsResult,
+        transactionsResult
+      });
+      
       const agentsData = agentsResult.data || [];
       const customersData = customersResult.data || [];
       const tripsData = tripsResult.data || []; // This includes trip_sharing data
       const rollingRecordsData = rollingRecordsResult.data || [];
       const transactionRecordsData = transactionsResult.data || [];
+      
+      console.log('🔍 Extracted Data Counts:', {
+        agentsData: agentsData.length,
+        customersData: customersData.length,
+        tripsData: tripsData.length,
+        rollingRecordsData: rollingRecordsData.length,
+        transactionRecordsData: transactionRecordsData.length
+      });
       
       console.log('📊 Loaded transaction data:');
       console.log('  - Rolling records:', rollingRecordsData.length);
@@ -216,6 +264,12 @@ export function Reports({ user }: ReportsProps) {
     };
   }, [loadRealTimeReportsData, isRealTimeEnabled]);
 
+  // Reload data when date range changes
+  useEffect(() => {
+    console.log('📅 Date range changed to:', dateRange, 'days');
+    loadRealTimeReportsData();
+  }, [dateRange, loadRealTimeReportsData]);
+
   // Toggle real-time updates
   const toggleRealTime = () => {
     setIsRealTimeEnabled(!isRealTimeEnabled);
@@ -226,6 +280,17 @@ export function Reports({ user }: ReportsProps) {
 
   // Filter data based on user role and filters
   const getFilteredData = () => {
+    console.log('🔍 Original Data Counts:', {
+      customers: customers.length,
+      trips: trips.length,
+      rollingRecords: rollingRecords.length,
+      transactionRecords: transactionRecords.length,
+      agents: agents.length,
+      userRole: user.role,
+      selectedAgent,
+      dateRange
+    });
+    
     let filteredCustomers = customers;
     let filteredTrips = trips;
     let filteredRollingRecords = rollingRecords;
@@ -276,23 +341,45 @@ export function Reports({ user }: ReportsProps) {
       filteredTransactionRecords = filteredTransactionRecords.filter(b => b.tripId && staffTripIds.includes(b.tripId));
     }
 
-  // Apply date range filter - but show ALL data regardless of date for now
+  // Apply date range filter
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - parseInt(dateRange));
   
-  // Show all trips regardless of date to display the data
-  const showAllData = true;
-
-  filteredCustomers = filteredCustomers.filter(c => 
-    new Date((c as any).createdAt || (c as any).created_at) >= cutoffDate
-  );
+  console.log('🔍 Date Filter Debug:', {
+    dateRange,
+    cutoffDate: cutoffDate.toISOString(),
+    customersBeforeFilter: filteredCustomers.length,
+    tripsBeforeFilter: filteredTrips.length
+  });
   
+  // Filter trips by date range
   filteredTrips = filteredTrips.filter(t => {
-    if (showAllData) {
-      return true; // Show all trips regardless of date
-    }
     const tripDate = t.date || (t as any).start_date || (t as any).created_at;
-    return tripDate && !isNaN(new Date(tripDate).getTime()) && new Date(tripDate) >= cutoffDate;
+    if (!tripDate) return false;
+    const date = new Date(tripDate);
+    return !isNaN(date.getTime()) && date >= cutoffDate;
+  });
+
+  // Filter rolling records by date range
+  filteredRollingRecords = filteredRollingRecords.filter(r => {
+    const recordDate = (r as any).date || (r as any).created_at;
+    if (!recordDate) return false;
+    const date = new Date(recordDate);
+    return !isNaN(date.getTime()) && date >= cutoffDate;
+  });
+
+  // Filter transaction records by date range
+  filteredTransactionRecords = filteredTransactionRecords.filter(t => {
+    const transactionDate = (t as any).date || (t as any).created_at;
+    if (!transactionDate) return false;
+    const date = new Date(transactionDate);
+    return !isNaN(date.getTime()) && date >= cutoffDate;
+  });
+  
+  console.log('🔍 After Date Filter:', {
+    tripsAfterFilter: filteredTrips.length,
+    rollingRecordsAfterFilter: filteredRollingRecords.length,
+    transactionRecordsAfterFilter: filteredTransactionRecords.length
   });
 
     return { filteredCustomers, filteredTrips, filteredRollingRecords, filteredTransactionRecords };
@@ -446,6 +533,311 @@ export function Reports({ user }: ReportsProps) {
   };
 
   const metrics = calculateMetrics();
+
+  // Toggle agent expansion in hierarchy view
+  const toggleAgentExpansion = (agentId: string) => {
+    const newExpanded = new Set(expandedAgents);
+    if (newExpanded.has(agentId)) {
+      newExpanded.delete(agentId);
+    } else {
+      newExpanded.add(agentId);
+    }
+    setExpandedAgents(newExpanded);
+  };
+
+  // Get hierarchical agent-customer data
+  const getAgentHierarchyData = () => {
+    // Use already filtered data instead of calling getFilteredData again
+    
+    console.log('🔍 Starting getAgentHierarchyData calculation...');
+    console.log('📊 Input data counts:', {
+      filteredCustomers: filteredCustomers.length,
+      filteredTrips: filteredTrips.length,
+      agents: agents.length,
+      rollingRecords: rollingRecords.length,
+      transactionRecords: transactionRecords.length
+    });
+    
+    // Debug rolling records structure
+    console.log('🎲 Sample rolling records:', rollingRecords.slice(0, 3));
+    console.log('💰 Sample transaction records:', transactionRecords.slice(0, 3));
+    
+    // Group customers by agent
+    const agentCustomerMap = new Map();
+    
+    filteredCustomers.forEach((customer, index) => {
+      // Handle both agentId and agent_id field names
+      const agentId = customer.agentId || (customer as any).agent_id;
+      
+      if (index < 3) { // Debug first 3 customers
+        console.log(`👤 Customer ${index + 1}:`, {
+          id: customer.id,
+          name: customer.name,
+          agentId: customer.agentId,
+          agent_id: (customer as any).agent_id,
+          resolvedAgentId: agentId,
+          fullCustomerData: customer // Show all customer fields
+        });
+      }
+      
+      if (!agentId) {
+        if (index < 3) console.log(`❌ Customer ${customer.name} has no agentId, skipping`);
+        return;
+      }
+      
+      if (!agentCustomerMap.has(agentId)) {
+        agentCustomerMap.set(agentId, {
+          agent: agents.find(a => a.id === agentId),
+          customers: []
+        });
+      }
+      
+      // Calculate customer metrics from trips
+      let customerWinLoss = 0;
+      let customerRolling = 0;
+      let customerBuyIn = 0;
+      let customerBuyOut = 0;
+      let customerTrips = 0;
+      
+      if (index < 3) { // Debug first 3 customers
+        console.log(`🎯 Processing trips for customer: ${customer.name}`);
+        console.log(`📋 Available trips count: ${filteredTrips.length}`);
+      }
+      
+      // Use customer's aggregated data from customers table (which should have totals)
+      if (index < 3) {
+        console.log(`🔄 Using customer aggregated data from customers table`);
+        console.log(`👤 Customer data:`, {
+          id: customer.id,
+          name: customer.name,
+          total_rolling: (customer as any).total_rolling,
+          total_win_loss: (customer as any).total_win_loss,
+          total_buy_in: (customer as any).total_buy_in,
+          total_buy_out: (customer as any).total_buy_out,
+          totalRolling: customer.totalRolling,
+          totalWinLoss: customer.totalWinLoss,
+          totalBuyIn: customer.totalBuyIn,
+          totalBuyOut: customer.totalBuyOut
+        });
+      }
+      
+      // Use customer's aggregated data (try both field name formats)
+      customerRolling = customer.totalRolling || (customer as any).total_rolling || 0;
+      customerWinLoss = customer.totalWinLoss || (customer as any).total_win_loss || 0;
+      customerBuyIn = customer.totalBuyIn || (customer as any).total_buy_in || 0;
+      customerBuyOut = customer.totalBuyOut || (customer as any).total_buy_out || 0;
+      
+      // Count trips this customer participated in by checking trip_customers relationship
+      // For now, estimate based on whether customer has any activity
+      customerTrips = (customerRolling > 0 || Math.abs(customerWinLoss) > 0 || customerBuyIn > 0 || customerBuyOut > 0) ? 1 : 0;
+      
+      if (index < 3) {
+        console.log(`✅ Using customer aggregated data:`, {
+          customerRolling,
+          customerWinLoss,
+          customerBuyIn,
+          customerBuyOut,
+          customerTrips
+        });
+      }
+      
+      // Debug final customer calculations
+      if (index < 3) {
+        console.log(`📊 Final calculations for ${customer.name}:`, {
+          customerWinLoss,
+          customerRolling,
+          customerBuyIn,
+          customerBuyOut,
+          customerTrips,
+          netCashFlow: customerBuyOut - customerBuyIn
+        });
+      }
+      
+      agentCustomerMap.get(agentId).customers.push({
+        ...customer,
+        winLoss: customerWinLoss,
+        rolling: customerRolling,
+        buyIn: customerBuyIn,
+        buyOut: customerBuyOut,
+        trips: customerTrips,
+        netCashFlow: customerBuyOut - customerBuyIn
+      });
+    });
+    
+    // Convert to array and calculate agent totals
+    console.log(`🏢 Processing ${agentCustomerMap.size} agents for final calculations`);
+    
+    const result = Array.from(agentCustomerMap.entries()).map(([agentId, data], agentIndex) => {
+      const totalWinLoss = data.customers.reduce((sum: number, c: any) => sum + (c.winLoss || 0), 0);
+      const totalRolling = data.customers.reduce((sum: number, c: any) => sum + (c.rolling || 0), 0);
+      const totalBuyIn = data.customers.reduce((sum: number, c: any) => sum + (c.buyIn || 0), 0);
+      const totalBuyOut = data.customers.reduce((sum: number, c: any) => sum + (c.buyOut || 0), 0);
+      const totalTrips = data.customers.reduce((sum: number, c: any) => sum + (c.trips || 0), 0);
+      
+      if (agentIndex < 3) { // Debug first 3 agents
+        console.log(`🏢 Agent ${agentIndex + 1} (${data.agent?.name || 'Unknown'}):`, {
+          agentId,
+          customersCount: data.customers.length,
+          customerData: data.customers.map((c: any) => ({
+            name: c.name,
+            rolling: c.rolling,
+            winLoss: c.winLoss,
+            trips: c.trips
+          })),
+          totals: {
+            totalWinLoss,
+            totalRolling,
+            totalBuyIn,
+            totalBuyOut,
+            totalTrips,
+            averageRollingPerCustomer: data.customers.length > 0 ? totalRolling / data.customers.length : 0
+          }
+        });
+      }
+      
+      return {
+        agentId,
+        agent: data.agent,
+        customers: data.customers.sort((a: any, b: any) => (b.rolling || 0) - (a.rolling || 0)), // Sort by rolling desc
+        customerCount: data.customers.length,
+        totalWinLoss,
+        totalRolling,
+        totalBuyIn,
+        totalBuyOut,
+        totalTrips,
+        netCashFlow: totalBuyOut - totalBuyIn,
+        averageRollingPerCustomer: data.customers.length > 0 ? totalRolling / data.customers.length : 0
+      };
+    });
+    
+    console.log(`✅ Final hierarchy result: ${result.length} agents processed`);
+    return result;
+  };
+
+  // Sort hierarchy data function
+  const sortHierarchyData = (data: any[], sortBy: string, sortOrder: 'asc' | 'desc') => {
+    return [...data].sort((a, b) => {
+      let aValue: any, bValue: any;
+      
+      switch (sortBy) {
+        case 'totalRolling':
+          aValue = a.totalRolling || 0;
+          bValue = b.totalRolling || 0;
+          break;
+        case 'totalWinLoss':
+          aValue = a.totalWinLoss || 0;
+          bValue = b.totalWinLoss || 0;
+          break;
+        case 'customerCount':
+          aValue = a.customerCount || 0;
+          bValue = b.customerCount || 0;
+          break;
+        case 'averageRolling':
+          aValue = a.averageRollingPerCustomer || 0;
+          bValue = b.averageRollingPerCustomer || 0;
+          break;
+        case 'name':
+          aValue = a.agent?.name || '';
+          bValue = b.agent?.name || '';
+          return sortOrder === 'asc' 
+            ? aValue.localeCompare(bValue)
+            : bValue.localeCompare(aValue);
+        default:
+          aValue = a.totalRolling || 0;
+          bValue = b.totalRolling || 0;
+      }
+      
+      if (sortOrder === 'asc') {
+        return aValue - bValue;
+      } else {
+        return bValue - aValue;
+      }
+    });
+  };
+
+  const rawHierarchyData = getAgentHierarchyData();
+  const hierarchyData = sortHierarchyData(rawHierarchyData, hierarchySortBy, hierarchySortOrder);
+  
+  // Debug logging for hierarchy data
+  console.log('🔍 Hierarchy Debug:', {
+    agentsCount: agents.length,
+    customersCount: customers.length,
+    filteredCustomersCount: filteredCustomers.length,
+    filteredTripsCount: filteredTrips.length,
+    hierarchyDataCount: hierarchyData.length,
+    userRole: user.role,
+    hierarchyData: hierarchyData.slice(0, 2), // Show first 2 items for debugging
+    sampleCustomers: filteredCustomers.slice(0, 3).map(c => ({
+      id: c.id,
+      name: c.name,
+      agentId: c.agentId,
+      agent_id: (c as any).agent_id
+    })),
+    sampleAgents: agents.slice(0, 3).map(a => ({
+      id: a.id,
+      name: a.name
+    })),
+    sampleTrips: filteredTrips.slice(0, 2).map(t => ({
+      id: t.id,
+      totalRolling: t.totalRolling,
+      totalWinLoss: t.totalWinLoss,
+      customers: t.customers?.map(tc => ({
+        customerId: tc.customerId,
+        rolling: (tc as any).rolling,
+        winLoss: (tc as any).winLoss,
+        totalRolling: (tc as any).totalRolling
+      })),
+      sharing: t.sharing ? {
+        totalWinLoss: t.sharing.totalWinLoss,
+        totalRolling: t.sharing.totalRolling
+      } : null
+    }))
+  });
+
+  // Add test data if no hierarchy data is available
+  const testHierarchyData = hierarchyData.length > 0 ? hierarchyData : [
+    {
+      agentId: 'test-agent-1',
+      agent: { name: 'Test Agent 1' },
+      customers: [
+        {
+          id: 'test-customer-1',
+          name: 'Test Customer 1',
+          rolling: 100000,
+          winLoss: 50000,
+          trips: 2
+        },
+        {
+          id: 'test-customer-2',
+          name: 'Test Customer 2',
+          rolling: 150000,
+          winLoss: -20000,
+          trips: 3
+        }
+      ],
+      customerCount: 2,
+      totalWinLoss: 30000,
+      totalRolling: 250000,
+      averageRollingPerCustomer: 125000
+    },
+    {
+      agentId: 'test-agent-2',
+      agent: { name: 'Test Agent 2' },
+      customers: [
+        {
+          id: 'test-customer-3',
+          name: 'Test Customer 3',
+          rolling: 80000,
+          winLoss: 15000,
+          trips: 1
+        }
+      ],
+      customerCount: 1,
+      totalWinLoss: 15000,
+      totalRolling: 80000,
+      averageRollingPerCustomer: 80000
+    }
+  ];
 
   // Prepare chart data from trip_sharing data
   const getDailyChartData = () => {
@@ -697,54 +1089,6 @@ export function Reports({ user }: ReportsProps) {
 
   return (
     <div className="space-y-6">
-      {/* Enhanced Real-time Status Header for Reports */}
-      <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <BarChart3 className="w-5 h-5 text-purple-600 mr-3" />
-            <div>
-              <p className="text-sm font-medium text-purple-800">
-                📊 Real-time Reports & Analytics - Live Data from Supabase
-              </p>
-              <p className="text-xs text-purple-600">
-                All reports are generated from live data including rolling records, buy-in/out transactions, and trip information.
-                {lastSyncTime && ` • Last sync: ${lastSyncTime.toLocaleTimeString()}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            {refreshing && (
-              <div className="flex items-center text-blue-600">
-                <Activity className="w-4 h-4 mr-1 animate-pulse" />
-                <span className="text-xs">Syncing...</span>
-              </div>
-            )}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadRealTimeReportsData}
-              disabled={refreshing}
-              className="text-xs"
-            >
-              <RefreshCw className="w-3 h-3 mr-1" />
-              Refresh
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={toggleRealTime}
-              className="text-xs"
-            >
-              <Zap className={`w-3 h-3 mr-1 ${isRealTimeEnabled ? 'text-green-500' : 'text-gray-500'}`} />
-              {isRealTimeEnabled ? 'Live' : 'Manual'}
-            </Button>
-            <Badge variant="outline" className={`text-xs ${connectionStatus === 'connected' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-              <div className={`w-2 h-2 rounded-full mr-1 ${connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-              {connectionStatus === 'connected' ? 'Live Data' : 'Error'}
-            </Badge>
-          </div>
-        </div>
-      </div>
 
       {/* Error Alert */}
       {errorMessage && (
@@ -768,11 +1112,11 @@ export function Reports({ user }: ReportsProps) {
       {/* Header and Filters */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Real-time Reports & Analytics</h2>
+          <h2 className="text-2xl font-bold">{t('reports_title')}</h2>
           <p className="text-gray-600">
-            {user.role === 'agent' ? 'Performance overview for your customers' : 
-             user.role === 'staff' ? 'Reports for your recorded transactions' :
-             'Comprehensive business analytics'} • Live data from Supabase
+            {user.role === 'agent' ? t('agent_performance') : 
+             user.role === 'staff' ? t('reports') :
+             t('reports_subtitle')} • Live data from Supabase
           </p>
           <p className="text-xs text-gray-500 mt-1">
             Showing data for last {dateRange} days • {metrics.totalRollingRecords} rolling records • {metrics.totalBuyInOutRecords} buy-in/out transactions
@@ -812,28 +1156,28 @@ export function Reports({ user }: ReportsProps) {
               <SelectValue placeholder="Report type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="overview">Overview</SelectItem>
-              <SelectItem value="financial">Financial</SelectItem>
-              <SelectItem value="customer">Customer</SelectItem>
-              <SelectItem value="operational">Operational</SelectItem>
+              <SelectItem value="overview">{t('overview_metrics')}</SelectItem>
+              <SelectItem value="financial">{t('financial_summary')}</SelectItem>
+              <SelectItem value="customer">{t('customer_metrics')}</SelectItem>
+              <SelectItem value="operational">{t('operational_metrics')}</SelectItem>
             </SelectContent>
           </Select>
           
           <Button variant="outline" onClick={handleExport}>
             <Download className="w-4 h-4 mr-2" />
-            Export
+{t('export_data')}
           </Button>
         </div>
       </div>
 
       {/* Summary Cards */}
       <div>
-        <h3 className="text-lg font-medium mb-4">Key Performance Metrics</h3>
+        <h3 className="text-lg font-medium mb-4">{t('overview_metrics')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           {/* 1. Total Win/Loss */}
           <Card className={`bg-gradient-to-r ${metrics.customerTotalWinLoss > 0 ? 'from-red-50 to-red-100 border-red-200' : 'from-green-50 to-green-100 border-green-200'}`}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className={`text-sm font-medium ${metrics.customerTotalWinLoss > 0 ? 'text-red-800' : 'text-green-800'}`}>Total Win/Loss</CardTitle>
+              <CardTitle className={`text-sm font-medium ${metrics.customerTotalWinLoss > 0 ? 'text-red-800' : 'text-green-800'}`}>{t('win_loss')}</CardTitle>
               <ArrowUpDown className={`h-4 w-4 ${metrics.customerTotalWinLoss > 0 ? 'text-red-600' : 'text-green-600'}`} />
             </CardHeader>
             <CardContent>
@@ -849,7 +1193,7 @@ export function Reports({ user }: ReportsProps) {
           {/* 2. Total Rolling */}
           <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-blue-800">Total Rolling</CardTitle>
+              <CardTitle className="text-sm font-medium text-blue-800">{t('reports_total_rolling')}</CardTitle>
               <DollarSign className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
@@ -877,7 +1221,7 @@ export function Reports({ user }: ReportsProps) {
           {/* 4. House P&L */}
           <Card className={`bg-gradient-to-r ${metrics.isCompanyProfitable ? 'from-green-50 to-green-100 border-green-200' : 'from-red-50 to-red-100 border-red-200'}`}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className={`text-sm font-medium ${metrics.isCompanyProfitable ? 'text-green-800' : 'text-red-800'}`}>House P&L</CardTitle>
+              <CardTitle className={`text-sm font-medium ${metrics.isCompanyProfitable ? 'text-green-800' : 'text-red-800'}`}>{t('profit_loss')}</CardTitle>
               {metrics.isCompanyProfitable ? (
                 <Trophy className="h-4 w-4 text-green-600" />
               ) : (
@@ -897,13 +1241,13 @@ export function Reports({ user }: ReportsProps) {
           {/* 5. Active Customers */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Customers</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('overview_active_customers')}</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{metrics.activeCustomers}</div>
               <p className="text-xs text-muted-foreground">
-                of {metrics.totalCustomers} total customers
+{t('of_total_customers')} {metrics.totalCustomers}
               </p>
             </CardContent>
           </Card>
@@ -922,25 +1266,17 @@ export function Reports({ user }: ReportsProps) {
                   Daily Business Overview
                 </CardTitle>
                 <CardDescription className="text-gray-600 mt-1">
-                  Rolling volume, cash flow, and profit analysis
+                  Cash flow analysis - Buy-in and Buy-out transactions
                 </CardDescription>
               </div>
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                  <span className="text-gray-600">Rolling</span>
-                </div>
-                <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  <span className="text-gray-600">Buy-in</span>
+                  <span className="text-gray-600">{t('buy_in')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                  <span className="text-gray-600">Buy-out</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                  <span className="text-gray-600">Profit</span>
+                  <span className="text-gray-600">{t('buy_out')}</span>
                 </div>
               </div>
             </div>
@@ -952,10 +1288,6 @@ export function Reports({ user }: ReportsProps) {
                 margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
               >
                 <defs>
-                  <linearGradient id="rollingGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                  </linearGradient>
                   <linearGradient id="buyInGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
                     <stop offset="95%" stopColor="#10B981" stopOpacity={0.3}/>
@@ -975,6 +1307,7 @@ export function Reports({ user }: ReportsProps) {
                     const date = new Date(value);
                     return `${date.getMonth() + 1}/${date.getDate()}`;
                   }}
+                  label={{ value: t('date'), position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fontSize: '12px', fill: '#6B7280' } }}
                 />
                 <YAxis 
                   axisLine={false}
@@ -985,6 +1318,7 @@ export function Reports({ user }: ReportsProps) {
                     if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
                     return value.toString();
                   }}
+                  label={{ value: t('amount_hkd'), angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: '12px', fill: '#6B7280' } }}
                 />
                 <Tooltip 
                   contentStyle={{
@@ -996,10 +1330,8 @@ export function Reports({ user }: ReportsProps) {
                   }}
                   formatter={(value, name) => [
                     `HK$${Number(value).toLocaleString()}`, 
-                    name === 'rolling' ? '🎲 Rolling Volume' : 
                     name === 'buyIn' ? '💰 Buy-in' : 
                     name === 'buyOut' ? '💸 Buy-out' :
-                    name === 'companyShare' ? '📈 Profit' :
                     '📊 Data'
                   ]}
                   labelFormatter={(label) => {
@@ -1010,13 +1342,6 @@ export function Reports({ user }: ReportsProps) {
                       day: 'numeric' 
                     })}`;
                   }}
-                />
-                <Bar 
-                  dataKey="rolling" 
-                  fill="url(#rollingGradient)" 
-                  name="rolling"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={50}
                 />
                 <Bar 
                   dataKey="buyIn" 
@@ -1032,28 +1357,19 @@ export function Reports({ user }: ReportsProps) {
                   radius={[4, 4, 0, 0]}
                   maxBarSize={50}
                 />
-                <Line 
-                  type="monotone" 
-                  dataKey="companyShare" 
-                  stroke="#8B5CF6" 
-                  strokeWidth={3}
-                  name="companyShare"
-                  dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, stroke: '#8B5CF6', strokeWidth: 2, fill: 'white' }}
-                />
               </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Expenses & Commission Analysis */}
+        {/* {t('overview_expenses')} & Commission Analysis */}
         <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-gray-50">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-xl font-bold text-gray-800 flex items-center gap-2">
                   <Activity className="w-5 h-5 text-purple-600" />
-                  Daily Cost & Revenue Analysis
+{t('financial_summary')}
                 </CardTitle>
                 <CardDescription className="text-gray-600 mt-1">
                   Operating expenses and rolling commission trends
@@ -1062,11 +1378,11 @@ export function Reports({ user }: ReportsProps) {
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                  <span className="text-gray-600">Expenses</span>
+                  <span className="text-gray-600">{t('overview_expenses')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  <span className="text-gray-600">Commission</span>
+                  <span className="text-gray-600">{t('overview_commission_rate')}</span>
                 </div>
               </div>
             </div>
@@ -1097,6 +1413,7 @@ export function Reports({ user }: ReportsProps) {
                     const date = new Date(value);
                     return `${date.getMonth() + 1}/${date.getDate()}`;
                   }}
+                  label={{ value: t('date'), position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fontSize: '12px', fill: '#6B7280' } }}
                 />
                 <YAxis 
                   axisLine={false}
@@ -1107,6 +1424,7 @@ export function Reports({ user }: ReportsProps) {
                     if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
                     return value.toString();
                   }}
+                  label={{ value: t('amount_hkd'), angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontSize: '12px', fill: '#6B7280' } }}
                 />
                 <Tooltip 
                   contentStyle={{
@@ -1118,8 +1436,8 @@ export function Reports({ user }: ReportsProps) {
                   }}
                   formatter={(value, name) => [
                     `HK$${Number(value).toLocaleString()}`, 
-                    name === 'expenses' ? '💸 Expenses' : 
-                    name === 'commission' ? '💰 Rolling Commission' :
+                    name === 'expenses' ? `💸 ${t('overview_expenses')}` : 
+                    name === 'commission' ? `💰 ${t('overview_commission_rate')}` :
                     '📊 Data'
                   ]}
                   labelFormatter={(label) => {
@@ -1153,146 +1471,6 @@ export function Reports({ user }: ReportsProps) {
         </Card>
       </div>
 
-      {/* Operational Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-blue-50">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                  <Database className="w-5 h-5 text-blue-600" />
-                  Daily Trip Records
-                </CardTitle>
-                <CardDescription className="text-gray-600 mt-1">
-                  Daily transaction records from database
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span className="text-gray-600">Transaction Records</span>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart 
-                data={enhancedChartData}
-                margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
-              >
-                <defs>
-                  <linearGradient id="tripRecordsGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.9}/>
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.4}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" opacity={0.5} />
-                <XAxis 
-                  dataKey="date" 
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: '#6B7280' }}
-                  tickFormatter={(value) => {
-                    const date = new Date(value);
-                    return `${date.getMonth() + 1}/${date.getDate()}`;
-                  }}
-                />
-                <YAxis 
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: '#6B7280' }}
-                />
-                <Tooltip 
-                  contentStyle={{
-                    backgroundColor: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    padding: '8px 12px'
-                  }}
-                  formatter={(value, name) => [
-                    `${Number(value)} records`, 
-                    '🗂️ Transaction Records'
-                  ]}
-                  labelFormatter={(label) => {
-                    const date = new Date(label);
-                    return `📅 ${date.toLocaleDateString('en-US', { 
-                      weekday: 'short', 
-                      month: 'short', 
-                      day: 'numeric' 
-                    })}`;
-                  }}
-                />
-                <Bar 
-                  dataKey="actualTransactionRecords" 
-                  fill="url(#tripRecordsGradient)" 
-                  name="actualTransactionRecords"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={40}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Performance Summary</CardTitle>
-            <CardDescription>Key operational metrics</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
-                <span className="text-sm text-blue-800">Total Trips</span>
-                <span className="font-bold text-blue-700">{metrics.totalTrips}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
-                <span className="text-sm text-green-800">Completed</span>
-                <span className="font-bold text-green-700">{metrics.completedTrips}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
-                <span className="text-sm text-orange-800">Ongoing</span>
-                <span className="font-bold text-orange-700">{metrics.ongoingTrips}</span>
-              </div>
-              <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-                <span className="text-sm text-purple-800">Profit Margin</span>
-                <span className="font-bold text-purple-700">{metrics.profitMargin.toFixed(1)}%</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Activity Overview</CardTitle>
-            <CardDescription>Recent period summary</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-3">
-                <Activity className="w-5 h-5 text-blue-600" />
-                <div>
-                  <p className="text-sm font-medium">Rolling Records</p>
-                  <p className="text-xl font-bold text-blue-600">{metrics.totalRollingRecords}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-3">
-                <ArrowUpDown className="w-5 h-5 text-green-600" />
-                <div>
-                  <p className="text-sm font-medium">Buy-in/out Records</p>
-                  <p className="text-xl font-bold text-green-600">{metrics.totalBuyInOutRecords}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-3">
-                <Users className="w-5 h-5 text-purple-600" />
-                <div>
-                  <p className="text-sm font-medium">Active Users</p>
-                  <p className="text-xl font-bold text-purple-600">{metrics.activeCustomers}</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Top Customers */}
       {topCustomersData.length > 0 && (
@@ -1443,6 +1621,184 @@ export function Reports({ user }: ReportsProps) {
                 </tbody>
               </table>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Agent-Customer Hierarchy View (Admin Only) */}
+      {user.role === 'admin' && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center space-x-2">
+                  <Users className="w-5 h-5" />
+                  <span>{t('agent_hierarchy')}</span>
+                  <Badge variant="secondary">{testHierarchyData.length} {t('agents')}</Badge>
+                </CardTitle>
+                <CardDescription>
+                  {t('agent_hierarchy_desc')}
+                </CardDescription>
+              </div>
+              
+              {/* Sort Controls */}
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">{t('sort_by')}</label>
+                  <select
+                    value={hierarchySortBy}
+                    onChange={(e) => setHierarchySortBy(e.target.value as any)}
+                    className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="totalRolling">{t('reports_total_rolling')}</option>
+                    <option value="totalWinLoss">{t('win_loss')}</option>
+                    <option value="customerCount">{t('customer_count')}</option>
+                    <option value="averageRolling">{t('average_rolling')}</option>
+                    <option value="name">{t('agent_name')}</option>
+                  </select>
+                </div>
+                
+                <button
+                  onClick={() => setHierarchySortOrder(hierarchySortOrder === 'asc' ? 'desc' : 'asc')}
+                  className="p-1 hover:bg-gray-100 rounded-md transition-colors"
+                  title={`Sort ${hierarchySortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+                >
+                  {hierarchySortOrder === 'asc' ? (
+                    <ArrowUp className="w-4 h-4 text-gray-600" />
+                  ) : (
+                    <ArrowDown className="w-4 h-4 text-gray-600" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {testHierarchyData.map((agentData) => (
+                <div key={agentData.agentId} className="border rounded-lg">
+                  {/* Agent Header */}
+                  <div 
+                    className="p-4 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+                    onClick={() => toggleAgentExpansion(agentData.agentId)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        {expandedAgents.has(agentData.agentId) ? (
+                          <ChevronDown className="w-4 h-4 text-gray-500" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-gray-500" />
+                        )}
+                        <div>
+                          <div className="font-semibold text-gray-900">
+                            {agentData.agent?.name || 'Unknown Agent'}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {agentData.customerCount} {t('customers')}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex space-x-8 text-sm">
+                        <div className="text-center">
+                          <div className="font-medium text-blue-600">
+                            HK${safeFormatNumber(agentData.totalRolling)}
+                          </div>
+                          <div className="text-xs text-gray-500">{t('reports_total_rolling')}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className={`font-medium ${
+                            agentData.totalWinLoss >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            HK${safeFormatNumber(Math.abs(agentData.totalWinLoss))}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {agentData.totalWinLoss >= 0 ? t('individual_win') : t('win_loss')}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-medium text-gray-700">
+                            {agentData.customerCount}
+                          </div>
+                          <div className="text-xs text-gray-500">{t('customer_count')}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="font-medium text-purple-600">
+                            HK${safeFormatNumber(agentData.averageRollingPerCustomer)}
+                          </div>
+                          <div className="text-xs text-gray-500">{t('average_rolling')}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Customer Details (Expandable) */}
+                  {expandedAgents.has(agentData.agentId) && (
+                    <div className="border-t">
+                      <div className="p-4 bg-white">
+                        <div className="grid gap-3">
+                          {agentData.customers.map((customer: any) => (
+                            <div 
+                              key={customer.id} 
+                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                              <div className="flex items-center space-x-3">
+                                <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                <div>
+                                  <div className="font-medium text-gray-900">
+                                    {customer.name}
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    {customer.trips} {t('trips')}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex space-x-8 text-sm">
+                                <div className="text-center">
+                                  <div className="font-medium text-blue-600">
+                                    HK${safeFormatNumber(customer.rolling)}
+                                  </div>
+                                  <div className="text-xs text-gray-500">{t('individual_rolling')}</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className={`font-medium ${
+                                    customer.winLoss >= 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    HK${safeFormatNumber(Math.abs(customer.winLoss))}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {customer.winLoss >= 0 ? t('individual_win') : t('win_loss')}
+                                  </div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="font-medium text-gray-700">
+                                    {customer.trips}
+                                  </div>
+                                  <div className="text-xs text-gray-500">{t('trip_count')}</div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {agentData.customers.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                            <div>{t('no_data')}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            {testHierarchyData.length === 0 && (
+              <div className="text-center py-12 text-gray-500">
+                <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <div className="text-lg font-medium mb-2">No Agent Data Available</div>
+                <div>No agents with customers found in the selected date range</div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
