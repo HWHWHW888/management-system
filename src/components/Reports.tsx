@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Area, Line } from 'recharts';
-import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, Zap, AlertTriangle, Percent, Trophy, ArrowUpDown, Database, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
+import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Area } from 'recharts';
+import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, AlertTriangle, Percent, Trophy, ArrowUpDown, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { tokenManager } from '../utils/auth/tokenManager';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -32,9 +32,6 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
   
   // Loading and sync states
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'error'>('connected');
   const [errorMessage, setErrorMessage] = useState('');
   const [isRealTimeEnabled, setIsRealTimeEnabled] = useState(true);
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
@@ -59,7 +56,6 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
   // Real-time data loading from backend API with trip_sharing data
   const loadRealTimeReportsData = useCallback(async () => {
     try {
-      setRefreshing(true);
       setErrorMessage('');
       
       console.log('📊 Loading real-time reports data from backend API...');
@@ -228,8 +224,6 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
       setTrips(processedTrips);
       setRollingRecords(rollingRecordsData);
       setTransactionRecords(transactionRecordsData);
-      setLastSyncTime(new Date());
-      setConnectionStatus('connected');
       
       console.log(`✅ Real-time reports data loaded from backend API: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips with trip_sharing data`);
       
@@ -237,10 +231,8 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
       console.error('❌ Error loading real-time reports data:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setErrorMessage(`Failed to load reports data: ${errorMessage}`);
-      setConnectionStatus('error');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -270,13 +262,6 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
     loadRealTimeReportsData();
   }, [dateRange, loadRealTimeReportsData]);
 
-  // Toggle real-time updates
-  const toggleRealTime = () => {
-    setIsRealTimeEnabled(!isRealTimeEnabled);
-    if (!isRealTimeEnabled) {
-      loadRealTimeReportsData(); // Refresh immediately when re-enabling
-    }
-  };
 
   // Filter data based on user role and filters
   const getFilteredData = () => {
