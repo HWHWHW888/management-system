@@ -3408,6 +3408,9 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                       type="transaction"
                       size="large"
                       maxPhotos={6}
+                      showDownload={true}
+                      userRole={currentUser.role}
+                      customerName={selectedCustomerForPhotos?.customerName || selectedCustomerForPhotos?.customer?.name || selectedCustomerForPhotos?.name}
                     />
                   </div>
                 )}
@@ -3438,6 +3441,9 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                       type="rolling"
                       size="large"
                       maxPhotos={6}
+                      showDownload={true}
+                      userRole={currentUser.role}
+                      customerName={selectedCustomerForPhotos?.customerName || selectedCustomerForPhotos?.customer?.name || selectedCustomerForPhotos?.name}
                     />
                   </div>
                 )}

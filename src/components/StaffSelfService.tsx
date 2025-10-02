@@ -172,22 +172,8 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
       };
       reader.readAsDataURL(checkOutPhoto);
     } catch (error) {
-      console.error('Check-out error:', error);
       showError('Check-out failed');
       setIsSaving(false);
-    }
-  };
-
-  // Load customers for selected trip
-  const loadTripCustomers = async (tripId: string) => {
-    try {
-      const response = await apiClient.get(`/trips/${tripId}/customer-stats`);
-      if (response.success) {
-        setTripCustomers(response.data);
-      }
-    } catch (error) {
-      console.error('Error loading trip customers:', error);
-      showError('Failed to load trip customers');
     }
   };
 
@@ -354,6 +340,41 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   //   );
   // };
 
+  // Handle photo deletion
+  const handlePhotoDelete = async (photoId: string) => {
+    setIsSaving(true);
+    try {
+      const response = await apiClient.delete(`/customer-photos/${photoId}`);
+      
+      if (response.success) {
+        console.log('✅ Photo deleted successfully:', photoId);
+        // Refresh customer photos - the UI will automatically update to show the photo is gone
+        if (selectedTripForUpload) {
+          await loadTripDetails(selectedTripForUpload);
+        }
+      } else {
+        // Handle different error types
+        const errorMessage = response.message || 'Unknown error occurred';
+        showError('Failed to delete photo: ' + errorMessage);
+      }
+    } catch (error: any) {
+      console.error('Photo deletion error:', error);
+      
+      // Handle specific HTTP errors
+      if (error.message && error.message.includes('403')) {
+        showError('Permission denied: You do not have permission to delete this photo. Only the uploader or admin can delete photos.');
+      } else if (error.message && error.message.includes('404')) {
+        showError('Photo not found: This photo may have already been deleted.');
+      } else if (error.message && error.message.includes('401')) {
+        showError('Authentication required: Please log in again to delete photos.');
+      } else {
+        showError('Failed to delete photo: ' + (error.message || 'Network or server error'));
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Handle photo upload for transaction/rolling using customer_photos table
   const handlePhotoUpload = async () => {
     if (!uploadPhoto || !selectedCustomer || !uploadDate) {
@@ -421,7 +442,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
             showError(`${uploadType === 'transaction' ? 'Transaction' : 'Rolling'} photo uploaded successfully and pending approval`);
             
             // 刷新客户数据
-            await loadTripCustomers(selectedTripForUpload.id);
+            await loadTripDetails(selectedTripForUpload);
           } else {
             showError(`Failed to upload ${uploadType} photo: ` + response.message);
           }
@@ -849,6 +870,13 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                               type="transaction"
                                               size="medium"
                                               maxPhotos={4}
+                                              onPhotoDelete={handlePhotoDelete}
+                                              showDelete={user.role === 'admin' || transactionPhotos.some(photo => 
+                                                photo.uploaded_by === ((user as any).staff_id)
+                                              )}
+                                              showDownload={true}
+                                              userRole={user.role}
+                                              customerName={customerName}
                                             />
                                           </div>
                                           
@@ -876,6 +904,13 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                               type="rolling"
                                               size="medium"
                                               maxPhotos={4}
+                                              onPhotoDelete={handlePhotoDelete}
+                                              showDelete={user.role === 'admin' || rollingPhotos.some(photo => 
+                                                photo.uploaded_by === ((user as any).staff_id)
+                                              )}
+                                              showDownload={true}
+                                              userRole={user.role}
+                                              customerName={customerName}
                                             />
                                           </div>
                                           
