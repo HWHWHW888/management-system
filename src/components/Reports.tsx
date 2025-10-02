@@ -33,7 +33,7 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
   // Loading and sync states
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
-  const [isRealTimeEnabled, setIsRealTimeEnabled] = useState(true);
+  const isRealTimeEnabled = true; // Real-time updates always enabled
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [hierarchySortBy, setHierarchySortBy] = useState<'totalRolling' | 'totalWinLoss' | 'customerCount' | 'averageRolling' | 'name'>('totalRolling');
   const [hierarchySortOrder, setHierarchySortOrder] = useState<'asc' | 'desc'>('desc');
