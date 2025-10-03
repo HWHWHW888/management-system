@@ -43,6 +43,13 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   const { t } = useLanguage();
   const isReadOnly = isReadOnlyRole(user.role);
   const canSeeFinancials = canViewFinancialData(user.role);
+
+  // Helper function to format date safely
+  const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return 'Unknown';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? 'Unknown' : date.toLocaleDateString();
+  };
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -146,21 +153,37 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       if (customerDetailsMap.size > 0) {
         console.log('🔍 Sample customer details:', Array.from(customerDetailsMap.entries())[0]);
       }
+      
+      // Debug agents data
+      console.log('🔍 Agents data loaded:', agentsData.length, 'agents');
+      if (agentsData.length > 0) {
+        console.log('🔍 Sample agent:', agentsData[0]);
+      }
 
       // Process customers using database totals directly (no manual calculations)
       const processedCustomers = customersData.map((customer: Customer) => {
         // Get customer details from the map
         const customerDetails = customerDetailsMap.get(customer.id);
         
-        // Debug log for each customer's database totals
-        console.log(`🔍 Customer ${customer.name} database totals:`, {
+        // Debug log for each customer's database totals and field mapping
+        console.log(`🔍 Customer ${customer.name} raw data:`, {
+          created_at: (customer as any).created_at,
+          createdAt: customer.createdAt,
+          agent_id: (customer as any).agent_id,
+          agentId: customer.agentId,
+          status: (customer as any).status,
+          isActive: customer.isActive,
           total_rolling: customer.total_rolling,
           total_win_loss: customer.total_win_loss,
           total_buy_in: customer.total_buy_in,
           total_buy_out: customer.total_buy_out
         });
 
-        return {
+        // Find agent name from agents data using agent_id
+        const customerAgentId = (customer as any).agent_id || customer.agentId;
+        const customerAgent = agentsData.find((agent: any) => agent.id === customerAgentId);
+        
+        const processedCustomer = {
           ...customer,
           // Use database totals directly - these are kept up-to-date by the backend
           totalRolling: parseFloat(String(customer.total_rolling || 0)) || 0,
@@ -171,13 +194,30 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           details: customerDetails,
           // Get attachments from customer details instead of customer table
           attachments: customerDetails?.attachments || [],
-          // Backward compatibility - map database fields to frontend fields
+          // Map database fields to frontend fields (snake_case to camelCase)
+          createdAt: (customer as any).created_at || customer.createdAt,
+          agentId: customerAgentId,
+          agentName: customerAgent?.name || 'Unknown Agent',
+          // Map status field correctly (database uses 'status', not 'is_active')
+          isActive: (customer as any).status === 'active' || customer.isActive,
           isAgent: (customer as any).is_agent || false,
           sourceAgentId: (customer as any).source_agent_id || undefined,
           rollingPercentage: parseFloat(String(customer.rolling_percentage || 1.4)) || 1.4,
           creditLimit: parseFloat(String(customer.credit_limit || 0)) || 0,
           availableCredit: parseFloat(String(customer.available_credit || 0)) || 0
         };
+
+        // Debug log processed customer data
+        console.log(`✅ Customer ${customer.name} processed data:`, {
+          createdAt: processedCustomer.createdAt,
+          agentId: processedCustomer.agentId,
+          agentName: processedCustomer.agentName,
+          status: (customer as any).status,
+          isActive: processedCustomer.isActive,
+          foundAgent: customerAgent ? `${customerAgent.name} (${customerAgent.id})` : 'Not found'
+        });
+
+        return processedCustomer;
       });
 
       // Process trips with real-time win/loss calculations
@@ -815,7 +855,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
 
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">{t('customer_management')}</h2>
+          <h2 className="text-2xl font-bold">{t('Customer Management')}</h2>
           <p className="text-gray-600">
             {isAgent 
               ? 'Manage your customers with real-time rolling data and complete profile editing' 
@@ -946,9 +986,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                         <div className="flex-1">
                           <CardTitle className="flex items-center space-x-2">
                             <span>{customer.name}</span>
-                            <Badge variant={customer.isActive ? "default" : "secondary"}>
-                              {customer.isActive ? t('active') : t('inactive')}
-                            </Badge>
                             {customer.isAgent && (
                               <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center space-x-1">
                                 <UserCheck className="w-3 h-3" />
@@ -970,29 +1007,19 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             {rollingHistory.length > 0 && (
                               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                                 <Receipt className="w-3 h-3 mr-1" />
-{rollingHistory.length} {t('records')}
-                              </Badge>
-                            )}
-                            {customer.isAgent && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                <UserCheck className="w-3 h-3 mr-1" />
-{t('agent')}
+                                {rollingHistory.length} {t('records')}
                               </Badge>
                             )}
                             {isStaff && (
                               <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
                                 <Eye className="w-3 h-3 mr-1" />
-{t('view')} Only
+                                {t('view')} Only
                               </Badge>
                             )}
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                              <Activity className="w-3 h-3 mr-1" />
-                              {t('live_data')}
-                            </Badge>
                           </CardTitle>
                           <CardDescription>
-{t('customer_since')} {customer.createdAt} • {t('agent')}: {customer.agentName}
-                                          </CardDescription>
+                            Customer since {formatDate(customer.createdAt)} • Agent: {customer.agentName || 'Unknown'}
+                          </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2">
                           {isExpanded ? (
@@ -1167,7 +1194,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Member Since</Label>
-                                <p>{customer.createdAt}</p>
+                                <p>{formatDate(customer.createdAt)}</p>
                               </div>
                             </div>
                             
@@ -1341,7 +1368,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                                           <div>
                                             <Label className="text-gray-500">Date</Label>
-                                            <p>{trip.tripDate}</p>
+                                            <p>{formatDate(trip.tripDate)}</p>
                                           </div>
                                           <div>
                                             <Label className="text-gray-500">Rolling Amount</Label>

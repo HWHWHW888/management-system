@@ -337,81 +337,108 @@ function AppContent() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-semibold text-gray-900">Casino Management System</h1>
-              <Badge variant="secondary" className="text-xs">
-                {getDisplayRole()}
-              </Badge>
-              <Badge variant="default" className="text-xs flex items-center gap-1">
-                <Database className="w-3 h-3" />
-                Supabase
-              </Badge>
-              {/* Health indicator */}
-              <Badge 
-                variant="outline"
-                className={`text-xs flex items-center gap-1 ${
-                  isDatabaseHealthy ? 'border-green-200 text-green-700' : 'border-red-200 text-red-700'
-                }`}
-              >
-                {isDatabaseHealthy ? (
-                  <>
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
+          <div className="flex justify-between items-center h-14 sm:h-16">
+            {/* Left side - Title and badges */}
+            <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
+              <h1 className="text-sm sm:text-xl font-semibold text-gray-900 truncate">
+                <span className="hidden sm:inline">Casino Management System</span>
+                <span className="sm:hidden">Casino Management</span>
+              </h1>
+              <div className="hidden sm:flex items-center space-x-2">
+                <Badge variant="secondary" className="text-xs">
+                  {getDisplayRole()}
+                </Badge>
+                <Badge variant="default" className="text-xs flex items-center gap-1">
+                  <Database className="w-3 h-3" />
+                  Supabase
+                </Badge>
+                {/* Health indicator */}
+                <Badge 
+                  variant="outline"
+                  className={`text-xs flex items-center gap-1 ${
+                    isDatabaseHealthy ? 'border-green-200 text-green-700' : 'border-red-200 text-red-700'
+                  }`}
+                >
+                  {isDatabaseHealthy ? (
+                    <>
+                      <CheckCircle className="w-3 h-3" />
+                      Connected
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="w-3 h-3" />
+                      Issues
+                    </>
+                  )}
+                </Badge>
+                {/* Data Protection Badge */}
+                <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-200 text-blue-700">
+                  <Shield className="w-3 h-3" />
+                  Data Protected
+                </Badge>
+              </div>
+              {/* Mobile badges - only show essential ones */}
+              <div className="sm:hidden flex items-center space-x-1">
+                <Badge variant="secondary" className="text-xs">
+                  {getDisplayRole()}
+                </Badge>
+                <Badge 
+                  variant="outline"
+                  className={`text-xs flex items-center gap-1 ${
+                    isDatabaseHealthy ? 'border-green-200 text-green-700' : 'border-red-200 text-red-700'
+                  }`}
+                >
+                  {isDatabaseHealthy ? (
                     <CheckCircle className="w-3 h-3" />
-                    Connected
-                  </>
-                ) : (
-                  <>
+                  ) : (
                     <AlertTriangle className="w-3 h-3" />
-                    Issues
-                  </>
-                )}
-              </Badge>
-              {/* Data Protection Badge */}
-              <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-200 text-blue-700">
-                <Shield className="w-3 h-3" />
-                Data Protected
-              </Badge>
+                  )}
+                </Badge>
+              </div>
             </div>
-            <div className="flex items-center space-x-4">
+            
+            {/* Right side - Controls */}
+            <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
               <LanguageToggle />
               {!isDatabaseHealthy && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={refreshDatabaseHealth}
-                  className="text-xs"
+                  className="text-xs hidden sm:flex"
                 >
                   <Wifi className="w-4 h-4 mr-2" />
                   Reconnect
                 </Button>
               )}
-              <span className="text-sm text-gray-600">Welcome, {currentUser.username}</span>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
+              <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">Welcome, {currentUser.username}</span>
+              <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs">
+                <LogOut className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Logout</span>
               </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
+        <div className="flex flex-wrap gap-1 sm:space-x-1 mb-6 sm:mb-8 bg-gray-100 p-1 rounded-lg overflow-x-auto">
           {/* Dashboard - For admin, agent, and boss */}
           {(isAdmin || isAgent || isBoss) && (
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'dashboard'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <BarChart3 className="w-4 h-4 mr-2" />
-              {t('dashboard')}
+              <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{t('dashboard')}</span>
+              <span className="sm:hidden">Dashboard</span>
             </button>
           )}
 
@@ -419,14 +446,15 @@ function AppContent() {
           {isStaff && (
             <button
               onClick={() => setActiveTab('checkinout')}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'checkinout'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <Clock className="w-4 h-4 mr-2" />
-              {t('checkinout')}
+              <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{t('checkinout')}</span>
+              <span className="sm:hidden">Check</span>
             </button>
           )}
 
@@ -434,14 +462,15 @@ function AppContent() {
           {(isAdmin || isAgent || isStaff || isBoss) && (
             <button
               onClick={() => setActiveTab('customers')}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'customers'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <Users className="w-4 h-4 mr-2" />
-              {t('customers')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}
+              <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{t('customers')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}</span>
+              <span className="sm:hidden">Customers</span>
             </button>
           )}
 
@@ -449,14 +478,15 @@ function AppContent() {
           {(isAdmin || isStaff || isBoss) && (
             <button
               onClick={() => setActiveTab('agents')}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'agents'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <UserCheck className="w-4 h-4 mr-2" />
-              {t('agents')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}
+              <UserCheck className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{t('agents')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}</span>
+              <span className="sm:hidden">Agents</span>
             </button>
           )}
 
@@ -470,7 +500,7 @@ function AppContent() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <ShieldCheck className="w-4 h-4 mr-2" />
+              <ShieldCheck className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               {t('staff')}
             </button>
           )}
@@ -485,7 +515,7 @@ function AppContent() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <MapPin className="w-4 h-4 mr-2" />
+              <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               {t('projects')}
             </button>
           )}
@@ -500,7 +530,7 @@ function AppContent() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <BarChart3 className="w-4 h-4 mr-2" />
+              <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               {t('reports')}
             </button>
           )}
@@ -515,7 +545,7 @@ function AppContent() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <Settings className="w-4 h-4 mr-2" />
+              <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               {t('settings')}
             </button>
           )}

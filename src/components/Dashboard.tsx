@@ -367,20 +367,20 @@ export function Dashboard({ user }: DashboardProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 p-2 sm:p-0">
 
       {/* Key Performance Metrics - Real-time Customer Data */}
       <div>
-        <h3 className="text-lg font-medium mb-4">Real-time Financial Overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4 px-1 sm:px-0">Real-time Financial Overview</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-blue-800">Total Rolling Amount</CardTitle>
               <DollarSign className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-700">HK${safeFormatNumber(Math.abs(metrics.customerTotalRolling))}</div>
-              <p className="text-xs text-blue-600">
+              <div className="text-xl sm:text-2xl font-bold text-blue-700 break-words">HK${safeFormatNumber(Math.abs(metrics.customerTotalRolling))}</div>
+              <p className="text-xs text-blue-600 mt-1">
                 From {metrics.totalRollingRecords} rolling records across {metrics.totalCustomers} customers
               </p>
             </CardContent>
@@ -398,10 +398,10 @@ export function Dashboard({ user }: DashboardProps) {
               )}
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <div className={`text-xl sm:text-2xl font-bold break-words ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 HK${safeFormatNumber(Math.abs(metrics.houseGrossWin))}
               </div>
-              <p className={`text-xs ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`text-xs mt-1 ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 From trip sharing win/loss data
               </p>
             </CardContent>
@@ -445,15 +445,15 @@ export function Dashboard({ user }: DashboardProps) {
 
       {/* Secondary Metrics - Operations Overview */}
       <div>
-        <h3 className="text-lg font-medium mb-4">Operations Overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4 px-1 sm:px-0">Operations Overview</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Active Customers</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{metrics.activeCustomers}</div>
+              <div className="text-xl sm:text-2xl font-bold">{metrics.activeCustomers}</div>
               <p className="text-xs text-muted-foreground">
                 of {metrics.totalCustomers} total customers
               </p>
@@ -466,7 +466,7 @@ export function Dashboard({ user }: DashboardProps) {
               <UserCheck className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{metrics.activeAgents}</div>
+              <div className="text-xl sm:text-2xl font-bold">{metrics.activeAgents}</div>
               <p className="text-xs text-muted-foreground">
                 of {metrics.totalAgents} total agents
               </p>
@@ -479,7 +479,7 @@ export function Dashboard({ user }: DashboardProps) {
               <MapPin className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{metrics.totalTrips}</div>
+              <div className="text-xl sm:text-2xl font-bold">{metrics.totalTrips}</div>
               <p className="text-xs text-muted-foreground">
                 {metrics.completedTrips} completed, {metrics.ongoingTrips} ongoing, {metrics.plannedTrips} planned
               </p>
@@ -492,7 +492,7 @@ export function Dashboard({ user }: DashboardProps) {
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{metrics.recentRollingRecords + metrics.recentBuyInOutRecords}</div>
+              <div className="text-xl sm:text-2xl font-bold">{metrics.recentRollingRecords + metrics.recentBuyInOutRecords}</div>
               <p className="text-xs text-muted-foreground">
                 Transactions in last 24 hours
               </p>
@@ -503,9 +503,9 @@ export function Dashboard({ user }: DashboardProps) {
 
       {/* Active Trips */}
       <Card className="h-full">
-        <CardHeader>
-          <CardTitle>Active Trips</CardTitle>
-          <CardDescription>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base sm:text-lg">Active Trips</CardTitle>
+          <CardDescription className="text-xs sm:text-sm">
             Current ongoing trips with real-time performance data
           </CardDescription>
         </CardHeader>
@@ -517,7 +517,7 @@ export function Dashboard({ user }: DashboardProps) {
               <p className="text-xs text-gray-400 mt-1">Active trips will appear here when trips are in progress</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {activeTrips
                 .slice(0, 5) // Show up to 5 trips to match customer performance section
                 .map((trip) => {
@@ -556,7 +556,7 @@ export function Dashboard({ user }: DashboardProps) {
                           </p>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-6 text-right text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 text-right text-xs">
                         <div>
                           <div className="text-gray-500">{t('rolling')}</div>
                           <div className="font-medium text-blue-600">HK${safeFormatNumber(Math.abs(totalRolling))}</div>
@@ -581,20 +581,20 @@ export function Dashboard({ user }: DashboardProps) {
 
       {/* Recent Customer Activity */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
             <div>
-              <CardTitle>{t('customer_performance')}</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-base sm:text-lg">{t('customer_performance')}</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
                 {t('all_customers_based_on')} {user.role === 'agent' ? 'you manage' : ''} ({filteredCustomers.length} {t('customers')})
               </CardDescription>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="flex items-center space-x-1 text-sm">
-                <span className="text-gray-500">{t('sort_by')}</span>
+            <div className="flex items-center space-x-2 text-xs sm:text-sm">
+              <div className="flex items-center space-x-1 text-xs sm:text-sm">
+                <span className="text-gray-500 hidden sm:inline">{t('sort_by')}</span>
                 <button
                   onClick={() => setSortBy(sortBy === 'rolling' ? 'winloss' : 'rolling')}
-                  className="flex items-center space-x-1 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+                  className="flex items-center space-x-1 px-2 py-1 rounded hover:bg-gray-100 transition-colors text-xs sm:text-sm"
                 >
                   <span className="font-medium">
                     {sortBy === 'rolling' ? t('rolling') : t('win_loss')}
@@ -624,19 +624,19 @@ export function Dashboard({ user }: DashboardProps) {
               <p className="text-xs text-gray-400 mt-1">Customer performance will appear here once rolling records are created</p>
             </div>
           ) : (
-            <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+            <div className="space-y-3 sm:space-y-4 max-h-96 overflow-y-auto pr-1 sm:pr-2">
               {getSortedCustomers().map((customer) => {
                 const indicator = getWinLossStatus(customer.totalWinLoss || 0);
                 const Icon = indicator.icon;
                 const winLoss = customer.totalWinLoss || 0;
                 
                 return (
-                  <div key={customer.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center space-x-4">
-                      <Icon className={`h-5 w-5 ${indicator.color}`} />
-                      <div>
-                        <p className="font-medium">{customer.name}</p>
-                        <p className="text-sm text-gray-500">
+                  <div key={customer.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-colors space-y-2 sm:space-y-0">
+                    <div className="flex items-center space-x-3 sm:space-x-4 flex-1">
+                      <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${indicator.color} flex-shrink-0`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm sm:text-base truncate">{customer.name}</p>
+                        <p className="text-xs sm:text-sm text-gray-500 truncate">
                           {t('agent')}: {customer.agentName} • {customer.isActive ? t('active') : t('inactive')}
                         </p>
                         <p className="text-xs text-purple-600">
@@ -644,7 +644,7 @@ export function Dashboard({ user }: DashboardProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-6 text-right text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 text-right text-xs">
                       <div>
                         <div className="text-gray-500">{t('rolling')}</div>
                         <div className="font-medium text-blue-600">HK${safeFormatNumber(Math.abs(customer.totalRolling || 0))}</div>

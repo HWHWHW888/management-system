@@ -41,6 +41,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   const [, setCustomerRolling] = useState<any[]>([]);
   const [expandedTripId, setExpandedTripId] = useState<string | null>(null);
   const [customerPhotos, setCustomerPhotos] = useState<any[]>([]);
+  const [successMessage, setSuccessMessage] = useState<string>('');
 
   // Load staff data and shifts
   const loadStaffData = useCallback(async () => {
@@ -120,6 +121,8 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
             setIsCheckInDialogOpen(false);
             setCheckInPhoto(null);
             setCheckInNotes('');
+            setSuccessMessage('Check-in successful! You are now on duty.');
+            setTimeout(() => setSuccessMessage(''), 3000);
             await loadStaffData(); // Refresh data
           } else {
             showError('Check-in failed: ' + response.message);
@@ -159,6 +162,8 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
             setIsCheckOutDialogOpen(false);
             setCheckOutPhoto(null);
             setCheckOutNotes('');
+            setSuccessMessage('Check-out successful! Your shift has ended.');
+            setTimeout(() => setSuccessMessage(''), 3000);
             await loadStaffData(); // Refresh data
           } else {
             showError('Check-out failed: ' + response.message);
@@ -439,7 +444,9 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
             setSelectedCustomer(null);
             
             // 显示成功消息
-            showError(`${uploadType === 'transaction' ? 'Transaction' : 'Rolling'} photo uploaded successfully and pending approval`);
+            setSuccessMessage(`${uploadType === 'transaction' ? 'Transaction' : 'Rolling'} photo uploaded successfully and pending approval`);
+            // 3秒后自动清除成功消息
+            setTimeout(() => setSuccessMessage(''), 3000);
             
             // 刷新客户数据
             await loadTripDetails(selectedTripForUpload);
@@ -476,15 +483,37 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   const currentShift = getCurrentShift();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 px-2 sm:px-0">
+      {/* Success Message */}
+      {successMessage && (
+        <div className="fixed top-4 right-4 left-4 md:left-auto md:max-w-md z-50">
+          <div className="border-green-200 bg-green-50 shadow-lg rounded-lg p-4">
+            <div className="flex justify-between items-start">
+              <div className="flex items-start">
+                <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 mr-3" />
+                <div className="flex-1">
+                  <p className="font-medium text-green-800 mb-1">Success</p>
+                  <p className="text-sm text-green-700">{successMessage}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSuccessMessage('')}
+                className="text-green-500 hover:text-green-700"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">Staff Self-Service</h2>
-          <p className="text-gray-600">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl sm:text-2xl font-bold">Staff Self-Service</h2>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">
             Welcome, {currentStaff?.name || user.username}
           </p>
-          <div className="flex items-center space-x-4 mt-1">
+          <div className="flex flex-wrap items-center gap-2 mt-2">
             <Badge variant="outline" className="text-xs">
               Staff ID: {user.id}
             </Badge>
@@ -493,57 +522,61 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
             </Badge>
           </div>
         </div>
-        <Button variant="outline" onClick={loadStaffData} disabled={isLoading}>
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Refresh
+        <Button variant="outline" onClick={loadStaffData} disabled={isLoading} className="w-full sm:w-auto">
+          <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+          <span className="hidden sm:inline">Refresh</span>
+          <span className="sm:hidden">Refresh Data</span>
         </Button>
       </div>
 
       {/* Current Status Card */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Clock className="w-5 h-5" />
+        <CardHeader className="pb-3 sm:pb-6">
+          <CardTitle className="flex items-center space-x-2 text-base sm:text-lg">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>Current Status</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+        <CardContent className="pt-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+            <div className="flex-1 min-w-0">
               {isCheckedIn() ? (
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Badge className="bg-green-100 text-green-800 px-3 py-1">
-                      <CheckCircle className="w-4 h-4 mr-1" />
+                <div className="space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
+                    <Badge className="bg-green-100 text-green-800 px-3 py-1 w-fit">
+                      <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                       On Duty
                     </Badge>
-                    <span className="text-sm text-gray-600">
+                    <span className="text-xs sm:text-sm text-gray-600">
                       Since: {new Date((currentShift as any)!.check_in_time).toLocaleString()}
                     </span>
                   </div>
                   <div className="text-xs text-gray-500">
-                    Shift Date: {(currentShift as any)!.shift_date} | 
-                    Duration: {Math.floor((new Date().getTime() - new Date((currentShift as any)!.check_in_time).getTime()) / (1000 * 60))} minutes
+                    <div className="sm:inline">Shift Date: {(currentShift as any)!.shift_date}</div>
+                    <div className="sm:inline sm:ml-2">
+                      Duration: {Math.floor((new Date().getTime() - new Date((currentShift as any)!.check_in_time).getTime()) / (1000 * 60))} min
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center space-x-2">
-                  <Badge variant="secondary" className="px-3 py-1">
-                    <XCircle className="w-4 h-4 mr-1" />
+                <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
+                  <Badge variant="secondary" className="px-3 py-1 w-fit">
+                    <XCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                     Off Duty
                   </Badge>
-                  <span className="text-sm text-gray-600">Ready to check in</span>
+                  <span className="text-xs sm:text-sm text-gray-600">Ready to check in</span>
                 </div>
               )}
             </div>
 
-            <div className="flex space-x-2">
+            <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2">
               {isCheckedIn() ? (
                 <Dialog open={isCheckOutDialogOpen} onOpenChange={setIsCheckOutDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="destructive" disabled={isSaving}>
-                      <LogOut className="w-4 h-4 mr-2" />
-                      Check Out
+                    <Button variant="destructive" disabled={isSaving} className="w-full sm:w-auto">
+                      <LogOut className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                      <span className="hidden sm:inline">Check Out</span>
+                      <span className="sm:hidden">Check Out</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
@@ -601,9 +634,10 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
               ) : (
                 <Dialog open={isCheckInDialogOpen} onOpenChange={setIsCheckInDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button disabled={isSaving}>
-                      <LogIn className="w-4 h-4 mr-2" />
-                      Check In
+                    <Button disabled={isSaving} className="w-full sm:w-auto">
+                      <LogIn className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                      <span className="hidden sm:inline">Check In</span>
+                      <span className="sm:hidden">Check In</span>
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
@@ -666,25 +700,25 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
 
       {/* Tabbed Content */}
       <Tabs defaultValue="trips" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="trips" className="flex items-center space-x-2">
-            <MapPin className="w-4 h-4" />
-            <span>My Trips</span>
+        <TabsList className="grid w-full grid-cols-2 h-auto">
+          <TabsTrigger value="trips" className="flex items-center space-x-1 sm:space-x-2 py-2 sm:py-3">
+            <MapPin className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="text-xs sm:text-sm">My Trips</span>
           </TabsTrigger>
-          <TabsTrigger value="shifts" className="flex items-center space-x-2">
-            <Calendar className="w-4 h-4" />
-            <span>My Shifts</span>
+          <TabsTrigger value="shifts" className="flex items-center space-x-1 sm:space-x-2 py-2 sm:py-3">
+            <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="text-xs sm:text-sm">My Shifts</span>
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="trips" className="mt-6">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <MapPin className="w-5 h-5" />
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="flex items-center space-x-2 text-base sm:text-lg">
+                <MapPin className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span>Assigned Trips</span>
               </CardTitle>
-              <CardDescription>Trips you are assigned to manage</CardDescription>
+              <CardDescription className="text-sm">Trips you are assigned to manage</CardDescription>
             </CardHeader>
             <CardContent>
               {assignedTrips.length === 0 ? (
@@ -697,36 +731,36 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                   {assignedTrips.map((trip) => (
                     <div key={trip.id} className="mb-4">
                       <Card className="border-l-4 border-l-blue-400">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center space-x-2">
-                              <h4 className="font-medium">{trip.trip_name}</h4>
+                        <CardContent className="p-3 sm:p-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0 mb-3">
+                            <div className="flex items-center space-x-2 min-w-0 flex-1">
+                              <h4 className="font-medium text-sm sm:text-base truncate">{trip.trip_name}</h4>
                             </div>
-                            <Badge className={
+                            <Badge className={`text-xs w-fit ${
                               trip.status === 'active' ? 'bg-green-100 text-green-800' :
                               trip.status === 'in-progress' ? 'bg-blue-100 text-blue-800' :
                               'bg-gray-100 text-gray-800'
-                            }>
+                            }`}>
                               {trip.status}
                             </Badge>
                           </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                             <div>
                               <Label className="text-xs text-gray-500">Destination</Label>
-                              <p>{trip.destination}</p>
+                              <p className="text-sm">{trip.destination}</p>
                             </div>
                             <div>
                               <Label className="text-xs text-gray-500">Dates</Label>
-                              <p>{new Date(trip.start_date).toLocaleDateString()} - {new Date(trip.end_date).toLocaleDateString()}</p>
+                              <p className="text-sm">{new Date(trip.start_date).toLocaleDateString()} - {new Date(trip.end_date).toLocaleDateString()}</p>
                             </div>
                           </div>
-                          <div className="mt-3 flex items-center justify-between">
-                            <div className="flex space-x-2">
+                          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
+                            <div className="flex flex-wrap gap-2">
                               <Badge variant="outline" className="text-xs">
                                 {trip.activecustomerscount || 0} Active Customers
                               </Badge>
                             </div>
-                            <div className="flex space-x-2">
+                            <div className="flex flex-col sm:flex-row gap-2 sm:space-x-2">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -738,17 +772,19 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                     loadTripDetails(trip);
                                   }
                                 }}
-                                className="text-xs"
+                                className="text-xs w-full sm:w-auto"
                               >
                                 {expandedTripId === trip.id ? (
                                   <>
                                     <ChevronUp className="w-3 h-3 mr-1" />
-                                    Hide Customers
+                                    <span className="hidden sm:inline">Hide Customers</span>
+                                    <span className="sm:hidden">Hide</span>
                                   </>
                                 ) : (
                                   <>
                                     <ChevronDown className="w-3 h-3 mr-1" />
-                                    View Customers
+                                    <span className="hidden sm:inline">View Customers</span>
+                                    <span className="sm:hidden">View</span>
                                   </>
                                 )}
                               </Button>
@@ -759,14 +795,14 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                       
                       {/* Expandable Customer Section */}
                       {expandedTripId === trip.id && (
-                        <div className="mt-2 pl-4 border-l-2 border-blue-200">
+                        <div className="mt-3 pl-2 sm:pl-4 border-l-2 border-blue-200">
                           {tripCustomers.length === 0 ? (
-                            <div className="text-center py-4 bg-gray-50 rounded">
-                              <Users className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-                              <p className="text-sm text-gray-500">Loading customers...</p>
+                            <div className="text-center py-6 bg-gray-50 rounded">
+                              <Users className="w-6 h-6 sm:w-8 sm:h-8 mx-auto text-gray-400 mb-2" />
+                              <p className="text-xs sm:text-sm text-gray-500">Loading customers...</p>
                             </div>
                           ) : (
-                            <div className="space-y-3">
+                            <div className="space-y-2 sm:space-y-3">
                               {/* 调试信息 */}
                               {tripCustomers.map((customer) => {
                                 
@@ -850,20 +886,20 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                 
                                 return (
                                   <Card key={customerId} className="border-l-4 border-l-gray-300">
-                                    <CardContent className="p-3">
-                                      <div className="flex justify-between items-center mb-3">
-                                        <h5 className="text-base font-medium">
+                                    <CardContent className="p-2 sm:p-3">
+                                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-2 sm:space-y-0 mb-3">
+                                        <h5 className="text-sm sm:text-base font-medium truncate">
                                           {customerName || `Customer`}
                                         </h5>
-                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs w-fit">
                                           Active
                                         </Badge>
                                       </div>
                                       
-                                      <div className="grid grid-cols-2 gap-4">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                         {/* Transaction Photo Section */}
-                                        <div className="border rounded p-3">
-                                          <h6 className="text-sm font-medium mb-2">Transaction</h6>
+                                        <div className="border rounded p-2 sm:p-3">
+                                          <h6 className="text-xs sm:text-sm font-medium mb-2">Transaction</h6>
                                           <div className="mb-3">
                                             <PhotoDisplay
                                               photos={transactionPhotos}
@@ -882,22 +918,23 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                           
                                           <Button
                                             size="sm"
-                                            variant="default"
+                                            variant="outline"
                                             onClick={() => {
                                               setSelectedCustomer(customer);
                                               setUploadType('transaction');
                                               setIsUploadDialogOpen(true);
                                             }}
-                                            className="w-full flex items-center justify-center"
+                                            className="w-full flex items-center justify-center text-xs sm:text-sm border-2"
                                           >
-                                            <Camera className="w-4 h-4 mr-1" />
-                                            Upload Transaction Photo
+                                            <Camera className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                                            <span className="hidden sm:inline">Upload Transaction Photo</span>
+                                            <span className="sm:hidden">Upload Transaction</span>
                                           </Button>
                                         </div>
                                         
                                         {/* Rolling Photo Section */}
-                                        <div className="border rounded p-3">
-                                          <h6 className="text-sm font-medium mb-2">Rolling</h6>
+                                        <div className="border rounded p-2 sm:p-3">
+                                          <h6 className="text-xs sm:text-sm font-medium mb-2">Rolling</h6>
                                           <div className="mb-3">
                                             <PhotoDisplay
                                               photos={rollingPhotos}
@@ -916,16 +953,17 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                           
                                           <Button
                                             size="sm"
-                                            variant="default"
+                                            variant="outline"
                                             onClick={() => {
                                               setSelectedCustomer(customer);
                                               setUploadType('rolling');
                                               setIsUploadDialogOpen(true);
                                             }}
-                                            className="w-full flex items-center justify-center"
+                                            className="w-full flex items-center justify-center text-xs sm:text-sm border-2"
                                           >
-                                            <Camera className="w-4 h-4 mr-1" />
-                                            Upload Rolling Photo
+                                            <Camera className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                                            <span className="hidden sm:inline">Upload Rolling Photo</span>
+                                            <span className="sm:hidden">Upload Rolling</span>
                                           </Button>
                                         </div>
                                       </div>
@@ -945,14 +983,14 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
           </Card>
         </TabsContent>
 
-        <TabsContent value="shifts" className="mt-6">
+        <TabsContent value="shifts" className="mt-4 sm:mt-6">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Calendar className="w-5 h-5" />
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="flex items-center space-x-2 text-base sm:text-lg">
+                <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span>Shift History</span>
               </CardTitle>
-              <CardDescription>Your recent shifts and attendance</CardDescription>
+              <CardDescription className="text-sm">Your recent shifts and attendance</CardDescription>
             </CardHeader>
             <CardContent>
               {shifts.length === 0 ? (
@@ -972,18 +1010,18 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                     .slice(0, 10)
                     .map((shift) => (
                     <Card key={shift.id} className="border-l-4 border-l-blue-400">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-2">
+                      <CardContent className="p-3 sm:p-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0 mb-3">
                           <div className="flex items-center space-x-2">
-                            <Calendar className="w-4 h-4 text-gray-400" />
-                            <span className="font-medium">{(shift as any).shift_date}</span>
+                            <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+                            <span className="font-medium text-sm sm:text-base">{(shift as any).shift_date}</span>
                           </div>
-                          <Badge className={shift.status === 'checked-in' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                          <Badge className={`text-xs w-fit ${shift.status === 'checked-in' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                             {shift.status === 'checked-in' ? 'On Duty' : 'Completed'}
                           </Badge>
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                           <div>
                             <Label className="text-xs text-gray-500">Check-in Time</Label>
                             <p>{new Date((shift as any).check_in_time).toLocaleString()}</p>
@@ -992,7 +1030,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                 <ImageWithFallback
                                   src={(shift as any).check_in_photo}
                                   alt="Check-in proof"
-                                  className="w-16 h-16 object-cover rounded border"
+                                  className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded border"
                                 />
                               </div>
                             )}
@@ -1007,7 +1045,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                   <ImageWithFallback
                                     src={(shift as any).check_out_photo}
                                     alt="Check-out proof"
-                                    className="w-16 h-16 object-cover rounded border"
+                                    className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded border"
                                   />
                                 </div>
                               )}
