@@ -95,7 +95,9 @@ export const colors = {
 };
 
 // 字体系统
-export const typography = {
+// Note: Currently used in components object, keeping for future use
+// export const typography = {
+const typographyValues = {
   // 字体族
   fontFamily: {
     sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
@@ -181,7 +183,30 @@ export const typography = {
 };
 
 // 间距系统 (基于 4px 网格)
-export const spacing = {
+// Note: Currently used in components object, keeping for future use
+// export const spacing = {
+//   0: '0px',
+//   1: '0.25rem',   // 4px
+//   2: '0.5rem',    // 8px
+//   3: '0.75rem',   // 12px
+//   4: '1rem',      // 16px
+//   5: '1.25rem',   // 20px
+//   6: '1.5rem',    // 24px
+//   8: '2rem',      // 32px
+//   10: '2.5rem',   // 40px
+//   12: '3rem',     // 48px
+//   16: '4rem',     // 64px
+//   20: '5rem',     // 80px
+//   24: '6rem',     // 96px
+//   32: '8rem',     // 128px
+//   40: '10rem',    // 160px
+//   48: '12rem',    // 192px
+//   56: '14rem',    // 224px
+//   64: '16rem',    // 256px
+// };
+
+// Inline spacing values for components
+const spacingValues = {
   0: '0px',
   1: '0.25rem',   // 4px
   2: '0.5rem',    // 8px
@@ -341,9 +366,9 @@ export const components = {
       lg: '1rem 1.5rem',       // 16px 24px
     },
     fontSize: {
-      sm: typography.fontSize.sm,
-      md: typography.fontSize.base,
-      lg: typography.fontSize.lg,
+      sm: typographyValues.fontSize.sm,
+      md: typographyValues.fontSize.base,
+      lg: typographyValues.fontSize.lg,
     }
   },
 
@@ -362,9 +387,9 @@ export const components = {
   // 卡片
   card: {
     padding: {
-      sm: spacing[3],  // 12px
-      md: spacing[4],  // 16px
-      lg: spacing[6],  // 24px
+      sm: spacingValues[3],  // 12px
+      md: spacingValues[4],  // 16px
+      lg: spacingValues[6],  // 24px
     },
     borderRadius: borderRadius.lg,
     shadow: boxShadow.sm,
@@ -377,8 +402,8 @@ export const components = {
       md: '0.375rem 0.75rem',  // 6px 12px
     },
     fontSize: {
-      sm: typography.fontSize.xs,
-      md: typography.fontSize.sm,
+      sm: typographyValues.fontSize.xs,
+      md: typographyValues.fontSize.sm,
     },
     borderRadius: borderRadius.full,
   }
@@ -387,8 +412,8 @@ export const components = {
 // 导出所有设计令牌
 export const designTokens = {
   colors,
-  typography,
-  spacing,
+  typography: typographyValues,
+  spacing: spacingValues,
   borderRadius,
   boxShadow,
   breakpoints,

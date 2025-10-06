@@ -1,10 +1,11 @@
 import React from 'react';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Alert, AlertDescription } from '../ui/alert';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
-import { colors, typography as typographyTokens, spacing as spacingTokens, components } from '../../styles/designTokens';
+// Note: Removed unused imports to fix ESLint warnings
+// import { Button } from '../ui/button';
+// import { Badge } from '../ui/badge';
+// import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+// import { Alert, AlertDescription } from '../ui/alert';
+// import { colors, typography as typographyTokens, spacing as spacingTokens, components } from '../../styles/designTokens';
 
 // =============================================================================
 // 设计系统 - 统一的UI组件样式规范
@@ -62,6 +63,7 @@ export const spacing = {
   buttonGroup: 'flex flex-col sm:flex-row gap-2 sm:space-x-2',
   // 网格间距
   grid: 'gap-3 sm:gap-4',
+// };
 };
 
 // 响应式文本大小 (基于设计令牌)
@@ -76,6 +78,7 @@ export const typography = {
   small: 'text-xs sm:text-sm',
   // 标签
   label: 'text-xs sm:text-sm font-medium text-gray-500',
+// };
 };
 
 // 按钮尺寸系统

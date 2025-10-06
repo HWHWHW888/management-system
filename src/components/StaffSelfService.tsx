@@ -16,15 +16,11 @@ import { apiClient } from '../utils/api/apiClient';
 import { 
   DSContainer, 
   DSHeader, 
-  DSCard, 
   DSButton, 
-  DSBadge, 
   DSNotification,
-  DSFormLayout,
-  spacing,
-  typography,
-  iconSizes,
-  buttonSizes
+  iconSizes
+  // Note: Removed unused imports to fix ESLint warnings
+  // DSCard, DSBadge, DSFormLayout, spacing, typography, buttonSizes
 } from './common/DesignSystem';
 
 interface StaffSelfServiceProps extends WithErrorHandlerProps {
