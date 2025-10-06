@@ -13,6 +13,19 @@ import { ImageWithFallback } from './figma/ImageWithFallback';
 import { PhotoDisplay } from './common/PhotoDisplay';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { apiClient } from '../utils/api/apiClient';
+import { 
+  DSContainer, 
+  DSHeader, 
+  DSCard, 
+  DSButton, 
+  DSBadge, 
+  DSNotification,
+  DSFormLayout,
+  spacing,
+  typography,
+  iconSizes,
+  buttonSizes
+} from './common/DesignSystem';
 
 interface StaffSelfServiceProps extends WithErrorHandlerProps {
   user: User;
@@ -483,51 +496,38 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
   const currentShift = getCurrentShift();
 
   return (
-    <div className="space-y-4 sm:space-y-6 px-2 sm:px-0">
+    <DSContainer>
       {/* Success Message */}
       {successMessage && (
-        <div className="fixed top-4 right-4 left-4 md:left-auto md:max-w-md z-50">
-          <div className="border-green-200 bg-green-50 shadow-lg rounded-lg p-4">
-            <div className="flex justify-between items-start">
-              <div className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 mr-3" />
-                <div className="flex-1">
-                  <p className="font-medium text-green-800 mb-1">Success</p>
-                  <p className="text-sm text-green-700">{successMessage}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setSuccessMessage('')}
-                className="text-green-500 hover:text-green-700"
-              >
-                <XCircle className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
+        <DSNotification
+          type="success"
+          title="Success"
+          message={successMessage}
+          onClose={() => setSuccessMessage('')}
+        />
       )}
+      
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-3 sm:space-y-0">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-xl sm:text-2xl font-bold">Staff Self-Service</h2>
-          <p className="text-sm sm:text-base text-gray-600 mt-1">
-            Welcome, {currentStaff?.name || user.username}
-          </p>
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            <Badge variant="outline" className="text-xs">
-              Staff ID: {user.id}
-            </Badge>
-            <Badge variant="outline" className="text-xs">
-              {assignedTrips.length} Assigned Trips
-            </Badge>
-          </div>
-        </div>
-        <Button variant="outline" onClick={loadStaffData} disabled={isLoading} className="w-full sm:w-auto">
-          <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
-          <span className="hidden sm:inline">Refresh</span>
-          <span className="sm:hidden">Refresh Data</span>
-        </Button>
-      </div>
+      <DSHeader
+        title="Staff Self-Service"
+        subtitle={`Welcome, ${currentStaff?.name || user.username}`}
+        badges={[
+          { text: `Staff ID: ${user.id}`, variant: 'gray' },
+          { text: `${assignedTrips.length} Assigned Trips`, variant: 'primary' }
+        ]}
+        actions={
+          <DSButton
+            variant="outline"
+            size="mobile"
+            onClick={loadStaffData}
+            disabled={isLoading}
+            icon={<RefreshCw className={iconSizes.sm} />}
+          >
+            <span className="hidden sm:inline">Refresh</span>
+            <span className="sm:hidden">Refresh Data</span>
+          </DSButton>
+        }
+      />
 
       {/* Current Status Card */}
       <Card>
@@ -916,20 +916,19 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                             />
                                           </div>
                                           
-                                          <Button
-                                            size="sm"
+                                          <DSButton
                                             variant="outline"
+                                            size="mobile"
                                             onClick={() => {
                                               setSelectedCustomer(customer);
                                               setUploadType('transaction');
                                               setIsUploadDialogOpen(true);
                                             }}
-                                            className="w-full flex items-center justify-center text-xs sm:text-sm border-2"
+                                            icon={<Camera className={iconSizes.sm} />}
                                           >
-                                            <Camera className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                                             <span className="hidden sm:inline">Upload Transaction Photo</span>
                                             <span className="sm:hidden">Upload Transaction</span>
-                                          </Button>
+                                          </DSButton>
                                         </div>
                                         
                                         {/* Rolling Photo Section */}
@@ -951,20 +950,19 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
                                             />
                                           </div>
                                           
-                                          <Button
-                                            size="sm"
+                                          <DSButton
                                             variant="outline"
+                                            size="mobile"
                                             onClick={() => {
                                               setSelectedCustomer(customer);
                                               setUploadType('rolling');
                                               setIsUploadDialogOpen(true);
                                             }}
-                                            className="w-full flex items-center justify-center text-xs sm:text-sm border-2"
+                                            icon={<Camera className={iconSizes.sm} />}
                                           >
-                                            <Camera className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                                             <span className="hidden sm:inline">Upload Rolling Photo</span>
                                             <span className="sm:hidden">Upload Rolling</span>
-                                          </Button>
+                                          </DSButton>
                                         </div>
                                       </div>
                                     </CardContent>
@@ -1170,7 +1168,7 @@ function StaffSelfServiceComponent({ user, showError, clearError }: StaffSelfSer
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </DSContainer>
   );
 }
 

@@ -14,7 +14,17 @@ import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { isReadOnlyRole } from '../utils/permissions';
 import { apiClient } from '../utils/api/apiClient';
-import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Save, Eye } from 'lucide-react';
+import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Save, Eye, Loader2 } from 'lucide-react';
+import { 
+  DSContainer, 
+  DSHeader, 
+  DSButton, 
+  DSBadge, 
+  DSNotification,
+  spacing,
+  typography,
+  iconSizes
+} from './common/DesignSystem';
 
 interface AgentManagementProps extends WithErrorHandlerProps {
   user: User;
@@ -210,52 +220,52 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
   // Show loading state
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-sm text-gray-600">Loading agent data from Supabase...</p>
+      <DSContainer>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className={`${typography.small} text-gray-600`}>Loading agent data from Supabase...</p>
+          </div>
         </div>
-      </div>
+      </DSContainer>
     );
   }
 
   return (
-    <div className="space-y-6">
-
+    <DSContainer>
       {/* Staff View Banner */}
       {isStaff && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center">
-            <Eye className="w-5 h-5 text-blue-600 mr-2" />
-            <div>
-              <p className="text-sm font-medium text-blue-800">
-                Agent Information - View Only
-              </p>
-              <p className="text-xs text-blue-600">
-                You have read-only access to agent information and contact details.
-              </p>
-            </div>
-          </div>
-        </div>
+        <DSNotification
+          type="info"
+          title="Agent Information - View Only"
+          message="You have read-only access to agent information and contact details."
+          autoClose={false}
+        />
       )}
 
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">Agent Management</h2>
-          <p className="text-gray-600">
-            {isStaff 
-              ? 'View agent information and contact details.' 
-              : 'Manage agents who bring customers to the casino. All agents are automatically customers.'
-            }
-          </p>
-        </div>
-        {!isReadOnly && (
+      <DSHeader
+        title="Agent Management"
+        subtitle={
+          isStaff 
+            ? 'View agent information and contact details.' 
+            : 'Manage agents who bring customers to the casino. All agents are automatically customers.'
+        }
+        badges={[
+          { text: `${agents.length} Agents`, variant: 'primary' }
+        ]}
+        actions={
+          !isReadOnly ? (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={openNewAgentDialog} disabled={saving}>
-                <Plus className="w-4 h-4 mr-2" />
+              <DSButton 
+                variant="primary" 
+                size="md"
+                onClick={openNewAgentDialog} 
+                disabled={saving}
+                icon={<Plus className={iconSizes.sm} />}
+              >
                 Add Agent
-              </Button>
+              </DSButton>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -345,28 +355,32 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                   </p>
                 </div>
 
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={saving}>
+                <div className={spacing.buttonGroup}>
+                  <DSButton 
+                    type="button" 
+                    variant="outline" 
+                    size="md"
+                    onClick={() => setIsDialogOpen(false)} 
+                    disabled={saving}
+                  >
                     Cancel
-                  </Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? (
-                      <>
-                        <Save className="w-4 h-4 mr-2 animate-spin" />
-                        Saving to Supabase...
-                      </>
-                    ) : (
-                      <>
-                        {editingAgent ? 'Update' : 'Add'} Agent
-                      </>
-                    )}
-                  </Button>
+                  </DSButton>
+                  <DSButton 
+                    type="submit" 
+                    variant="primary"
+                    size="md"
+                    disabled={saving}
+                    icon={saving ? <Save className="w-4 h-4 animate-spin" /> : undefined}
+                  >
+                    {saving ? 'Saving to Supabase...' : `${editingAgent ? 'Update' : 'Add'} Agent`}
+                  </DSButton>
                 </div>
               </form>
             </DialogContent>
           </Dialog>
-        )}
-      </div>
+          ) : null
+        }
+      />
 
       <div className="grid gap-6">
         {agents.length === 0 ? (
@@ -386,38 +400,38 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                     <CardHeader className="cursor-pointer hover:bg-gray-50 transition-colors">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <CardTitle className="flex items-center space-x-2">
+                          <CardTitle className={`${typography.h4} flex items-center space-x-2`}>
                             <span>{agent.name}</span>
-                            <Badge variant={agent.status ? "default" : "default"}>
+                            <DSBadge variant={agent.status ? "success" : "gray"}>
                               {agent.status ? 'Active' : 'Inactive'}
-                            </Badge>
+                            </DSBadge>
 
                             {agent.parentAgent && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center space-x-1">
-                                <UserCheck className="w-3 h-3" />
-                                <span>Sub-Agent</span>
-                              </Badge>
+                              <DSBadge variant="primary">
+                                <UserCheck className="w-3 h-3 mr-1" />
+                                Sub-Agent
+                              </DSBadge>
                             )}
 
                             {agent.children && agent.children.length > 0 && (
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 flex items-center space-x-1">
-                                <UserCheck className="w-3 h-3" />
-                                <span>{agent.children.length} Sub</span>
-                              </Badge>
+                              <DSBadge variant="success">
+                                <UserCheck className="w-3 h-3 mr-1" />
+                                {agent.children.length} Sub
+                              </DSBadge>
                             )}
 
                             {agent.attachments && agent.attachments.length > 0 && (
-                              <Badge variant="outline" className="flex items-center space-x-1">
-                                <Paperclip className="w-3 h-3" />
-                                <span>{agent.attachments.length}</span>
-                              </Badge>
+                              <DSBadge variant="gray">
+                                <Paperclip className="w-3 h-3 mr-1" />
+                                {agent.attachments.length}
+                              </DSBadge>
                             )}
 
                             {isStaff && (
-                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                              <DSBadge variant="warning">
                                 <Eye className="w-3 h-3 mr-1" />
                                 View Only
-                              </Badge>
+                              </DSBadge>
                             )}
                           </CardTitle>
                           <CardDescription>
@@ -622,7 +636,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
           })
         )}
       </div>
-    </div>
+    </DSContainer>
   );
 }
 

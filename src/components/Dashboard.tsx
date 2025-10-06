@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
-import { Badge } from './ui/badge';
 import { 
   Users, UserCheck, TrendingDown, DollarSign, Receipt, Trophy, Target, 
-  MapPin, Activity, ArrowUpDown, ArrowUp, ArrowDown
+  MapPin, Activity, ArrowUpDown, ArrowUp, ArrowDown, Loader2
 } from 'lucide-react';
 import { User, Trip, Customer, Agent } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { useLanguage } from '../contexts/LanguageContext';
+import { 
+  DSContainer, 
+  DSBadge, 
+  typography
+} from './common/DesignSystem';
 
 // Additional type definitions for Dashboard
 interface RollingRecord {
@@ -357,21 +361,23 @@ export function Dashboard({ user }: DashboardProps) {
   // Show loading state
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-sm text-gray-600">Loading dashboard data...</p>
+      <DSContainer>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+            <p className={`mt-2 ${typography.small} text-gray-600`}>Loading dashboard data...</p>
+          </div>
         </div>
-      </div>
+      </DSContainer>
     );
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 p-2 sm:p-0">
+    <DSContainer>
 
       {/* Key Performance Metrics - Real-time Customer Data */}
       <div>
-        <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4 px-1 sm:px-0">Real-time Financial Overview</h3>
+        <h3 className={`${typography.h3} mb-3 sm:mb-4 px-1 sm:px-0`}>Real-time Financial Overview</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -445,7 +451,7 @@ export function Dashboard({ user }: DashboardProps) {
 
       {/* Secondary Metrics - Operations Overview */}
       <div>
-        <h3 className="text-base sm:text-lg font-medium mb-3 sm:mb-4 px-1 sm:px-0">Operations Overview</h3>
+        <h3 className={`${typography.h3} mb-3 sm:mb-4 px-1 sm:px-0`}>Operations Overview</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -504,7 +510,7 @@ export function Dashboard({ user }: DashboardProps) {
       {/* Active Trips */}
       <Card className="h-full">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base sm:text-lg">Active Trips</CardTitle>
+          <CardTitle className={typography.h4}>Active Trips</CardTitle>
           <CardDescription className="text-xs sm:text-sm">
             Current ongoing trips with real-time performance data
           </CardDescription>
@@ -541,9 +547,9 @@ export function Dashboard({ user }: DashboardProps) {
                     <div key={trip.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                       <div className="flex items-center space-x-4">
                         <div className="flex-shrink-0">
-                          <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">
+                          <DSBadge variant="success">
                             {trip.status === 'active' ? t('active') : trip.status === 'in-progress' ? t('ongoing') : t('completed')}
-                          </Badge>
+                          </DSBadge>
                         </div>
                         <div>
                           <p className="font-medium">{trip.name || 'Unnamed Trip'}</p>
@@ -670,6 +676,6 @@ export function Dashboard({ user }: DashboardProps) {
           )}
         </CardContent>
       </Card>
-    </div>
+    </DSContainer>
   );
 }

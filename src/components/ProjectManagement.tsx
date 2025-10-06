@@ -99,6 +99,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [showCustomerPhotos, setShowCustomerPhotos] = useState(false);
   const [selectedCustomerForPhotos, setSelectedCustomerForPhotos] = useState<any>(null);
   const [customerPhotos, setCustomerPhotos] = useState<any[]>([]);
+  const [showDeleteCustomer, setShowDeleteCustomer] = useState(false);
+  const [deletingCustomer, setDeletingCustomer] = useState<any>(null);
   
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [sharingLoading, setSharingLoading] = useState(false);
@@ -775,6 +777,17 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Confirm and remove customer from trip
+  const confirmRemoveCustomerFromTrip = async () => {
+    if (!deletingCustomer) return;
+    
+    const customerId = deletingCustomer.customerId || deletingCustomer.customer_id;
+    setShowDeleteCustomer(false);
+    setDeletingCustomer(null);
+    
+    await handleRemoveCustomerFromTrip(customerId);
   };
 
   // Remove customer from trip
@@ -1779,30 +1792,36 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
 
               {/* Trip Details Tabs */}
               <Tabs value={selectedTripTab} onValueChange={setSelectedTripTab} className="space-y-4">
-                <TabsList className="grid w-full grid-cols-6">
-                  <TabsTrigger value="overview" className="flex items-center gap-1">
-                    <BarChart className="w-3 h-3" />
-                    Overview
+                <TabsList className="w-full flex flex-wrap sm:grid sm:grid-cols-6 gap-1 sm:gap-0 h-auto sm:h-10 p-1">
+                  <TabsTrigger value="overview" className="flex items-center gap-1 text-xs sm:text-sm px-1.5 sm:px-3 py-1.5 sm:py-2 min-w-0 flex-shrink-0">
+                    <BarChart className="w-3 h-3 flex-shrink-0" />
+                    <span className="hidden sm:inline">Overview</span>
+                    <span className="sm:hidden">Over</span>
                   </TabsTrigger>
-                  <TabsTrigger value="customers" className="flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    Customers
+                  <TabsTrigger value="customers" className="flex items-center gap-1 text-xs sm:text-sm px-1.5 sm:px-3 py-1.5 sm:py-2 min-w-0 flex-shrink-0">
+                    <Users className="w-3 h-3 flex-shrink-0" />
+                    <span className="hidden sm:inline">Customers</span>
+                    <span className="sm:hidden">Cust</span>
                   </TabsTrigger>
-                  <TabsTrigger value="agents" className="flex items-center gap-1">
-                    <UserCheck className="w-3 h-3" />
-                    Agents
+                  <TabsTrigger value="agents" className="flex items-center gap-1 text-xs sm:text-sm px-1.5 sm:px-3 py-1.5 sm:py-2 min-w-0 flex-shrink-0">
+                    <UserCheck className="w-3 h-3 flex-shrink-0" />
+                    <span className="hidden sm:inline">Agents</span>
+                    <span className="sm:hidden">Agt</span>
                   </TabsTrigger>
-                  <TabsTrigger value="staff" className="flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    Staff
+                  <TabsTrigger value="staff" className="flex items-center gap-1 text-xs sm:text-sm px-1.5 sm:px-3 py-1.5 sm:py-2 min-w-0 flex-shrink-0">
+                    <Users className="w-3 h-3 flex-shrink-0" />
+                    <span className="hidden sm:inline">Staff</span>
+                    <span className="sm:hidden">Staff</span>
                   </TabsTrigger>
-                  <TabsTrigger value="expenses" className="flex items-center gap-1">
-                    <DollarSign className="w-3 h-3" />
-                    Expenses
+                  <TabsTrigger value="expenses" className="flex items-center gap-1 text-xs sm:text-sm px-1.5 sm:px-3 py-1.5 sm:py-2 min-w-0 flex-shrink-0">
+                    <DollarSign className="w-3 h-3 flex-shrink-0" />
+                    <span className="hidden sm:inline">Expenses</span>
+                    <span className="sm:hidden">Exp</span>
                   </TabsTrigger>
-                  <TabsTrigger value="sharing" className="flex items-center gap-1">
-                    <Settings className="w-3 h-3" />
-                    Financials
+                  <TabsTrigger value="sharing" className="flex items-center gap-1 text-xs sm:text-sm px-1.5 sm:px-3 py-1.5 sm:py-2 min-w-0 flex-shrink-0">
+                    <Settings className="w-3 h-3 flex-shrink-0" />
+                    <span className="hidden sm:inline">Financials</span>
+                    <span className="sm:hidden">Fin</span>
                   </TabsTrigger>
                 </TabsList>
 
@@ -2012,101 +2031,116 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                       {(selectedTrip?.customers || []).map((tripCustomer: any) => (
                         <Card key={tripCustomer.customerId || tripCustomer.customer_id}>
                           <CardContent className="pt-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="font-medium">{tripCustomer.customerName || tripCustomer.customer?.name}</h4>
-                                  <Badge variant="outline" className="text-xs">
-                                    VIP: {tripCustomer.customer?.vip_level || 'Standard'}
-                                  </Badge>
+                            <div className="space-y-4">
+                              {/* 客户信息头部 */}
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-medium text-base">{tripCustomer.customerName || tripCustomer.customer?.name}</h4>
+                                <Badge variant="outline" className="text-xs">
+                                  VIP: {tripCustomer.customer?.vip_level || 'Standard'}
+                                </Badge>
+                              </div>
+                              
+                              {/* 财务数据 - 移动端优化布局 */}
+                              <div className="space-y-3 sm:space-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-5 sm:gap-4">
+                                <div className="flex justify-between sm:block">
+                                  <span className="text-sm text-gray-500">Buy-in:</span>
+                                  <div className="font-medium text-blue-600 text-right sm:text-left">
+                                    {formatCurrency(tripCustomer.total_buy_in || tripCustomer.buyInAmount || 0, viewingCurrency, selectedTrip)}
+                                  </div>
                                 </div>
-                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-2">
-                                  <div>
-                                    <span className="text-sm text-gray-500">Buy-in:</span>
-                                    <div className="font-medium text-blue-600">
-                                      {formatCurrency(tripCustomer.total_buy_in || tripCustomer.buyInAmount || 0, viewingCurrency, selectedTrip)}
-                                    </div>
+                                <div className="flex justify-between sm:block">
+                                  <span className="text-sm text-gray-500">Cash-out:</span>
+                                  <div className="font-medium text-purple-600 text-right sm:text-left">
+                                    {formatCurrency(tripCustomer.total_cash_out || tripCustomer.buyOutAmount || 0, viewingCurrency, selectedTrip)}
                                   </div>
-                                  <div>
-                                    <span className="text-sm text-gray-500">Cash-out:</span>
-                                    <div className="font-medium text-purple-600">
-                                      {formatCurrency(tripCustomer.total_cash_out || tripCustomer.buyOutAmount || 0, viewingCurrency, selectedTrip)}
-                                    </div>
+                                </div>
+                                <div className="flex justify-between sm:block">
+                                  <span className="text-sm text-gray-500">Rolling:</span>
+                                  <div className="font-medium text-orange-600 text-right sm:text-left">
+                                    {formatCurrency(tripCustomer.rolling_amount || tripCustomer.rollingAmount || 0, viewingCurrency, selectedTrip)}
                                   </div>
-                                  <div>
-                                    <span className="text-sm text-gray-500">Rolling:</span>
-                                    <div className="font-medium text-orange-600">
-                                      {formatCurrency(tripCustomer.rolling_amount || tripCustomer.rollingAmount || 0, viewingCurrency, selectedTrip)}
-                                    </div>
+                                </div>
+                                <div className="flex justify-between sm:block">
+                                  <span className="text-sm text-gray-500">Win/Loss:</span>
+                                  <div className={`font-medium text-right sm:text-left ${
+                                    (tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) > 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0)), viewingCurrency, selectedTrip)}
                                   </div>
-                                  <div>
-                                    <span className="text-sm text-gray-500">Win/Loss:</span>
-                                    <div className={`font-medium ${
-                                      (tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) > 0 ? 'text-green-600' : 'text-red-600'
-                                    }`}>
-                                      {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0)), viewingCurrency, selectedTrip)}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <span className="text-sm text-gray-500">Net Result:</span>
-                                    <div className={`font-medium ${
-                                      (tripCustomer.net_result || 0) > 0 ? 'text-green-600' : 'text-red-600'
-                                    }`}>
-                                      {formatCurrency(Math.abs(tripCustomer.net_result || 0), viewingCurrency, selectedTrip)}
-                                    </div>
+                                </div>
+                                <div className="flex justify-between sm:block">
+                                  <span className="text-sm text-gray-500">Net Result:</span>
+                                  <div className={`font-medium text-right sm:text-left ${
+                                    (tripCustomer.net_result || 0) > 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    {formatCurrency(Math.abs(tripCustomer.net_result || 0), viewingCurrency, selectedTrip)}
                                   </div>
                                 </div>
                               </div>
-                              <div className="flex gap-2 flex-wrap">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedCustomerForTransaction(tripCustomer);
-                                    setShowAddTransaction(true);
-                                  }}
-                                  disabled={saving}
-                                >
-                                  <Plus className="w-3 h-3 mr-1" />
-                                  Transaction
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedCustomerForRolling(tripCustomer);
-                                    setShowAddRolling(true);
-                                  }}
-                                  disabled={saving}
-                                >
-                                  <Plus className="w-3 h-3 mr-1" />
-                                  Rolling
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => toggleHistoryVisibility(tripCustomer.customerId || tripCustomer.customer_id)}
-                                  disabled={saving}
-                                >
-                                  <ChevronDown className={`w-3 h-3 transition-transform ${showHistory[tripCustomer.customerId || tripCustomer.customer_id] ? 'rotate-180' : ''}`} />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleViewCustomerPhotos(tripCustomer)}
-                                  disabled={saving}
-                                >
-                                  <Camera className="w-3 h-3 mr-1" />
-                                  Photos
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleRemoveCustomerFromTrip(tripCustomer.customerId || tripCustomer.customer_id)}
-                                  disabled={saving}
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
+                              
+                              {/* 操作按钮 - 移动端优化 */}
+                              <div className="flex flex-col sm:flex-row gap-2 sm:gap-2">
+                                <div className="flex gap-2 flex-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 sm:flex-none"
+                                    onClick={() => {
+                                      setSelectedCustomerForTransaction(tripCustomer);
+                                      setShowAddTransaction(true);
+                                    }}
+                                    disabled={saving}
+                                  >
+                                    <Plus className="w-3 h-3 mr-1" />
+                                    Transaction
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 sm:flex-none"
+                                    onClick={() => {
+                                      setSelectedCustomerForRolling(tripCustomer);
+                                      setShowAddRolling(true);
+                                    }}
+                                    disabled={saving}
+                                  >
+                                    <Plus className="w-3 h-3 mr-1" />
+                                    Rolling
+                                  </Button>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 sm:flex-none"
+                                    onClick={() => toggleHistoryVisibility(tripCustomer.customerId || tripCustomer.customer_id)}
+                                    disabled={saving}
+                                  >
+                                    <ChevronDown className={`w-3 h-3 transition-transform ${showHistory[tripCustomer.customerId || tripCustomer.customer_id] ? 'rotate-180' : ''}`} />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 sm:flex-none"
+                                    onClick={() => handleViewCustomerPhotos(tripCustomer)}
+                                    disabled={saving}
+                                  >
+                                    <Camera className="w-3 h-3 mr-1" />
+                                    Photos
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 sm:flex-none"
+                                    onClick={() => {
+                                      setDeletingCustomer(tripCustomer);
+                                      setShowDeleteCustomer(true);
+                                    }}
+                                    disabled={saving}
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
                               </div>
                             </div>
 
@@ -2183,6 +2217,42 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                         </Card>
                       ))}
                     </div>
+                  )}
+
+                  {/* Delete Customer Confirmation Dialog */}
+                  {!isReadOnly && (
+                    <AlertDialog open={showDeleteCustomer} onOpenChange={setShowDeleteCustomer}>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remove Customer from Trip</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to remove <strong>{deletingCustomer?.customerName || deletingCustomer?.customer?.name}</strong> from this trip?
+                            <br /><br />
+                            This will permanently remove all their transaction history, rolling records, and financial data associated with this trip.
+                            <br /><br />
+                            <strong>This action cannot be undone.</strong>
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel 
+                            onClick={() => {
+                              setShowDeleteCustomer(false);
+                              setDeletingCustomer(null);
+                            }}
+                            disabled={saving}
+                          >
+                            Cancel
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={confirmRemoveCustomerFromTrip}
+                            disabled={saving}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            {saving ? 'Removing...' : 'Remove Customer'}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   )}
                 </TabsContent>
 

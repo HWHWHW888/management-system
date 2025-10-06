@@ -983,7 +983,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                             )}
                           </CardTitle>
                           <CardDescription>
-                            {staffMember.position} • Member since {staffMember.created_at}
+                            {staffMember.position} • Member since {new Date(staffMember.created_at).toLocaleDateString('en-CA')}
                           </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2">
