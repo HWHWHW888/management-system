@@ -42,7 +42,7 @@ const corsOptions = {
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3001',
       'http://127.0.0.1:3002',
-      'https://management-system-production-9c14.up.railway.app',
+      'https://management-system-production-5864.up.railway.app',
       'https://hoewingroup.com',
       'https://www.hoewingroup.com'
     ];
