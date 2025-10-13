@@ -1610,8 +1610,8 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
         </Card>
       )}
 
-      {/* Agent-Customer Hierarchy View (Admin Only) */}
-      {user.role === 'admin' && (
+      {/* Agent-Customer Hierarchy View (Admin and Boss) */}
+      {(user.role === 'admin' || user.role === 'boss') && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
