@@ -137,6 +137,16 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
 
   // Dynamic currency viewing state - initialize with trip's default currency
   const [viewingCurrency, setViewingCurrency] = useState<string>('HKD');
+  
+  // Customer search state for Add Customer dialog
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+
+  // Clear customer search term when Add Customer dialog is closed
+  useEffect(() => {
+    if (!showAddCustomer) {
+      setCustomerSearchTerm('');
+    }
+  }, [showAddCustomer]);
 
   // Update viewing currency when selected trip changes
   useEffect(() => {
@@ -168,6 +178,18 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const safeFormatNumber = (value: number | undefined | null): string => {
     if (value === undefined || value === null || isNaN(value)) return '0';
     return value.toLocaleString();
+  };
+
+  // Filter customers by search term for Add Customer dialog
+  const filterCustomersBySearch = (customers: Customer[], searchTerm: string) => {
+    if (!searchTerm.trim()) return customers;
+    
+    const term = searchTerm.toLowerCase().trim();
+    return customers.filter(customer => 
+      customer.name?.toLowerCase().includes(term) ||
+      customer.email?.toLowerCase().includes(term) ||
+      customer.agentName?.toLowerCase().includes(term)
+    );
   };
 
   // Permissions
@@ -1984,29 +2006,62 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                         <DialogHeader>
                           <DialogTitle>Add Customer to Trip</DialogTitle>
                           <DialogDescription>
-                            Select from available customers ({(customers || []).filter(c => !(selectedTrip?.customers || []).some(tc => tc.customerId === c.id)).length} total)
+                            Search and select from available customers
                           </DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4 max-h-96 overflow-y-auto">
-                          {(customers || [])
-                            .filter(c => !(selectedTrip?.customers || []).some(tc => tc.customerId === c.id))
-                            .map(customer => (
-                              <div key={customer.id} className="flex items-center justify-between p-3 border rounded">
-                                <div>
-                                  <div className="font-medium">{customer.name}</div>
-                                  <div className="text-sm text-gray-500">{customer.email}</div>
-                                  <div className="text-xs text-gray-400">Agent: {customer.agentName}</div>
-                                </div>
-                                {!isReadOnly && (
-                                  <Button size="sm" onClick={() => handleAddCustomerToTrip(customer.id)} disabled={saving}>
-                                    {saving ? 'Adding...' : 'Add'}
-                                  </Button>
-                                )}
-                              </div>
-                            ))}
-                          {(customers || []).filter(c => !(selectedTrip?.customers || []).some(tc => tc.customerId === c.id)).length === 0 && (
-                            <p className="text-center text-gray-500 py-8">All customers are already added to this trip</p>
-                          )}
+                        <div className="space-y-4">
+                          {/* Search Input */}
+                          <div className="space-y-2">
+                            <Label htmlFor="customer-search">Search Customers</Label>
+                            <Input
+                              id="customer-search"
+                              type="text"
+                              placeholder="Search by name, email, or agent..."
+                              value={customerSearchTerm}
+                              onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                              className="w-full"
+                            />
+                          </div>
+                          
+                          {/* Customer List */}
+                          <div className="space-y-4 max-h-80 overflow-y-auto">
+                            {(() => {
+                              const availableCustomers = (customers || []).filter(c => 
+                                !(selectedTrip?.customers || []).some(tc => 
+                                  tc.customerId === c.id || (tc as any).customer_id === c.id
+                                )
+                              );
+                              const filteredCustomers = filterCustomersBySearch(availableCustomers, customerSearchTerm);
+                              
+                              return (
+                                <>
+                                  <div className="text-sm text-gray-500 px-1">
+                                    Showing {filteredCustomers.length} of {availableCustomers.length} available customers
+                                  </div>
+                                  {filteredCustomers.map(customer => (
+                                    <div key={customer.id} className="flex items-center justify-between p-3 border rounded">
+                                      <div>
+                                        <div className="font-medium">{customer.name}</div>
+                                        <div className="text-sm text-gray-500">{customer.email}</div>
+                                        <div className="text-xs text-gray-400">Agent: {customer.agentName}</div>
+                                      </div>
+                                      {!isReadOnly && (
+                                        <Button size="sm" onClick={() => handleAddCustomerToTrip(customer.id)} disabled={saving}>
+                                          {saving ? 'Adding...' : 'Add'}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {filteredCustomers.length === 0 && availableCustomers.length > 0 && (
+                                    <p className="text-center text-gray-500 py-8">No customers match your search</p>
+                                  )}
+                                  {availableCustomers.length === 0 && (
+                                    <p className="text-center text-gray-500 py-8">All customers are already added to this trip</p>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </DialogContent>
                     </Dialog>
