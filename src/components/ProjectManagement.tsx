@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
@@ -35,20 +35,22 @@ interface ProjectManagementProps {
   user?: { role: string; agentId?: string | null; username: string };
 }
 
-function ProjectManagementComponent({ user }: ProjectManagementProps) {
-  // Default user if not provided
-  const currentUser = user || { role: 'admin', agentId: null, username: 'admin' };
+const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
+  // Default user if not provided - memoized to prevent recreation
+  const currentUser = useMemo(() => user || { role: 'admin', agentId: null, username: 'admin' }, [user]);
   const clearError = useCallback(() => {}, []);
   const showError = useCallback((message: string) => console.error(message), []);
   const { t } = useLanguage();
-  const isReadOnly = isReadOnlyRole(currentUser.role);
-  const canSeeFinancials = canViewFinancialData(currentUser.role);
   
-  // Utility function for safe number conversion
-  const safeNumber = (value: any): number => {
+  // Memoize permission checks to prevent recalculation
+  const isReadOnly = useMemo(() => isReadOnlyRole(currentUser.role), [currentUser.role]);
+  const canSeeFinancials = useMemo(() => canViewFinancialData(currentUser.role), [currentUser.role]);
+  
+  // Memoized utility function for safe number conversion
+  const safeNumber = useCallback((value: any): number => {
     const num = parseFloat(value);
     return isNaN(num) ? 0 : num;
-  };
+  }, []);
   // Data states
   const [trips, setTrips] = useState<Trip[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -105,20 +107,25 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   const [expensesLoading, setExpensesLoading] = useState(false);
   const [sharingLoading, setSharingLoading] = useState(false);
   
-  // Transaction and Rolling form states
-  const [transactionForm, setTransactionForm] = useState({
-    type: 'buy-in', // buy-in, cash-out (database format)
+  // Transaction and Rolling form states - memoized initial values
+  const initialTransactionForm = useMemo(() => ({
+    type: 'buy-in' as 'buy-in' | 'cash-out',
     amount: '',
     venue: '',
-    datetime: new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm format
-  });
-  const [rollingForm, setRollingForm] = useState({
+    datetime: new Date().toISOString().slice(0, 16)
+  }), []);
+  
+  const initialRollingForm = useMemo(() => ({
     amount: '',
     staff_id: '',
-    game_type: 'baccarat',
+    game_type: 'baccarat' as 'baccarat' | 'blackjack' | 'roulette' | 'poker' | 'other',
     venue: '',
-    datetime: new Date().toISOString().slice(0, 16) // YYYY-MM-DDTHH:mm format
-  });
+    datetime: new Date().toISOString().slice(0, 16),
+    commission_rate: '0.014'
+  }), []);
+  
+  const [transactionForm, setTransactionForm] = useState(initialTransactionForm);
+  const [rollingForm, setRollingForm] = useState(initialRollingForm);
 
   // Form data states
   const [newTrip, setNewTrip] = useState({
@@ -137,7 +144,19 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
 
   // Dynamic currency viewing state - initialize with trip's default currency
   const [viewingCurrency, setViewingCurrency] = useState<string>('HKD');
-  
+
+  // Performance monitoring - disabled in production
+  // const [renderCount, setRenderCount] = useState(0);
+  // useEffect(() => {
+  //   setRenderCount(prev => {
+  //     const newCount = prev + 1;
+  //     if (newCount > 0 && newCount % 10 === 0) {
+  //       console.log(`🔄 ProjectManagement rendered ${newCount} times`);
+  //     }
+  //     return newCount;
+  //   });
+  // }, []);
+
   // Customer search state for Add Customer dialog
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
 
@@ -147,6 +166,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       setCustomerSearchTerm('');
     }
   }, [showAddCustomer]);
+  
+  // Note: Customer filtering is handled locally in the Add Customer dialog
 
   // Update viewing currency when selected trip changes
   useEffect(() => {
@@ -490,21 +511,28 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
       
       console.log(`✅ Basic project data loaded quickly: ${transformedTrips.length} trips`);
       
-      // Load detailed trip data in background (lazy loading)
+      // Load detailed trip data in background (lazy loading with throttling)
       if (transformedTrips.length > 0) {
         setTimeout(async () => {
           try {
-            const enrichedTrips = await Promise.all(transformedTrips.map(async (trip: any) => {
-              try {
-                const [statsResponse, sharingResponse, customersResponse] = await Promise.all([
-                  apiClient.get(`/trips/${trip.id}/statistics`),
-                  apiClient.get(`/trips/${trip.id}/sharing`),
-                  apiClient.get(`/trips/${trip.id}/customer-stats`)
-                ]);
+            // Process trips in batches to avoid overwhelming the server
+            const batchSize = 3;
+            const enrichedTrips = [];
+            
+            for (let i = 0; i < transformedTrips.length; i += batchSize) {
+              const batch = transformedTrips.slice(i, i + batchSize);
+              const batchResults = await Promise.all(batch.map(async (trip: any) => {
+                try {
+                  // Use Promise.allSettled to prevent one failure from blocking others
+                  const [statsResult, sharingResult, customersResult] = await Promise.allSettled([
+                    apiClient.get(`/trips/${trip.id}/statistics`),
+                    apiClient.get(`/trips/${trip.id}/sharing`),
+                    apiClient.get(`/trips/${trip.id}/customer-stats`)
+                  ]);
                 
-                const tripStats = statsResponse.success ? statsResponse.data : null;
-                const tripSharing = sharingResponse.success ? sharingResponse.data : null;
-                const tripCustomers = customersResponse.success ? customersResponse.data : [];
+                const tripStats = (statsResult.status === 'fulfilled' && statsResult.value.success) ? statsResult.value.data : null;
+                const tripSharing = (sharingResult.status === 'fulfilled' && sharingResult.value.success) ? sharingResult.value.data : null;
+                const tripCustomers = (customersResult.status === 'fulfilled' && customersResult.value.success) ? customersResult.value.data : [];
                 
                 const statsRoot = tripStats?.statistics || tripStats;
                 
@@ -539,7 +567,15 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                 console.warn(`Failed to load detailed data for trip ${trip.id}:`, error);
                 return { ...trip, _dataLoaded: false };
               }
-            }));
+              }));
+              
+              enrichedTrips.push(...batchResults);
+              
+              // Add small delay between batches to prevent overwhelming the server
+              if (i + batchSize < transformedTrips.length) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+              }
+            }
             
             // Update trips with detailed data
             setTrips(enrichedTrips);
@@ -673,7 +709,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
   };
 
   // Select trip for detailed view with comprehensive backend data
-  const selectTrip = async (trip: Trip) => {
+  const selectTrip = useCallback(async (trip: Trip) => {
     console.log('🎯 Selecting trip for details:', trip.name);
     
     try {
@@ -760,11 +796,11 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadAgentSummary, safeNumber]);
 
 
-  // Add customer to trip
-  const handleAddCustomerToTrip = async (customerId: string) => {
+  // Add customer to trip - memoized to prevent recreations
+  const handleAddCustomerToTrip = useCallback(async (customerId: string) => {
     if (!selectedTrip) return;
 
     const customer = customers.find(c => c.id === customerId);
@@ -799,7 +835,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     } finally {
       setSaving(false);
     }
-  };
+  }, [selectedTrip, customers, showError, selectTrip]);
 
   // Confirm and remove customer from trip
   const confirmRemoveCustomerFromTrip = async () => {
@@ -989,7 +1025,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         }
         setShowEditTransaction(false);
         setEditingTransaction(null);
-        setTransactionForm({ type: 'buy-in', amount: '', venue: '', datetime: new Date().toISOString().slice(0, 16) });
+        setTransactionForm({ type: 'buy-in' as 'buy-in' | 'cash-out', amount: '', venue: '', datetime: new Date().toISOString().slice(0, 16) });
       } else {
         showError('Failed to update transaction');
       }
@@ -1032,9 +1068,10 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
     setRollingForm({
       amount: String(rolling.rolling_amount || rolling.amount || ''),
       staff_id: rolling.staff_id || '',
-      game_type: rolling.game_type || 'baccarat',
+      game_type: (rolling.game_type || 'baccarat') as 'baccarat' | 'blackjack' | 'roulette' | 'poker' | 'other',
       venue: rolling.venue || '',
-      datetime: rolling.created_at ? new Date(rolling.created_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16)
+      datetime: rolling.created_at ? new Date(rolling.created_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
+      commission_rate: String(rolling.commission_rate || '0.014')
     });
     setShowEditRolling(true);
   };
@@ -1050,6 +1087,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         staff_id: rollingForm.staff_id,
         game_type: rollingForm.game_type,
         venue: rollingForm.venue || null,
+        commission_rate: parseFloat(rollingForm.commission_rate),
         updated_at: new Date().toISOString()
       };
 
@@ -1066,9 +1104,10 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         setRollingForm({ 
           amount: '', 
           staff_id: '', 
-          game_type: 'baccarat', 
+          game_type: 'baccarat' as 'baccarat' | 'blackjack' | 'roulette' | 'poker' | 'other', 
           venue: '', 
-          datetime: new Date().toISOString().slice(0, 16) 
+          datetime: new Date().toISOString().slice(0, 16),
+          commission_rate: '0.014'
         });
       } else {
         showError('Failed to update rolling');
@@ -1156,7 +1195,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         // Refresh the selected trip data
         await selectTrip(selectedTrip);
         setShowAddTransaction(false);
-        setTransactionForm({ type: 'buy-in', amount: '', venue: '', datetime: new Date().toISOString().slice(0, 16) });
+        setTransactionForm({ type: 'buy-in' as 'buy-in' | 'cash-out', amount: '', venue: '', datetime: new Date().toISOString().slice(0, 16) });
         setSelectedCustomerForTransaction(null);
       } else {
         showError('Failed to add transaction');
@@ -1189,6 +1228,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         game_type: rollingForm.game_type,
         rolling_amount: parseFloat(rollingForm.amount),
         venue: rollingForm.venue,
+        commission_rate: parseFloat(rollingForm.commission_rate),
         updated_at: new Date(rollingForm.datetime).toISOString()
       });
       
@@ -1196,7 +1236,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
         // Refresh the selected trip data completely to show new rolling record
         await selectTrip(selectedTrip);
         setShowAddRolling(false);
-        setRollingForm({ amount: '', staff_id: '', game_type: 'baccarat', venue: '', datetime: new Date().toISOString().slice(0, 16) });
+        setRollingForm({ amount: '', staff_id: '', game_type: 'baccarat' as 'baccarat' | 'blackjack' | 'roulette' | 'poker' | 'other', venue: '', datetime: new Date().toISOString().slice(0, 16), commission_rate: '0.014' });
         setSelectedCustomerForRolling(null);
       } else {
         showError('Failed to add rolling');
@@ -2248,9 +2288,16 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
                                           </span>
                                           <span className="text-sm text-gray-500">{rolling.venue}</span>
                                           <span className="text-xs text-gray-400">({rolling.game_type})</span>
+                                          <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-xs">
+                                            {((rolling.commission_rate || 0.014) * 100).toFixed(2)}%
+                                          </Badge>
                                         </div>
-                                        <div className="text-xs text-gray-400 mt-1">
-                                          {new Date(rolling.created_at).toLocaleString()}
+                                        <div className="text-xs text-gray-400 mt-1 flex items-center space-x-2">
+                                          <span>{new Date(rolling.created_at).toLocaleString()}</span>
+                                          <span>•</span>
+                                          <span className="text-green-600">
+                                            Commission: {formatCurrency((rolling.rolling_amount || rolling.amount) * (rolling.commission_rate || 0.014), viewingCurrency, selectedTrip)}
+                                          </span>
                                         </div>
                                       </div>
                                       {!isReadOnly && (
@@ -3283,7 +3330,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               <Label htmlFor="transactionType">Transaction Type</Label>
               <Select
                 value={transactionForm.type}
-                onValueChange={(value) => setTransactionForm({...transactionForm, type: value})}
+                onValueChange={(value) => setTransactionForm({...transactionForm, type: value as 'buy-in' | 'cash-out'})}
               >
                 <SelectTrigger id="transactionType">
                   <SelectValue />
@@ -3399,7 +3446,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               <Label htmlFor="gameType">Game Type <span className="text-red-500">*</span></Label>
               <Select
                 value={rollingForm.game_type}
-                onValueChange={(value) => setRollingForm({...rollingForm, game_type: value})}
+                onValueChange={(value) => setRollingForm({...rollingForm, game_type: value as 'baccarat' | 'blackjack' | 'roulette' | 'poker' | 'other'})}
               >
                 <SelectTrigger id="gameType">
                   <SelectValue />
@@ -3428,6 +3475,28 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               {!rollingForm.amount && (
                 <p className="text-xs text-red-500 mt-1">Rolling amount is required</p>
               )}
+            </div>
+            <div>
+              <Label htmlFor="commissionRate">Commission Rate (%) <span className="text-red-500">*</span></Label>
+              <Input
+                id="commissionRate"
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                placeholder="Enter commission rate (e.g., 1.40 for 1.40%)"
+                value={(parseFloat(rollingForm.commission_rate) * 100).toFixed(2)}
+                onChange={(e) => setRollingForm({...rollingForm, commission_rate: String(parseFloat(e.target.value || '0') / 100)})}
+                className={!rollingForm.commission_rate ? "border-red-300" : ""}
+                required
+              />
+              {!rollingForm.commission_rate && (
+                <p className="text-xs text-red-500 mt-1">Commission rate is required</p>
+              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Current rate: {(parseFloat(rollingForm.commission_rate) * 100).toFixed(2)}% 
+                (Commission: HK${rollingForm.amount ? (parseFloat(rollingForm.amount) * parseFloat(rollingForm.commission_rate)).toLocaleString() : '0'})
+              </p>
             </div>
             <div>
               <Label htmlFor="rollingDateTime">Date & Time</Label>
@@ -3468,7 +3537,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
             </Button>
             <Button 
               onClick={handleAddRolling} 
-              disabled={saving || !rollingForm.amount || !rollingForm.staff_id || !rollingForm.venue}
+              disabled={saving || !rollingForm.amount || !rollingForm.staff_id || !rollingForm.venue || !rollingForm.commission_rate}
             >
               {saving ? (
                 <>
@@ -3598,7 +3667,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               <Label htmlFor="editTransactionType">Transaction Type</Label>
               <Select
                 value={transactionForm.type}
-                onValueChange={(value) => setTransactionForm({...transactionForm, type: value})}
+                onValueChange={(value) => setTransactionForm({...transactionForm, type: value as 'buy-in' | 'cash-out'})}
               >
                 <SelectTrigger id="editTransactionType">
                   <SelectValue />
@@ -3679,6 +3748,24 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               />
             </div>
             <div>
+              <Label htmlFor="editCommissionRate">Commission Rate (%)</Label>
+              <Input
+                id="editCommissionRate"
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                placeholder="Enter commission rate (e.g., 1.40 for 1.40%)"
+                value={(parseFloat(rollingForm.commission_rate) * 100).toFixed(2)}
+                onChange={(e) => setRollingForm({...rollingForm, commission_rate: String(parseFloat(e.target.value || '0') / 100)})}
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Current rate: {(parseFloat(rollingForm.commission_rate) * 100).toFixed(2)}% 
+                (Commission: HK${rollingForm.amount ? (parseFloat(rollingForm.amount) * parseFloat(rollingForm.commission_rate)).toLocaleString() : '0'})
+              </p>
+            </div>
+            <div>
               <Label htmlFor="editRollingStaff">Staff Member</Label>
               <Select
                 value={rollingForm.staff_id}
@@ -3703,7 +3790,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
               <Label htmlFor="editRollingGameType">Game Type</Label>
               <Select
                 value={rollingForm.game_type}
-                onValueChange={(value) => setRollingForm({...rollingForm, game_type: value})}
+                onValueChange={(value) => setRollingForm({...rollingForm, game_type: value as 'baccarat' | 'blackjack' | 'roulette' | 'poker' | 'other'})}
               >
                 <SelectTrigger id="editRollingGameType">
                   <SelectValue />
@@ -3747,7 +3834,7 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
             <Button variant="outline" onClick={() => setShowEditRolling(false)}>
               Cancel
             </Button>
-            <Button onClick={handleUpdateRolling} disabled={saving || !rollingForm.amount}>
+            <Button onClick={handleUpdateRolling} disabled={saving || !rollingForm.amount || !rollingForm.commission_rate}>
               {saving ? 'Updating...' : 'Update Rolling'}
             </Button>
           </div>
@@ -3874,6 +3961,8 @@ function ProjectManagementComponent({ user }: ProjectManagementProps) {
 
     </div>
   );
-}
+});
+
+ProjectManagementComponent.displayName = 'ProjectManagementComponent';
 
 export default ProjectManagementComponent;

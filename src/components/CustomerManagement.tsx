@@ -326,6 +326,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
+          agent_id: formData.agentId,
           vip_level: formData.vip_level || 'Silver',
           status: formData.status || 'active'
         };

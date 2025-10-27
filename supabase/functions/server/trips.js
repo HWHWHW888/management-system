@@ -22,10 +22,10 @@ async function calculateCustomerTripStats(tripId, customerId) {
       return { total_win_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0 };
     }
 
-    // Get rolling records data from trip_rolling table
+    // Get rolling records data from trip_rolling table with commission rates
     const { data: rollingRecords, error: rollingError } = await supabase
       .from('trip_rolling')
-      .select('rolling_amount')
+      .select('rolling_amount, commission_rate, commission_earned')
       .eq('trip_id', tripId)
       .eq('customer_id', customerId);
 
@@ -37,6 +37,7 @@ async function calculateCustomerTripStats(tripId, customerId) {
     let total_buy_in = 0;
     let total_cash_out = 0;
     let rolling_amount = 0;
+    let total_commission_earned = 0;
 
     // Process transactions - only handle database-allowed types
     transactions?.forEach(transaction => {
@@ -56,24 +57,22 @@ async function calculateCustomerTripStats(tripId, customerId) {
       }
     });
 
-    // Process rolling records - calculate total rolling amount
+    // Process rolling records - calculate total rolling amount and commission earned dynamically
     rollingRecords?.forEach(record => {
       const rollingAmt = parseFloat(record.rolling_amount) || 0;
+      const commissionEarned = parseFloat(record.commission_earned) || 0;
+      
       rolling_amount += rollingAmt;
+      total_commission_earned += commissionEarned;
     });
 
     // Calculate win/loss: buy-in - cash-out (simple difference)
     // Positive = customer won money, Negative = customer lost money
     const total_win_loss = total_buy_in - total_cash_out;
 
-    // Default commission rate (1.4%)
-    const commission_rate = 0.014; // 1.4% commission rate
-    
-    // Commission earned will be calculated automatically by the database
-    // Calculate net result for customer: total_win_loss - (rolling_amount * commission_rate)
+    // Calculate net result for customer: total_win_loss - total_commission_earned
     // This represents the customer's actual profit/loss after commission
-    const commission_earned = rolling_amount * commission_rate;
-    const net_result = total_win_loss - commission_earned;
+    const net_result = total_win_loss - total_commission_earned;
 
     return {
       total_win_loss,
@@ -81,11 +80,11 @@ async function calculateCustomerTripStats(tripId, customerId) {
       total_cash_out,
       net_result,
       rolling_amount,
-      commission_earned
+      total_commission_earned
     };
   } catch (error) {
     console.error('Error in calculateCustomerTripStats:', error);
-    return { total_win_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0, commission_earned: 0 };
+    return { total_win_loss: 0, total_buy_in: 0, total_cash_out: 0, net_result: 0, rolling_amount: 0, total_commission_earned: 0 };
   }
 }
 
@@ -103,7 +102,7 @@ async function updateCustomerTripStats(tripId, customerId) {
       total_win_loss: stats.total_win_loss,
       net_result: stats.net_result,
       rolling_amount: stats.rolling_amount,
-      commission_rate: 0.014, // 1.4% default commission rate
+      total_commission_earned: stats.total_commission_earned,
       updated_at: new Date().toISOString()
     }, {
       onConflict: 'trip_id,customer_id'
@@ -488,10 +487,10 @@ async function updateTripSharing(tripId, tripStats) {
 
     const totalExpenses = expenses?.reduce((sum, expense) => sum + (parseFloat(expense.amount) || 0), 0) || 0;
 
-    // Get rolling commission data from trip customer stats
+    // Get customer stats data (commission data now comes from trip_rolling)
     const { data: customerStats, error: statsError } = await supabase
       .from('trip_customer_stats')
-      .select('customer_id, rolling_amount, commission_rate, commission_earned, net_result')
+      .select('customer_id, rolling_amount, total_commission_earned, net_result')
       .eq('trip_id', tripId);
 
     if (statsError) {
@@ -502,10 +501,10 @@ async function updateTripSharing(tripId, tripStats) {
     // Check if there are any customers - if not, set sharing values to 0 but preserve expenses
     const hasCustomers = customerStats && customerStats.length > 0;
     
-    // Get total rolling amount from trip_rolling table
+    // Get rolling data with commission information from trip_rolling table
     const { data: tripRollingRecords, error: rollingError } = await supabase
       .from('trip_rolling')
-      .select('rolling_amount')
+      .select('rolling_amount, commission_rate, commission_earned')
       .eq('trip_id', tripId);
 
     if (rollingError) {
@@ -524,24 +523,34 @@ async function updateTripSharing(tripId, tripStats) {
       }
     }
 
-    // Calculate total rolling from trip_rolling table
-    const totalRollingFromTable = tripRollingRecords?.reduce((sum, record) => 
-      sum + (parseFloat(record.rolling_amount) || 0), 0) || 0;
-      
-    console.log('📊 Total rolling amount from trip_rolling table:', totalRollingFromTable);
+    // Calculate total rolling and commission from trip_rolling table (dynamic rates)
+    let totalRollingFromTable = 0;
+    let totalRollingCommission = 0;
     
-    // Calculate Rolling Commission based on customer rolling amounts at 1.4%
+    if (tripRollingRecords && tripRollingRecords.length > 0) {
+      tripRollingRecords.forEach(record => {
+        const rollingAmount = parseFloat(record.rolling_amount) || 0;
+        const commissionEarned = parseFloat(record.commission_earned) || 0;
+        
+        totalRollingFromTable += rollingAmount;
+        totalRollingCommission += commissionEarned;
+      });
+    }
+      
+    console.log('📊 Dynamic Rolling Commission Calculation:');
+    console.log('- Total rolling records:', tripRollingRecords?.length || 0);
+    console.log('- Total rolling amount from trip_rolling:', totalRollingFromTable);
+    console.log('- Total rolling commission (dynamic rates):', totalRollingCommission);
+    
+    // Get total rolling from customer stats for comparison
     const totalRolling = hasCustomers ? 
       customerStats.reduce((sum, stat) => sum + (parseFloat(stat.rolling_amount) || 0), 0) : 0;
-    const rollingCommissionRate = 1.4; // 1.4% rolling commission rate
-    const totalRollingCommission = totalRolling * rollingCommissionRate / 100;
     
-    console.log('🎲 Rolling Commission Debug:');
+    console.log('🎲 Rolling Data Comparison:');
     console.log('- hasCustomers:', hasCustomers);
-    console.log('- totalRollingFromTable (rolling_records):', totalRollingFromTable);
     console.log('- totalRolling (customer stats):', totalRolling);
-    console.log('- rollingCommissionRate:', rollingCommissionRate);
-    console.log('- totalRollingCommission:', totalRollingCommission);
+    console.log('- totalRollingFromTable (trip_rolling):', totalRollingFromTable);
+    console.log('- totalRollingCommission (dynamic):', totalRollingCommission);
 
     // Calculate net cash flow and result from company perspective
     let netCashFlow, netResult;
@@ -3316,13 +3325,22 @@ router.put('/:id/customers/:customerId/stats', authenticateToken, canAccessTrip,
       total_buy_in, 
       total_cash_out, 
       total_win_loss, 
-      rolling_amount, 
-      commission_rate = 0.014
+      rolling_amount
     } = req.body;
 
-    // Calculate net result: total_win_loss - commission
-    const commission_earned = (parseFloat(rolling_amount) || 0) * (parseFloat(commission_rate) || 0.014);
-    const net_result = (parseFloat(total_win_loss) || 0) - commission_earned;
+    // Get commission earned from trip_rolling records for this customer
+    const { data: rollingRecords } = await supabase
+      .from('trip_rolling')
+      .select('commission_earned')
+      .eq('trip_id', tripId)
+      .eq('customer_id', customerId);
+
+    // Calculate total commission earned from rolling records
+    const total_commission_earned = rollingRecords?.reduce((sum, record) => 
+      sum + (parseFloat(record.commission_earned) || 0), 0) || 0;
+
+    // Calculate net result: total_win_loss - total_commission_earned
+    const net_result = (parseFloat(total_win_loss) || 0) - total_commission_earned;
 
     const { data: stats, error } = await supabase
       .from('trip_customer_stats')
@@ -3334,7 +3352,7 @@ router.put('/:id/customers/:customerId/stats', authenticateToken, canAccessTrip,
         total_win_loss: parseFloat(total_win_loss) || 0,
         net_result,
         rolling_amount: parseFloat(rolling_amount) || 0,
-        commission_rate: parseFloat(commission_rate) || 0.014,
+        total_commission_earned,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'trip_id,customer_id'
@@ -3457,7 +3475,8 @@ router.post('/:id/rolling-records', authenticateToken, requireAdmin, async (req,
       rolling_amount,
       venue,
       attachment_id,
-      updated_at
+      updated_at,
+      commission_rate = 0.014  // Default 1.4% commission rate
     } = req.body;
 
     // Validate required fields
@@ -3482,7 +3501,7 @@ router.post('/:id/rolling-records', authenticateToken, requireAdmin, async (req,
       });
     }
 
-    // Create rolling record with new simplified schema
+    // Create rolling record with commission rate
     const { data: rollingRecord, error: rollingError } = await supabase
       .from('trip_rolling')
       .insert({
@@ -3493,6 +3512,7 @@ router.post('/:id/rolling-records', authenticateToken, requireAdmin, async (req,
         rolling_amount: parseFloat(rolling_amount),
         venue: venue || null,
         attachment_id: attachment_id || null,
+        commission_rate: parseFloat(commission_rate) || 0.014,
         created_at: new Date().toISOString(),
         updated_at: updated_at || new Date().toISOString() // Use provided updated_at or current time as fallback
       })

@@ -373,8 +373,7 @@ create table public.trip_customer_stats (
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
   total_win_loss numeric(15, 2) null default 0,
-  commission_rate numeric(5, 4) null default 0,
-  commission_earned numeric GENERATED ALWAYS as ((rolling_amount * commission_rate)) STORED (15, 2) null,
+  total_commission_earned numeric(15, 2) not null default 0,
   constraint trip_customer_stats_pkey primary key (id),
   constraint trip_customer_stats_trip_id_customer_id_key unique (trip_id, customer_id),
   constraint fk_trip_customer_stats_customer foreign KEY (customer_id) references customers (id),
@@ -432,6 +431,8 @@ create table public.trip_rolling (
   attachment_id uuid null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null,
+  commission_rate numeric(5, 4) null default 0,
+  commission_earned numeric GENERATED ALWAYS as ((rolling_amount * commission_rate)) STORED null,
   constraint trip_rolling_pkey primary key (id),
   constraint trip_rolling_attachment_id_fkey foreign KEY (attachment_id) references file_attachments (id),
   constraint trip_rolling_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete CASCADE,
@@ -439,21 +440,21 @@ create table public.trip_rolling (
   constraint trip_rolling_trip_id_fkey foreign KEY (trip_id) references trips (id) on delete CASCADE
 ) TABLESPACE pg_default;
 
-create index IF not exists idx_trip_rolling_trip_id on public.trip_rolling using btree (trip_id) TABLESPACE pg_default;
-
-create index IF not exists idx_trip_rolling_customer_id on public.trip_rolling using btree (customer_id) TABLESPACE pg_default;
-
-create index IF not exists idx_trip_rolling_staff_id on public.trip_rolling using btree (staff_id) TABLESPACE pg_default;
-
 create index IF not exists idx_trip_rolling_attachment_id on public.trip_rolling using btree (attachment_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_rolling_created_at on public.trip_rolling using btree (created_at desc) TABLESPACE pg_default;
 
-create index IF not exists idx_trip_rolling_trip_customer on public.trip_rolling using btree (trip_id, customer_id) TABLESPACE pg_default;
-
-create index IF not exists idx_trip_rolling_trip_staff on public.trip_rolling using btree (trip_id, staff_id) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_customer_id on public.trip_rolling using btree (customer_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_rolling_game_type on public.trip_rolling using btree (game_type) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_rolling_staff_id on public.trip_rolling using btree (staff_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_rolling_trip_customer on public.trip_rolling using btree (trip_id, customer_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_rolling_trip_id on public.trip_rolling using btree (trip_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_rolling_trip_staff on public.trip_rolling using btree (trip_id, staff_id) TABLESPACE pg_default;
 
 create table public.trip_sharing (
   trip_id uuid not null,
