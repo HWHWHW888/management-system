@@ -1062,16 +1062,31 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
     }
   };
 
+  // Helper function to get commission rate with proper null/undefined handling
+  const getCommissionRate = (commissionRate: any) => {
+    return (commissionRate !== null && commissionRate !== undefined) ? commissionRate : 0.014;
+  };
+
   // Handle edit rolling
   const handleEditRolling = (rolling: any) => {
+    console.log('🎲 Edit Rolling - Original data:', rolling);
+    console.log('🎲 Commission rate from rolling:', rolling.commission_rate);
+    console.log('🎲 Commission rate type:', typeof rolling.commission_rate);
+    
     setEditingRolling(rolling);
+    const commissionRate = rolling.commission_rate !== null && rolling.commission_rate !== undefined 
+      ? String(rolling.commission_rate) 
+      : '0.014';
+    
+    console.log('🎲 Final commission rate for form:', commissionRate);
+    
     setRollingForm({
       amount: String(rolling.rolling_amount || rolling.amount || ''),
       staff_id: rolling.staff_id || '',
       game_type: (rolling.game_type || 'baccarat') as 'baccarat' | 'blackjack' | 'roulette' | 'poker' | 'other',
       venue: rolling.venue || '',
       datetime: rolling.created_at ? new Date(rolling.created_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
-      commission_rate: String(rolling.commission_rate || '0.014')
+      commission_rate: commissionRate
     });
     setShowEditRolling(true);
   };
@@ -1090,6 +1105,10 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
         commission_rate: parseFloat(rollingForm.commission_rate),
         updated_at: new Date().toISOString()
       };
+
+      console.log('🎲 Update Rolling - Form data:', rollingForm);
+      console.log('🎲 Update Rolling - Sending to API:', rollingData);
+      console.log('🎲 Commission rate being sent:', rollingData.commission_rate, typeof rollingData.commission_rate);
 
       const response = await apiClient.updateRolling(editingRolling.id, rollingData);
       if (response.success) {
@@ -2289,14 +2308,14 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                           <span className="text-sm text-gray-500">{rolling.venue}</span>
                                           <span className="text-xs text-gray-400">({rolling.game_type})</span>
                                           <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-xs">
-                                            {((rolling.commission_rate || 0.014) * 100).toFixed(2)}%
+                                            {(getCommissionRate(rolling.commission_rate) * 100).toFixed(2)}%
                                           </Badge>
                                         </div>
                                         <div className="text-xs text-gray-400 mt-1 flex items-center space-x-2">
                                           <span>{new Date(rolling.created_at).toLocaleString()}</span>
                                           <span>•</span>
                                           <span className="text-green-600">
-                                            Commission: {formatCurrency((rolling.rolling_amount || rolling.amount) * (rolling.commission_rate || 0.014), viewingCurrency, selectedTrip)}
+                                            Commission: {formatCurrency((rolling.rolling_amount || rolling.amount) * getCommissionRate(rolling.commission_rate), viewingCurrency, selectedTrip)}
                                           </span>
                                         </div>
                                       </div>

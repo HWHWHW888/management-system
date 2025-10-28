@@ -1558,7 +1558,7 @@ router.post('/:id/customers', authenticateToken, canAccessTrip, async (req, res)
         total_win_loss: 0,
         net_result: 0,
         rolling_amount: 0,
-        commission_rate: 0.014 // 1.4% default commission rate
+        total_commission_earned: 0
       });
 
     if (statsError) {

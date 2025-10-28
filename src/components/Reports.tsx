@@ -73,22 +73,45 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
         throw new Error('No authentication token found. Please log in again.');
       }
       
+      // Add cache-busting parameter to force fresh data
+      const cacheBuster = `?_t=${Date.now()}`;
+      
       // Load all required data from backend API in parallel
       const [agentsResponse, customersResponse, tripsResponse, rollingRecordsResponse, transactionsResponse] = await Promise.all([
-        fetch(`${API_URL}/agents`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+        fetch(`${API_URL}/agents${cacheBuster}`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
         }),
-        fetch(`${API_URL}/customers`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+        fetch(`${API_URL}/customers${cacheBuster}`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
         }),
-        fetch(`${API_URL}/trips`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+        fetch(`${API_URL}/trips${cacheBuster}`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
         }),
-        fetch(`${API_URL}/rolling-records`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+        fetch(`${API_URL}/rolling-records${cacheBuster}`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
         }),
-        fetch(`${API_URL}/transactions`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+        fetch(`${API_URL}/transactions${cacheBuster}`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
         })
       ]);
       
@@ -149,6 +172,35 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
         rollingRecordsData: rollingRecordsData.length,
         transactionRecordsData: transactionRecordsData.length
       });
+
+      // Debug agent data structure
+      console.log('🔍 All Agent Data:', {
+        totalAgents: agentsData.length,
+        agents: agentsData.map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          status: a.status
+        }))
+      });
+      console.log('🔍 Sample Agent Data:', {
+        agents: agentsData.slice(0, 3).map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          status: a.status
+        })),
+        customers: customersData.slice(0, 3).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          agentId: c.agentId,
+          agent_id: c.agent_id
+        })),
+        trips: tripsData.slice(0, 2).map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          agentId: t.agentId,
+          agents: t.agents
+        }))
+      });
       
       console.log('📊 Loaded transaction data:');
       console.log('  - Rolling records:', rollingRecordsData.length);
@@ -157,22 +209,48 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
 
       // Process customers with data from backend (already includes totals)
       const processedCustomers = customersData.map((customer: Customer) => {
+        if (customersData.indexOf(customer) < 3) { // Debug first 3 customers
+          console.log('👤 Processing Customer (Full Object):', customer);
+          console.log('👤 Processing Customer (Key Fields):', {
+            id: customer.id,
+            name: customer.name,
+            totalRolling: customer.totalRolling,
+            total_rolling: (customer as any).total_rolling,
+            totalWinLoss: customer.totalWinLoss,
+            total_win_loss: (customer as any).total_win_loss,
+            agentId: customer.agentId,
+            agent_id: (customer as any).agent_id
+          });
+        }
+
         return {
           ...customer,
-          totalRolling: customer.totalRolling || 0,
-          totalWinLoss: customer.totalWinLoss || 0,
-          totalBuyIn: customer.totalBuyIn || 0,
-          totalBuyOut: customer.totalBuyOut || 0,
+          totalRolling: customer.totalRolling || (customer as any).total_rolling || 0,
+          totalWinLoss: customer.totalWinLoss || (customer as any).total_win_loss || 0,
+          totalBuyIn: customer.totalBuyIn || (customer as any).total_buy_in || 0,
+          totalBuyOut: customer.totalBuyOut || (customer as any).total_buy_out || 0,
           attachments: customer.attachments || [],
-          isAgent: customer.isAgent || false,
-          rollingPercentage: customer.rollingPercentage || 1.4,
-          creditLimit: customer.creditLimit || 0,
-          availableCredit: customer.availableCredit || 0
+          isAgent: customer.isAgent || (customer as any).is_agent || false,
+          rollingPercentage: customer.rollingPercentage || (customer as any).rolling_percentage || 1.4,
+          creditLimit: customer.creditLimit || (customer as any).credit_limit || 0,
+          availableCredit: customer.availableCredit || (customer as any).available_credit || 0
         };
       });
 
       // Process trips with trip_sharing data from backend API
       const processedTrips = tripsData.map((trip: Trip) => {
+        if (tripsData.indexOf(trip) < 2) { // Debug first 2 trips
+          console.log('🚗 Processing Trip (Full Object):', trip);
+          console.log('🚗 Processing Trip (Key Fields):', {
+            id: trip.id,
+            name: trip.name,
+            sharing: trip.sharing,
+            hasSharing: !!trip.sharing,
+            totalRolling: trip.totalRolling,
+            total_rolling: (trip as any).total_rolling
+          });
+        }
+
         // Use trip_sharing data from backend API (now in camelCase)
         const sharing = trip.sharing || {
           totalWinLoss: 0,
@@ -189,31 +267,31 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
           agentBreakdown: []
         };
 
-        // Calculate total rolling from commission (reverse calculation)
-        const totalRolling = sharing?.totalRollingCommission ? (sharing.totalRollingCommission / 0.014) : 0;
+        // Use actual total rolling from trip_sharing data instead of reverse calculation
+        const totalRolling = sharing?.totalRolling || sharing?.total_rolling || 0;
 
 
         return {
           ...trip,
           totalRolling: totalRolling,
-          totalWinLoss: sharing?.totalWinLoss || 0,
-          totalBuyIn: sharing?.totalBuyIn || 0,
-          totalBuyOut: sharing?.totalBuyOut || 0,
-          calculatedTotalRolling: sharing?.totalRollingCommission || 0,
+          totalWinLoss: sharing?.totalWinLoss || sharing?.total_win_loss || 0,
+          totalBuyIn: sharing?.totalBuyIn || sharing?.total_buy_in || 0,
+          totalBuyOut: sharing?.totalBuyOut || sharing?.total_buy_out || 0,
+          calculatedTotalRolling: sharing?.totalRollingCommission || sharing?.total_rolling_commission || 0,
           attachments: trip.attachments || [],
           sharing: {
-            totalWinLoss: sharing?.totalWinLoss || 0,
-            totalExpenses: sharing?.totalExpenses || 0,
-            totalRollingCommission: sharing?.totalRollingCommission || 0,
-            totalBuyIn: sharing?.totalBuyIn || 0,
-            totalBuyOut: sharing?.totalBuyOut || 0,
-            netCashFlow: sharing?.netCashFlow || 0,
-            netResult: sharing?.netResult || 0,
-            totalAgentShare: sharing?.totalAgentShare || 0,
-            companyShare: sharing?.companyShare || 0,
-            agentSharePercentage: sharing?.agentSharePercentage || 0,
-            companySharePercentage: sharing?.companySharePercentage || 100,
-            agentBreakdown: sharing?.agentBreakdown || []
+            totalWinLoss: sharing?.totalWinLoss || sharing?.total_win_loss || 0,
+            totalExpenses: sharing?.totalExpenses || sharing?.total_expenses || 0,
+            totalRollingCommission: sharing?.totalRollingCommission || sharing?.total_rolling_commission || 0,
+            totalBuyIn: sharing?.totalBuyIn || sharing?.total_buy_in || 0,
+            totalBuyOut: sharing?.totalBuyOut || sharing?.total_buy_out || 0,
+            netCashFlow: sharing?.netCashFlow || sharing?.net_cash_flow || 0,
+            netResult: sharing?.netResult || sharing?.net_result || 0,
+            totalAgentShare: sharing?.totalAgentShare || sharing?.total_agent_share || 0,
+            companyShare: sharing?.companyShare || sharing?.company_share || 0,
+            agentSharePercentage: sharing?.agentSharePercentage || sharing?.agent_share_percentage || 0,
+            companySharePercentage: sharing?.companySharePercentage || sharing?.company_share_percentage || 100,
+            agentBreakdown: sharing?.agentBreakdown || sharing?.agent_breakdown || []
           }
         };
       });
@@ -283,7 +361,10 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
 
     // Apply user role filter
     if (user.role === 'agent' && user.agentId) {
-      filteredCustomers = customers.filter(c => c.agentId === user.agentId);
+      filteredCustomers = customers.filter(c => {
+        const agentId = c.agentId || (c as any).agent_id;
+        return agentId === user.agentId;
+      });
       filteredTrips = trips.filter(t => 
         (t.agents && t.agents.some(agent => agent.agentId === user.agentId)) ||
         t.agentId === user.agentId
@@ -300,24 +381,91 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
 
     // Apply agent filter (admin only)
     if (user.role === 'admin' && selectedAgent !== 'all') {
-      filteredCustomers = filteredCustomers.filter(c => c.agentId === selectedAgent);
-      filteredTrips = filteredTrips.filter(t => 
-        (t.agents && t.agents.some(agent => agent.agentId === selectedAgent)) ||
-        t.agentId === selectedAgent
-      );
-      filteredRollingRecords = filteredRollingRecords.filter(r => r.agentId === selectedAgent);
+      console.log('🎯 Agent Filter Applied:', {
+        selectedAgent,
+        beforeFilter: {
+          customers: filteredCustomers.length,
+          trips: filteredTrips.length,
+          rollingRecords: filteredRollingRecords.length,
+          transactionRecords: filteredTransactionRecords.length
+        }
+      });
+
+      // Debug customer filtering
+      const customersBeforeAgentFilter = filteredCustomers.length;
+      filteredCustomers = filteredCustomers.filter(c => {
+        // Try both possible field names for agent ID
+        const agentId = c.agentId || (c as any).agent_id;
+        return agentId === selectedAgent;
+      });
+      console.log('👥 Customer Filter:', {
+        selectedAgent,
+        customersBeforeFilter: customersBeforeAgentFilter,
+        customersAfterFilter: filteredCustomers.length,
+        sampleCustomers: customers.slice(0, 3).map(c => ({
+          id: c.id,
+          name: c.name,
+          agentId: c.agentId,
+          agent_id: (c as any).agent_id,
+          matchesSelected: (c.agentId || (c as any).agent_id) === selectedAgent
+        }))
+      });
+
+      // Debug trip filtering
+      const tripsBeforeAgentFilter = filteredTrips.length;
+      filteredTrips = filteredTrips.filter(t => {
+        const hasAgentInAgents = t.agents && t.agents.some(agent => agent.agentId === selectedAgent);
+        const hasDirectAgentId = t.agentId === selectedAgent;
+        const shouldInclude = hasAgentInAgents || hasDirectAgentId;
+        
+        if (filteredTrips.indexOf(t) < 3) { // Debug first 3 trips
+          console.log(`🚗 Trip ${t.name || t.id}:`, {
+            agentId: t.agentId,
+            agents: t.agents,
+            hasAgentInAgents,
+            hasDirectAgentId,
+            shouldInclude
+          });
+        }
+        
+        return shouldInclude;
+      });
+      console.log('🚗 Trip Filter:', {
+        selectedAgent,
+        tripsBeforeFilter: tripsBeforeAgentFilter,
+        tripsAfterFilter: filteredTrips.length
+      });
+
+      filteredRollingRecords = filteredRollingRecords.filter(r => {
+        // Try both possible field names for agent ID
+        const agentId = r.agentId || (r as any).agent_id;
+        return agentId === selectedAgent;
+      });
       filteredTransactionRecords = filteredTransactionRecords.filter(b => {
         const customer = customers.find(c => c.id === b.customerId);
-        return customer?.agentId === selectedAgent;
+        // Try both possible field names for agent ID
+        const customerAgentId = customer?.agentId || (customer as any)?.agent_id;
+        return customerAgentId === selectedAgent;
+      });
+
+      console.log('📊 After Agent Filter:', {
+        customers: filteredCustomers.length,
+        trips: filteredTrips.length,
+        rollingRecords: filteredRollingRecords.length,
+        transactionRecords: filteredTransactionRecords.length
       });
     }
     
     // Apply role-based filtering for transaction records
     if (user.role === 'agent' && user.agentId) {
-      filteredRollingRecords = filteredRollingRecords.filter(r => r.agentId === user.agentId);
+      filteredRollingRecords = filteredRollingRecords.filter(r => {
+        const agentId = r.agentId || (r as any).agent_id;
+        return agentId === user.agentId;
+      });
       filteredTransactionRecords = filteredTransactionRecords.filter(b => {
         const customer = customers.find(c => c.id === b.customerId);
-        return customer?.agentId === user.agentId;
+        const customerAgentId = customer?.agentId || (customer as any)?.agent_id;
+        return customerAgentId === user.agentId;
       });
     } else if (user.role === 'staff' && user.staffId) {
       // Staff can see records from their assigned trips
@@ -374,11 +522,46 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
 
   // Calculate comprehensive metrics from trip_sharing data
   const calculateMetrics = () => {
-    // Calculate aggregated metrics from filtered trips
-    const totalWinLoss = filteredTrips.reduce((sum: number, trip: any) => sum + (trip.totalWinLoss || 0), 0);
-    const totalRolling = filteredTrips.reduce((sum: number, trip: any) => sum + (trip.totalRolling || 0), 0);
-    const totalBuyIn = filteredTrips.reduce((sum: number, trip: any) => sum + (trip.totalBuyIn || 0), 0);
-    const totalBuyOut = filteredTrips.reduce((sum: number, trip: any) => sum + (trip.totalBuyOut || 0), 0);
+    console.log('💰 Calculating Metrics from Filtered Trips:', {
+      filteredTripsCount: filteredTrips.length,
+      sampleTrip: filteredTrips[0] ? {
+        id: filteredTrips[0].id,
+        name: filteredTrips[0].name,
+        totalRolling: filteredTrips[0].totalRolling,
+        total_rolling: (filteredTrips[0] as any).total_rolling,
+        totalWinLoss: filteredTrips[0].totalWinLoss,
+        total_win_loss: (filteredTrips[0] as any).total_win_loss,
+        sharing: filteredTrips[0].sharing
+      } : 'No trips available'
+    });
+
+    // Calculate aggregated metrics from filtered trips - try multiple field name formats
+    const totalWinLoss = filteredTrips.reduce((sum: number, trip: any) => {
+      const winLoss = trip.totalWinLoss || trip.total_win_loss || trip.sharing?.total_win_loss || 0;
+      return sum + winLoss;
+    }, 0);
+    
+    const totalRolling = filteredTrips.reduce((sum: number, trip: any) => {
+      const rolling = trip.totalRolling || trip.total_rolling || trip.sharing?.total_rolling || 0;
+      return sum + rolling;
+    }, 0);
+    
+    const totalBuyIn = filteredTrips.reduce((sum: number, trip: any) => {
+      const buyIn = trip.totalBuyIn || trip.total_buy_in || trip.sharing?.total_buy_in || 0;
+      return sum + buyIn;
+    }, 0);
+    
+    const totalBuyOut = filteredTrips.reduce((sum: number, trip: any) => {
+      const buyOut = trip.totalBuyOut || trip.total_buy_out || trip.sharing?.total_buy_out || 0;
+      return sum + buyOut;
+    }, 0);
+
+    console.log('💰 Calculated Totals:', {
+      totalWinLoss,
+      totalRolling,
+      totalBuyIn,
+      totalBuyOut
+    });
     
     // Calculate company profit/loss from trip_sharing data
     const companyProfitLoss = filteredTrips.reduce((sum: number, trip: any) => {
@@ -398,8 +581,18 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
     // Try multiple field name formats for commission
     const totalRollingCommission = filteredTrips.reduce((sum: number, t: any) => {
       const commission = t.sharing?.total_rolling_commission || t.sharing?.totalRollingCommission || 0;
+      if (filteredTrips.indexOf(t) < 2) { // Debug first 2 trips
+        console.log(`💰 Trip ${t.name || t.id} Commission:`, {
+          sharing: t.sharing,
+          total_rolling_commission: t.sharing?.total_rolling_commission,
+          totalRollingCommission: t.sharing?.totalRollingCommission,
+          commission
+        });
+      }
       return sum + safeNumber(commission);
     }, 0);
+
+    console.log('💰 Final Commission Total:', totalRollingCommission);
 
     // Customer metrics
     const totalCustomers = filteredCustomers.length;
@@ -867,10 +1060,9 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
       dailyData[date].rolling += safeNumber(trip.totalRolling); // Use trip.totalRolling (has data)
       dailyData[date].winLoss += safeNumber(trip.totalWinLoss); // Use trip.totalWinLoss (has data)
       
-      // Calculate commission from rolling if trip_sharing is empty
+      // Use actual commission from trip_sharing data
       const sharingCommission = safeNumber(sharing.total_rolling_commission) || safeNumber(sharing.totalRollingCommission);
-      const calculatedCommission = sharingCommission > 0 ? sharingCommission : (safeNumber(trip.totalRolling) * 0.014);
-      dailyData[date].commission += calculatedCommission;
+      dailyData[date].commission += sharingCommission;
       
       // Use trip data for buy-in/out
       dailyData[date].buyIn += safeNumber(trip.totalBuyIn);
@@ -982,7 +1174,10 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
         buyIn,
         buyOut,
         netCashFlow: buyOut - buyIn,
-        commission: rolling * 0.014,
+        commission: agentTrips.reduce((sum, trip) => {
+          const sharing = trip.sharing || {};
+          return sum + (safeNumber(sharing.total_rolling_commission) || safeNumber(sharing.totalRollingCommission));
+        }, 0),
         trips: agentTrips.length,
         rollingRecords: agentRollingRecords.length,
         transactionRecords: agentTrips.filter(t => ((t.sharing?.totalBuyIn || 0) > 0) || ((t.sharing?.totalBuyOut || 0) > 0)).length,
