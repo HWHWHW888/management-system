@@ -10,18 +10,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import { Alert, AlertDescription } from './ui/alert';
 import { User, Agent, Customer, FileAttachment, Trip, TripCustomer, RollingRecord, BuyInOutRecord } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { isReadOnlyRole } from '../utils/permissions';
+import { PhotoDisplay } from './common/PhotoDisplay';
+import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
+import { useLanguage } from '../contexts/LanguageContext';
 import { 
   Plus, Edit, Mail, DollarSign, TrendingUp, TrendingDown, Paperclip, MapPin, Target, 
-  ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, Database, Save, RefreshCw, Activity, 
-  IdCard, Heart, FileText, CheckCircle, ArrowUpCircle, ArrowDownCircle, 
-  Building2, Receipt, Wallet
+  ChevronDown, ChevronUp, User as UserIcon, UserCheck, Eye, 
+  IdCard, Heart, FileText, ArrowUpCircle, ArrowDownCircle, 
+  Receipt, Wallet, Save, Activity, CheckCircle
 } from 'lucide-react';
 
 interface CustomerManagementProps extends WithErrorHandlerProps {
@@ -37,11 +38,18 @@ interface CustomerTripHistory {
   customerData: TripCustomer;
 }
 
-// Real-time refresh interval (30 seconds)
-const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 function CustomerManagementComponent({ user, showError, clearError }: CustomerManagementProps) {
+  const { t } = useLanguage();
   const isReadOnly = isReadOnlyRole(user.role);
+  const canSeeFinancials = canViewFinancialData(user.role);
+
+  // Helper function to format date safely
+  const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return 'Unknown';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? 'Unknown' : date.toLocaleDateString();
+  };
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -53,10 +61,15 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
+  const [promotingCustomer, setPromotingCustomer] = useState<Customer | null>(null);
+  const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [lastDataUpdate, setLastDataUpdate] = useState<Date | null>(null);
+  const [imagePreview, setImagePreview] = useState<{
+    isOpen: boolean;
+    src: string;
+    title: string;
+  }>({ isOpen: false, src: '', title: '' });
   
   // Basic customer form data
   const [formData, setFormData] = useState({
@@ -72,6 +85,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   const [detailFormData, setDetailFormData] = useState({
     // Identity & Personal
     passportNumber: '',
+    passportFile: null as File | null,
     idNumber: '',
     nationality: '',
     dateOfBirth: '',
@@ -96,7 +110,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
   // Load real-time data from Supabase
   const loadRealTimeData = useCallback(async () => {
     try {
-      setIsRefreshing(true);
       clearError();
       
       console.log('🔄 Loading real-time customer data from Supabase...');
@@ -140,21 +153,37 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       if (customerDetailsMap.size > 0) {
         console.log('🔍 Sample customer details:', Array.from(customerDetailsMap.entries())[0]);
       }
+      
+      // Debug agents data
+      console.log('🔍 Agents data loaded:', agentsData.length, 'agents');
+      if (agentsData.length > 0) {
+        console.log('🔍 Sample agent:', agentsData[0]);
+      }
 
       // Process customers using database totals directly (no manual calculations)
       const processedCustomers = customersData.map((customer: Customer) => {
         // Get customer details from the map
         const customerDetails = customerDetailsMap.get(customer.id);
         
-        // Debug log for each customer's database totals
-        console.log(`🔍 Customer ${customer.name} database totals:`, {
+        // Debug log for each customer's database totals and field mapping
+        console.log(`🔍 Customer ${customer.name} raw data:`, {
+          created_at: (customer as any).created_at,
+          createdAt: customer.createdAt,
+          agent_id: (customer as any).agent_id,
+          agentId: customer.agentId,
+          status: (customer as any).status,
+          isActive: customer.isActive,
           total_rolling: customer.total_rolling,
           total_win_loss: customer.total_win_loss,
           total_buy_in: customer.total_buy_in,
           total_buy_out: customer.total_buy_out
         });
 
-        return {
+        // Find agent name from agents data using agent_id
+        const customerAgentId = (customer as any).agent_id || customer.agentId;
+        const customerAgent = agentsData.find((agent: any) => agent.id === customerAgentId);
+        
+        const processedCustomer = {
           ...customer,
           // Use database totals directly - these are kept up-to-date by the backend
           totalRolling: parseFloat(String(customer.total_rolling || 0)) || 0,
@@ -165,13 +194,30 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           details: customerDetails,
           // Get attachments from customer details instead of customer table
           attachments: customerDetails?.attachments || [],
-          // Backward compatibility
-          isAgent: customer.isAgent || false,
-          sourceAgentId: customer.sourceAgentId || undefined,
+          // Map database fields to frontend fields (snake_case to camelCase)
+          createdAt: (customer as any).created_at || customer.createdAt,
+          agentId: customerAgentId,
+          agentName: customerAgent?.name || 'Unknown Agent',
+          // Map status field correctly (database uses 'status', not 'is_active')
+          isActive: (customer as any).status === 'active' || customer.isActive,
+          isAgent: (customer as any).is_agent || false,
+          sourceAgentId: (customer as any).source_agent_id || undefined,
           rollingPercentage: parseFloat(String(customer.rolling_percentage || 1.4)) || 1.4,
           creditLimit: parseFloat(String(customer.credit_limit || 0)) || 0,
           availableCredit: parseFloat(String(customer.available_credit || 0)) || 0
         };
+
+        // Debug log processed customer data
+        console.log(`✅ Customer ${customer.name} processed data:`, {
+          createdAt: processedCustomer.createdAt,
+          agentId: processedCustomer.agentId,
+          agentName: processedCustomer.agentName,
+          status: (customer as any).status,
+          isActive: processedCustomer.isActive,
+          foundAgent: customerAgent ? `${customerAgent.name} (${customerAgent.id})` : 'Not found'
+        });
+
+        return processedCustomer;
       });
 
       // Process trips with real-time win/loss calculations
@@ -203,8 +249,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       setTrips(processedTrips);
       setRollingRecords(rollingData);
       setBuyInOutRecords(buyInOutData);
-      setLastDataUpdate(new Date());
-      
       console.log(`✅ Loaded real-time data: ${processedCustomers.length} customers, ${agentsData.length} agents, ${processedTrips.length} trips, ${rollingData.length} rolling records`);
       
     } catch (error) {
@@ -212,23 +256,12 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       showError(`Failed to load customer data: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     } finally {
       setLoading(false);
-      setIsRefreshing(false);
     }
   }, [clearError, showError]);
 
-  // Real-time data sync
+  // Load data on component mount
   useEffect(() => {
     loadRealTimeData();
-    
-    // Set up real-time refresh interval
-    const refreshInterval = setInterval(() => {
-      console.log('🔄 Real-time customer data refresh triggered');
-      loadRealTimeData();
-    }, REAL_TIME_REFRESH_INTERVAL);
-
-    return () => {
-      clearInterval(refreshInterval);
-    };
   }, [loadRealTimeData]);
 
   // Filter customers based on user role
@@ -293,6 +326,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
+          agent_id: formData.agentId,
           vip_level: formData.vip_level || 'Silver',
           status: formData.status || 'active'
         };
@@ -343,6 +377,38 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     if (!selectedCustomer) return;
 
     try {
+      setSaving(true);
+      
+      // Handle passport file upload first if there's a file
+      let passportFileUrl = null;
+      if (detailFormData.passportFile) {
+        console.log('🔍 Uploading passport file:', detailFormData.passportFile.name);
+        
+        // Convert file to base64 for upload
+        const fileData = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(detailFormData.passportFile!);
+        });
+
+        // Upload passport file via API
+        const passportUploadResponse = await apiClient.uploadCustomerPassport(selectedCustomer.id, {
+          name: detailFormData.passportFile.name,
+          type: detailFormData.passportFile.type,
+          size: detailFormData.passportFile.size,
+          data: fileData,
+          uploadedAt: new Date().toISOString()
+        });
+
+        if (!passportUploadResponse.success) {
+          throw new Error(passportUploadResponse.error || 'Failed to upload passport file');
+        }
+        
+        passportFileUrl = passportUploadResponse.data?.passport_photo?.data;
+        console.log('✅ Passport file uploaded successfully:', passportFileUrl);
+      }
+
       // Prepare customer details data
       const detailsData = {
         // Identity & Personal fields
@@ -393,6 +459,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
           const details = updatedDetailsResponse.data as any;
           setDetailFormData({
             passportNumber: details.passport_number || '',
+            passportFile: null,
             idNumber: details.id_number || '',
             nationality: details.nationality || '',
             dateOfBirth: details.date_of_birth || '',
@@ -426,7 +493,17 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     } catch (error) {
       console.error('Error updating customer details:', error);
       showError(`Failed to update customer details: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleImagePreview = (src: string, title: string) => {
+    setImagePreview({ isOpen: true, src, title });
+  };
+
+  const closeImagePreview = () => {
+    setImagePreview({ isOpen: false, src: '', title: '' });
   };
 
   const handleEdit = (customer: Customer) => {
@@ -455,6 +532,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         setDetailFormData({
           // Identity & Personal
           passportNumber: details.passport_number || '',
+          passportFile: null,
           idNumber: details.id_number || '',
           nationality: details.nationality || '',
           dateOfBirth: details.date_of_birth || '',
@@ -480,6 +558,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         setDetailFormData({
           // Identity & Personal
           passportNumber: '',
+          passportFile: null,
           idNumber: '',
           nationality: '',
           dateOfBirth: '',
@@ -507,6 +586,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
       // Use empty form as fallback
       setDetailFormData({
         passportNumber: '',
+        passportFile: null,
         idNumber: '',
         nationality: '',
         dateOfBirth: '',
@@ -560,6 +640,45 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
     } catch (error) {
       console.error('❌ Error deleting customer:', error);
       showError(`Failed to delete customer: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePromoteToAgent = (customer: Customer) => {
+    setPromotingCustomer(customer);
+    setIsPromoteDialogOpen(true);
+  };
+
+  const confirmPromoteToAgent = async () => {
+    if (!promotingCustomer) return;
+
+    try {
+      setSaving(true);
+      clearError();
+      
+      console.log('🔄 Promoting customer to agent:', promotingCustomer.name, promotingCustomer.id);
+      
+      // Call backend API to promote customer to agent
+      // Backend will automatically use customer's agent_id as parent_agent_id
+      const response = await apiClient.promoteCustomerToAgent(promotingCustomer.id);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to promote customer to agent');
+      }
+      
+      console.log('✅ Customer promoted to agent successfully');
+      
+      // Refresh data to get updated customer and agent lists
+      await loadRealTimeData();
+      
+      // Close dialog and reset state
+      setIsPromoteDialogOpen(false);
+      setPromotingCustomer(null);
+      
+    } catch (error) {
+      console.error('❌ Error promoting customer to agent:', error);
+      showError(`Failed to promote customer to agent: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
     } finally {
       setSaving(false);
     }
@@ -725,7 +844,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
             <Eye className="w-5 h-5 text-blue-600 mr-2" />
             <div>
               <p className="text-sm font-medium text-blue-800">
-                Customer Information - View Only
+{t('customer_info')} - {t('view')} Only
               </p>
               <p className="text-xs text-blue-600">
                 You have read-only access to customer information, trip history, and documents.
@@ -737,7 +856,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
 
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Customer Management</h2>
+          <h2 className="text-2xl font-bold">{t('Customer Management')}</h2>
           <p className="text-gray-600">
             {isAgent 
               ? 'Manage your customers with real-time rolling data and complete profile editing' 
@@ -752,33 +871,33 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
             <DialogTrigger asChild>
               <Button onClick={openNewCustomerDialog} disabled={saving}>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Customer
+{t('add_customer')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
+                  {editingCustomer ? t('edit_customer') : t('add_customer')}
                 </DialogTitle>
                 <DialogDescription>
-                  {editingCustomer ? 'Update basic customer information' : 'Add a new customer with basic details. You can add extended details after creation.'}
+                  {editingCustomer ? t('update_customer_info') : t('add_customer_desc')}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="name">{t('name')}</Label>
                   <Input
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder="Customer full name"
+                    placeholder={t('customer_full_name')}
                     required
                     disabled={saving}
                   />
                 </div>
                 
                 <div>
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t('email')}</Label>
                   <Input
                     id="email"
                     type="email"
@@ -791,7 +910,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                 </div>
                 
                 <div>
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">{t('phone')}</Label>
                   <Input
                     id="phone"
                     value={formData.phone}
@@ -803,14 +922,14 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                 </div>
                 
                 <div>
-                  <Label htmlFor="agent">Agent</Label>
+                  <Label htmlFor="agent">{t('agent')}</Label>
                   <Select 
                     value={formData.agentId} 
                     onValueChange={(value) => setFormData({...formData, agentId: value})}
                     disabled={user.role === 'agent' || saving}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select an agent" />
+                      <SelectValue placeholder={t('select_agent')} />
                     </SelectTrigger>
                     <SelectContent>
                       {availableAgents.map((agent) => (
@@ -824,17 +943,17 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
 
                 <div className="flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={saving}>
-                    Cancel
+{t('cancel')}
                   </Button>
                   <Button type="submit" disabled={saving}>
                     {saving ? (
                       <>
                         <Save className="w-4 h-4 mr-2 animate-spin" />
-                        Saving to Supabase...
+{t('saving')}...
                       </>
                     ) : (
                       <>
-                        {editingCustomer ? 'Update' : 'Add'} Customer
+{editingCustomer ? t('update') : t('add')} {t('customers')}
                       </>
                     )}
                   </Button>
@@ -849,7 +968,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
         {filteredCustomers.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
-              <p className="text-gray-500">No customers found. {isStaff ? 'Contact an administrator to add customers.' : 'Add your first customer to get started.'}</p>
+              <p className="text-gray-500">{t('no_customers_found')}. {isStaff ? t('contact_admin') : t('add_first_customer')}</p>
             </CardContent>
           </Card>
         ) : (
@@ -868,9 +987,12 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                         <div className="flex-1">
                           <CardTitle className="flex items-center space-x-2">
                             <span>{customer.name}</span>
-                            <Badge variant={customer.isActive ? "default" : "secondary"}>
-                              {customer.isActive ? 'Active' : 'Inactive'}
-                            </Badge>
+                            {customer.isAgent && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex items-center space-x-1">
+                                <UserCheck className="w-3 h-3" />
+                                <span>{t('agent')}</span>
+                              </Badge>
+                            )}
                             {customer.attachments && customer.attachments.length > 0 && (
                               <Badge variant="outline" className="flex items-center space-x-1">
                                 <Paperclip className="w-3 h-3" />
@@ -880,35 +1002,25 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             {tripHistory.length > 0 && (
                               <Badge variant="outline" className="flex items-center space-x-1">
                                 <MapPin className="w-3 h-3" />
-                                <span>{tripHistory.length} trips</span>
+                                <span>{tripHistory.length} {t('trips')}</span>
                               </Badge>
                             )}
                             {rollingHistory.length > 0 && (
                               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                                 <Receipt className="w-3 h-3 mr-1" />
-                                {rollingHistory.length} records
-                              </Badge>
-                            )}
-                            {customer.isAgent && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                <UserCheck className="w-3 h-3 mr-1" />
-                                Agent
+                                {rollingHistory.length} {t('records')}
                               </Badge>
                             )}
                             {isStaff && (
                               <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
                                 <Eye className="w-3 h-3 mr-1" />
-                                View Only
+                                {t('view')} Only
                               </Badge>
                             )}
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                              <Activity className="w-3 h-3 mr-1" />
-                              Live Data
-                            </Badge>
                           </CardTitle>
                           <CardDescription>
-                            Customer since {customer.createdAt} • Agent: {customer.agentName}
-                                          </CardDescription>
+                            Customer since {formatDate(customer.createdAt)} • Agent: {customer.agentName || 'Unknown'}
+                          </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2">
                           {isExpanded ? (
@@ -929,56 +1041,61 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                         <span className="text-sm">{customer.email}</span>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <span className="text-sm text-gray-500">Phone:</span>
+                        <span className="text-sm text-gray-500">{t('phone')}:</span>
                         <span className="text-sm">{customer.phone}</span>
                       </div>
                       {/* Customer details status */}
                       <div className="flex items-center space-x-2">
                         <FileText className="w-4 h-4 text-gray-400" />
                         <span className="text-sm text-gray-500">
-                          {(customer as any).details ? 'Details available' : 'No details available'}
+                          {(customer as any).details ? t('details_available') : t('no_details_available')}
                         </span>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <DollarSign className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-medium">Rolling: ${(customer.totalRolling || 0).toLocaleString()}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {(customer.totalWinLoss || 0) >= 0 ? (
-                          <TrendingUp className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4 text-red-600" />
-                        )}
-                        <span className={`text-sm font-medium ${
-                          (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          W/L: ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Wallet className="w-4 h-4 text-purple-600" />
-                        <span className="text-sm">
-                          Cash: ${((customer.totalBuyOut || 0) - (customer.totalBuyIn || 0)).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Building2 className="w-4 h-4 text-orange-600" />
-                        <span className="text-sm">
-                          Credit: ${(customer.creditLimit || 0).toLocaleString()}
-                        </span>
-                      </div>
+                      {/* Hide financial data for staff users, show for boss */}
+                      {canSeeFinancials && (
+                        <>
+                          <div className="flex items-center space-x-2">
+                            <DollarSign className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-medium">{t('rolling')}: ${(customer.totalRolling || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {(customer.totalWinLoss || 0) >= 0 ? (
+                              <TrendingUp className="w-4 h-4 text-green-600" />
+                            ) : (
+                              <TrendingDown className="w-4 h-4 text-red-600" />
+                            )}
+                            <span className={`text-sm font-medium ${
+                              (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {t('win_loss')}: ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {!isReadOnly && (
                       <div className="flex space-x-2">
                         <Button variant="outline" size="sm" onClick={() => handleEdit(customer)} disabled={saving}>
                           <Edit className="w-4 h-4 mr-2" />
-                          Edit Basic Info
+{t('edit_basic_info')}
                         </Button>
                         <Button variant="outline" size="sm" onClick={() => handleEditDetails(customer)} disabled={saving}>
                           <FileText className="w-4 h-4 mr-2" />
-                          Edit Details
+{t('edit_details')}
                         </Button>
+                        {isAdmin && !customer.isAgent && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handlePromoteToAgent(customer)} 
+                            disabled={saving}
+                            className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                          >
+                            <UserCheck className="w-4 h-4 mr-2" />
+                            Promote to Agent
+                          </Button>
+                        )}
                         {isAdmin && (
                           <AlertDialog open={deletingCustomer?.id === customer.id} onOpenChange={(open) => !open && setDeletingCustomer(null)}>
                             <AlertDialogTrigger asChild>
@@ -1038,7 +1155,10 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                           </TabsTrigger>
                           <TabsTrigger value="files" className="flex items-center space-x-2">
                             <Paperclip className="w-4 h-4" />
-                            <span>Files ({customer.attachments?.length || 0})</span>
+                            <span>Files ({
+                              (customer.attachments?.length || 0) + 
+                              ((customer as any).details?.passport_photo?.data ? 1 : 0)
+                            })</span>
                           </TabsTrigger>
                         </TabsList>
                         
@@ -1075,7 +1195,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Member Since</Label>
-                                <p>{customer.createdAt}</p>
+                                <p>{formatDate(customer.createdAt)}</p>
                               </div>
                             </div>
                             
@@ -1088,6 +1208,48 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">Passport Number</Label>
                                 <p>{(customer as any).details?.passport_number || 'Not provided'}</p>
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-500">Passport Photo</Label>
+                                {(customer as any).details?.passport_photo?.data ? (
+                                  <div className="mt-1">
+                                    <div className="flex items-center space-x-2">
+                                      <FileText className="w-4 h-4 text-blue-500" />
+                                      <span className="text-sm text-blue-600">
+                                        {(customer as any).details?.passport_photo?.name || (customer as any).details?.passport_file_name || 'Passport Photo'}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-gray-500">
+                                      Uploaded: {(customer as any).details?.passport_photo?.uploadedAt ? 
+                                        new Date((customer as any).details.passport_photo.uploadedAt).toLocaleDateString() : 
+                                        (customer as any).details?.passport_uploaded_at ? 
+                                        new Date((customer as any).details.passport_uploaded_at).toLocaleDateString() : 
+                                        'Unknown date'
+                                      }
+                                    </p>
+                                    {(customer as any).details?.passport_photo?.data && (
+                                      <div className="mt-2">
+                                        <PhotoDisplay
+                                          photos={[{
+                                            id: 'passport',
+                                            photo: {
+                                              data: (customer as any).details.passport_photo.data,
+                                              filename: (customer as any).details.passport_photo.name || 'passport.jpg',
+                                              size: (customer as any).details.passport_photo.size,
+                                              type: (customer as any).details.passport_photo.type
+                                            },
+                                            upload_date: (customer as any).details.passport_photo.uploaded_at
+                                          }]}
+                                          type="passport"
+                                          size="medium"
+                                          maxPhotos={1}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-gray-500">Not provided</p>
+                                )}
                               </div>
                               <div>
                                 <Label className="text-sm font-medium text-gray-500">ID Number</Label>
@@ -1126,14 +1288,6 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                 <p>{(customer as any).details?.gaming_preferences || 'Not provided'}</p>
                               </div>
                               <div>
-                                <Label className="text-sm font-medium text-gray-500">Credit Limit</Label>
-                                <p className="font-medium">${(customer.creditLimit || 0).toLocaleString()}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Available Credit</Label>
-                                <p className="font-medium">${(customer.availableCredit || 0).toLocaleString()}</p>
-                              </div>
-                              <div>
                                 <Label className="text-sm font-medium text-gray-500">Emergency Contact</Label>
                                 <p>{(customer as any).details?.emergency_contact || 'Not provided'}</p>
                               </div>
@@ -1144,35 +1298,37 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             </div>
                           </div>
 
-                          {/* Real-time Financial Summary */}
-                          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                            <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                              <Activity className="w-4 h-4 mr-2" />
-                              Real-time Financial Summary
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Total Rolling</Label>
-                                <p className="text-xl font-bold text-blue-600">${(customer.totalRolling || 0).toLocaleString()}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Total Win/Loss</Label>
-                                <p className={`text-xl font-bold ${
-                                  (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                                }`}>
-                                  ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
-                                </p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Buy-in Total</Label>
-                                <p className="text-xl font-bold text-blue-500">${(customer.totalBuyIn || 0).toLocaleString()}</p>
-                              </div>
-                              <div>
-                                <Label className="text-sm font-medium text-gray-500">Buy-out Total</Label>
-                                <p className="text-xl font-bold text-purple-500">${(customer.totalBuyOut || 0).toLocaleString()}</p>
+                          {/* Real-time Financial Summary - Hidden for staff, visible for boss */}
+                          {canSeeFinancials && (
+                            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+                              <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                                <Activity className="w-4 h-4 mr-2" />
+                                Real-time Financial Summary
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-500">Total Rolling</Label>
+                                  <p className="text-xl font-bold text-blue-600">${(customer.totalRolling || 0).toLocaleString()}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-500">Total Win/Loss</Label>
+                                  <p className={`text-xl font-bold ${
+                                    (customer.totalWinLoss || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    ${Math.abs(customer.totalWinLoss || 0).toLocaleString()}
+                                  </p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-500">Buy-in Total</Label>
+                                  <p className="text-xl font-bold text-blue-500">${(customer.totalBuyIn || 0).toLocaleString()}</p>
+                                </div>
+                                <div>
+                                  <Label className="text-sm font-medium text-gray-500">Buy-out Total</Label>
+                                  <p className="text-xl font-bold text-purple-500">${(customer.totalBuyOut || 0).toLocaleString()}</p>
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          )}
 
                         </TabsContent>
 
@@ -1213,7 +1369,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                                           <div>
                                             <Label className="text-gray-500">Date</Label>
-                                            <p>{trip.tripDate}</p>
+                                            <p>{formatDate(trip.tripDate)}</p>
                                           </div>
                                           <div>
                                             <Label className="text-gray-500">Rolling Amount</Label>
@@ -1400,6 +1556,60 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                             />
                           )}
                           
+                          {/* Passport Photo Section */}
+                          {(customer as any).details?.passport_photo?.data && (
+                            <div className="space-y-4">
+                              <h4 className="font-medium text-gray-900 flex items-center">
+                                <IdCard className="w-4 h-4 mr-2" />
+                                Passport Photo
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <Card className="p-4">
+                                  <div className="flex items-center space-x-2">
+                                    <FileText className="w-4 h-4 text-blue-500" />
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium truncate">
+                                        {(customer as any).details?.passport_photo?.name || (customer as any).details?.passport_file_name || 'Passport Photo'}
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                        {(customer as any).details?.passport_photo?.size ? 
+                                          `${((customer as any).details.passport_photo.size / 1024).toFixed(1)} KB` : 
+                                          (customer as any).details?.passport_file_size ? 
+                                          `${((customer as any).details.passport_file_size / 1024).toFixed(1)} KB` : 
+                                          'Unknown size'
+                                        } • {(customer as any).details?.passport_photo?.uploadedAt ? 
+                                          new Date((customer as any).details.passport_photo.uploadedAt).toLocaleDateString() : 
+                                          (customer as any).details?.passport_uploaded_at ? 
+                                          new Date((customer as any).details.passport_uploaded_at).toLocaleDateString() : 
+                                          'Unknown date'
+                                        }
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {(customer as any).details?.passport_photo?.data && (
+                                    <div className="mt-2">
+                                      <PhotoDisplay
+                                        photos={[{
+                                          id: 'passport',
+                                          photo: {
+                                            data: (customer as any).details.passport_photo.data,
+                                            filename: (customer as any).details.passport_photo.name || 'passport.jpg',
+                                            size: (customer as any).details.passport_photo.size,
+                                            type: (customer as any).details.passport_photo.type
+                                          },
+                                          upload_date: (customer as any).details.passport_photo.uploaded_at
+                                        }]}
+                                        type="passport"
+                                        size="large"
+                                        maxPhotos={1}
+                                      />
+                                    </div>
+                                  )}
+                                </Card>
+                              </div>
+                            </div>
+                          )}
+                          
                           {customer.attachments && customer.attachments.length > 0 && (
                             <div className="space-y-4">
                               <h4 className="font-medium text-gray-900">Attached Files</h4>
@@ -1419,7 +1629,11 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                                       <img 
                                         src={attachment.data} 
                                         alt={attachment.name}
-                                        className="mt-2 w-full h-32 object-cover rounded"
+                                        className="mt-2 w-full h-32 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                        onClick={() => handleImagePreview(
+                                          attachment.data,
+                                          `${customer.name} - ${attachment.name}`
+                                        )}
                                       />
                                     )}
                                   </Card>
@@ -1455,8 +1669,13 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                 <TabsTrigger value="additional">Additional Details</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="identity" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <TabsContent value="identity" className="space-y-6">
+                <div className="bg-gray-50 p-6 rounded-lg border">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                    <IdCard className="w-5 h-5 mr-2 text-blue-600" />
+                    Identity & Personal Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="passportNumber">Passport Number</Label>
                     <Input
@@ -1466,6 +1685,57 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                       placeholder="Not provided"
                       disabled={saving}
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="passportFile">Passport Photo</Label>
+                    
+                    {/* Show existing passport photo if available */}
+                    {(selectedCustomer as any)?.details?.passport_photo?.data && !detailFormData.passportFile && (
+                      <div className="mb-3 p-3 border rounded-lg bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700">Current Passport Photo:</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => selectedCustomer && handleImagePreview(
+                              (selectedCustomer as any).details.passport_photo.data,
+                              `${selectedCustomer.name} - Current Passport Photo`
+                            )}
+                          >
+                            <Eye className="w-3 h-3 mr-1" />
+                            View
+                          </Button>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <FileText className="w-4 h-4 text-blue-500" />
+                          <span className="text-sm text-gray-600">
+                            {(selectedCustomer as any).details?.passport_photo?.name || 
+                             (selectedCustomer as any).details?.passport_file_name || 'passport.jpg'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Upload a new file to replace the current passport photo
+                        </p>
+                      </div>
+                    )}
+                    
+                    <Input
+                      id="passportFile"
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setDetailFormData({...detailFormData, passportFile: file});
+                      }}
+                      disabled={saving}
+                      className="cursor-pointer"
+                    />
+                    {detailFormData.passportFile && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        New file selected: {detailFormData.passportFile.name} ({(detailFormData.passportFile.size / 1024).toFixed(1)} KB)
+                      </p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="idNumber">ID Number</Label>
@@ -1519,10 +1789,16 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                     />
                   </div>
                 </div>
+                </div>
               </TabsContent>
               
-              <TabsContent value="preferences" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <TabsContent value="preferences" className="space-y-6">
+                <div className="bg-blue-50 p-6 rounded-lg border">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                    <Heart className="w-5 h-5 mr-2 text-pink-600" />
+                    Preferences & Lifestyle
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="hobby">Hobby</Label>
                     <Input
@@ -1564,10 +1840,16 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                     />
                   </div>
                 </div>
+                </div>
               </TabsContent>
               
-              <TabsContent value="additional" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <TabsContent value="additional" className="space-y-6">
+                <div className="bg-green-50 p-6 rounded-lg border">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                    <FileText className="w-5 h-5 mr-2 text-green-600" />
+                    Additional Details
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="maritalStatus">Marital Status</Label>
                     <Select 
@@ -1667,6 +1949,7 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
                     />
                   </div>
                 </div>
+                </div>
               </TabsContent>
             </Tabs>
 
@@ -1689,6 +1972,70 @@ function CustomerManagementComponent({ user, showError, clearError }: CustomerMa
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Promote to Agent Dialog */}
+      <AlertDialog open={isPromoteDialogOpen} onOpenChange={(open) => !open && setIsPromoteDialogOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center space-x-2">
+              <UserCheck className="w-5 h-5 text-green-600" />
+              <span>Promote Customer to Agent</span>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to make "{promotingCustomer?.name}" into an agent?
+              <br /><br />
+              <strong>Note:</strong> This action cannot be undone easily. The customer will retain all their existing trip history and financial records.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmPromoteToAgent}
+              className="bg-green-600 text-white hover:bg-green-700"
+              disabled={saving}
+            >
+              {saving ? (
+                <>
+                  <Save className="w-4 h-4 mr-2 animate-spin" />
+                  Promoting...
+                </>
+              ) : (
+                <>
+                  <UserCheck className="w-4 h-4 mr-2" />
+                  Promote to Agent
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={imagePreview.isOpen} onOpenChange={closeImagePreview}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
+          <DialogHeader className="p-6 pb-2">
+            <DialogTitle className="flex items-center space-x-2">
+              <IdCard className="w-5 h-5" />
+              <span>{imagePreview.title}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-6">
+            <div className="relative">
+              <img 
+                src={imagePreview.src} 
+                alt={imagePreview.title}
+                className="w-full h-auto max-h-[70vh] object-contain rounded-lg"
+              />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button variant="outline" onClick={closeImagePreview}>
+                Close
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

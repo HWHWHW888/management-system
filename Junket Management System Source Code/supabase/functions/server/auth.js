@@ -115,7 +115,9 @@ export async function authenticateToken(req, res, next) {
             id: user.id,
             email: user.email,
             role: user.role,
-            username: user.username
+            username: user.username,
+            staff_id: user.staff_id,  // Include staff_id from database
+            agent_id: user.agent_id   // Include agent_id from database
         };
         next();
     }
@@ -210,12 +212,47 @@ export async function canAccessTrip(req, res, next) {
             });
             return;
         }
-        if (trip.staff_id !== req.user.id) {
-            res.status(403).json({
-                success: false,
-                message: 'Access denied to this trip'
-            });
-            return;
+        // For staff users, check if they have access to this trip
+        if (req.user.role === 'staff') {
+            console.log('🔍 canAccessTrip - Staff access check:');
+            console.log('  - Trip ID:', tripId);
+            console.log('  - Trip staff_id:', trip.staff_id);
+            console.log('  - User ID:', req.user.id);
+            console.log('  - User staff_id:', req.user.staff_id);
+            console.log('  - User role:', req.user.role);
+            
+            let hasAccess = false;
+            
+            // Method 1: Check if staff_id matches (direct assignment)
+            if (trip.staff_id === req.user.staff_id) {
+                hasAccess = true;
+                console.log('✅ Access granted - direct staff_id match');
+            } else {
+                // Method 2: Check trip_staff relationship table (staff assigned through trip_staff)
+                console.log('🔍 Checking trip_staff relationship table...');
+                const { data: tripStaff, error: tripStaffError } = await supabase
+                    .from('trip_staff')
+                    .select('id')
+                    .eq('trip_id', tripId)
+                    .eq('staff_id', req.user.staff_id)
+                    .single();
+                
+                if (!tripStaffError && tripStaff) {
+                    hasAccess = true;
+                    console.log('✅ Access granted - found in trip_staff table');
+                } else {
+                    console.log('❌ Not found in trip_staff table:', tripStaffError?.message);
+                }
+            }
+            
+            if (!hasAccess) {
+                console.log('❌ Access denied - staff not assigned to this trip');
+                res.status(403).json({
+                    success: false,
+                    message: 'Access denied to this trip'
+                });
+                return;
+            }
         }
         next();
     }
@@ -579,7 +616,8 @@ router.post('/login', async (req, res) => {
             id: user.id,
             username: user.username,
             email: user.email,
-            role: user.role
+            role: user.role,
+            staff_id: user.staff_id  // Include staff_id in JWT token
         });
 
         res.json({

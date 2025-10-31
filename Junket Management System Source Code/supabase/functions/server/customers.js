@@ -943,5 +943,272 @@ router.delete('/:id/attachments/:attachmentId', authenticateToken, async (req, r
     });
   }
 });
-  
+
+/**
+ * POST /customers/:id/passport
+ * Upload passport file for customer
+ */
+router.post('/:id/passport', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.params.id;
+    const { name, type, size, data, uploadedAt } = req.body;
+
+    console.log('🔍 Backend - Uploading passport for customer:', customerId);
+    console.log('🔍 Backend - Passport file details:', { name, type, size: size ? `${size} bytes` : 'unknown' });
+
+    // Validate required fields
+    if (!name || !type || !data) {
+      return res.status(400).json({
+        error: 'Missing required fields: name, type, data'
+      });
+    }
+
+    // Validate file type (images and PDFs only)
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/pdf'];
+    if (!allowedTypes.includes(type)) {
+      return res.status(400).json({
+        error: 'Invalid file type. Only images (JPEG, PNG, GIF) and PDF files are allowed.'
+      });
+    }
+
+    // Check if customer exists
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('id, name')
+      .eq('id', customerId)
+      .single();
+
+    if (customerError || !customer) {
+      return res.status(404).json({
+        error: 'Customer not found'
+      });
+    }
+
+    // Get or create customer details record
+    let { data: customerDetails, error: getError } = await supabase
+      .from('customer_details')
+      .select('*')
+      .eq('customer_id', customerId)
+      .single();
+
+    if (getError && getError.code !== 'PGRST116') {
+      console.error('🔍 Backend - Get customer details error:', getError);
+      return res.status(500).json({
+        error: 'Failed to get customer details',
+        details: getError.message
+      });
+    }
+
+    // Prepare passport file data
+    const passportFileData = {
+      id: `passport_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: name,
+      type: type,
+      size: size || 0,
+      data: data,
+      uploadedAt: uploadedAt || new Date().toISOString(),
+      category: 'passport'
+    };
+
+    // Update or create customer details with passport photo
+    const updateData = {
+      customer_id: customerId,
+      passport_photo: {
+        data: data,
+        name: name,
+        type: type,
+        size: size || 0,
+        uploadedAt: uploadedAt || new Date().toISOString()
+      },
+      passport_file_name: name,
+      passport_file_type: type,
+      passport_file_size: size || 0,
+      passport_uploaded_at: uploadedAt || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (customerDetails) {
+      // Update existing record
+      const { data: updatedDetails, error: updateError } = await supabase
+        .from('customer_details')
+        .update(updateData)
+        .eq('customer_id', customerId)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error('🔍 Backend - Update customer details error:', updateError);
+        return res.status(500).json({
+          error: 'Failed to update customer details with passport',
+          details: updateError.message
+        });
+      }
+
+      customerDetails = updatedDetails;
+    } else {
+      // Create new record
+      const { data: newDetails, error: createError } = await supabase
+        .from('customer_details')
+        .insert(updateData)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('🔍 Backend - Create customer details error:', createError);
+        return res.status(500).json({
+          error: 'Failed to create customer details with passport',
+          details: createError.message
+        });
+      }
+
+      customerDetails = newDetails;
+    }
+
+    console.log('✅ Passport file uploaded successfully for customer:', customer.name);
+
+    res.status(201).json({
+      success: true,
+      message: 'Passport photo uploaded successfully',
+      data: {
+        passport_photo: customerDetails.passport_photo,
+        file_name: passportFileData.name,
+        file_type: passportFileData.type,
+        file_size: passportFileData.size,
+        uploaded_at: passportFileData.uploadedAt,
+        customer_details: customerDetails
+      }
+    });
+
+  } catch (error) {
+    console.error('🔍 Backend - Upload passport error:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * POST /customers/:id/promote-to-agent
+ * Promote customer to agent (Admin only)
+ */
+router.post('/:id/promote-to-agent', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const customerId = req.params.id;
+    const { parent_agent_id } = req.body;
+
+    // Check if customer exists
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('id', customerId)
+      .single();
+
+    if (customerError || !customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found'
+      });
+    }
+
+    // Check if customer is already an agent
+    if (customer.is_agent && customer.source_agent_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer is already an agent'
+      });
+    }
+
+    // Determine parent agent ID
+    let finalParentAgentId = parent_agent_id;
+    
+    // If no parent_agent_id provided, use customer's current agent_id as parent
+    if (!finalParentAgentId && customer.agent_id) {
+      finalParentAgentId = customer.agent_id;
+    }
+    
+    // Validate parent_agent_id if it exists
+    if (finalParentAgentId) {
+      const { data: parentAgent, error: parentError } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('id', finalParentAgentId)
+        .single();
+      
+      if (parentError || !parentAgent) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid parent agent ID'
+        });
+      }
+    }
+
+    // Create agent record
+    const { data: newAgent, error: agentError } = await supabase
+      .from('agents')
+      .insert({
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        commission_rate: 0,
+        status: 'active',
+        parent_agent_id: finalParentAgentId || null,
+        created_by: req.user.id
+      })
+      .select()
+      .single();
+
+    if (agentError) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to create agent record',
+        error: agentError.message
+      });
+    }
+
+    // Update customer record to mark as agent
+    const { data: updatedCustomer, error: updateError } = await supabase
+      .from('customers')
+      .update({
+        is_agent: true,
+        source_agent_id: newAgent.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', customerId)
+      .select()
+      .single();
+
+    if (updateError) {
+      // Rollback: delete the created agent if customer update fails
+      await supabase
+        .from('agents')
+        .delete()
+        .eq('id', newAgent.id);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to update customer record',
+        error: updateError.message
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Customer successfully promoted to agent',
+      data: {
+        customer: updatedCustomer,
+        agent: newAgent
+      }
+    });
+
+  } catch (error) {
+    console.error('Error promoting customer to agent:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
+
   export default router;

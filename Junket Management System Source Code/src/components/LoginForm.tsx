@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Alert, AlertDescription } from './ui/alert';
-import { Badge } from './ui/badge';
 import { User } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { db as databaseWrapper } from '../utils/api/databaseWrapper';
-import { Database, Shield, Info, AlertTriangle, CheckCircle, Key, Users, RefreshCw, Bug } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import { 
+  DSButton, 
+  DSNotification,
+  DSFormLayout,
+  typography
+} from './common/DesignSystem';
 
 interface LoginFormProps {
   onLogin: (user: User) => void;
@@ -19,9 +22,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [showTestCredentials, setShowTestCredentials] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
-  const [connectionTest, setConnectionTest] = useState<any>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,154 +72,101 @@ export function LoginForm({ onLogin }: LoginFormProps) {
       
       setError(error.message || 'Login failed');
       
-      // If login fails, run a connection test for debugging
-      if (debugMode) {
-        try {
-          const testResult = await db.testConnection();
-          setConnectionTest(testResult);
-        } catch (testError) {
-          console.error('Connection test failed:', testError);
-        }
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fillTestCredentials = (role: string) => {
-    switch (role) {
-      case 'admin':
-        setUsername('admin');
-        setPassword('admin123');
-        break;
-      case 'agent':
-        setUsername('agent1');
-        setPassword('agent123');
-        break;
-      case 'staff':
-        setUsername('staff1');
-        setPassword('staff123');
-        break;
-    }
-    setError('');
-  };
-
-  const testDatabaseConnection = async () => {
-    setIsLoading(true);
-    try {
-      const testResult = await db.testConnection();
-      setConnectionTest(testResult);
-      
-      if (testResult.success) {
-        setError('');
-        console.log('✅ Database connection test successful');
-      } else {
-        setError(`Connection test failed: ${testResult.message}`);
-        console.error('❌ Database connection test failed:', testResult);
-      }
-    } catch (error: any) {
-      setError(`Connection test error: ${error.message}`);
-      console.error('❌ Connection test error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const initializeAdminAccount = async () => {
-    setIsLoading(true);
-    try {
-      console.log('🔧 Manually initializing admin account...');
-      await db.initializeSampleDataIfNeeded();
-      setError('');
-      alert('Admin account initialized successfully! Try logging in with admin/admin123');
-    } catch (error: any) {
-      setError(`Initialization failed: ${error.message}`);
-      console.error('❌ Admin initialization error:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-6 sm:py-12 px-2 sm:px-4 lg:px-8">
       <div className="max-w-md w-full">
+        {/* Error Notification */}
+        {error && (
+          <div className="mb-6">
+            <DSNotification
+              type="error"
+              title="Authentication Failed"
+              message={error}
+              onClose={() => setError('')}
+              autoClose={false}
+            />
+          </div>
+        )}
+        
         <Card className="bg-white/95 backdrop-blur-sm border-2 border-amber-300 shadow-2xl shadow-amber-500/20">
-          <CardHeader className="text-center pb-8 pt-8">
+          <CardHeader className="text-center pb-6 sm:pb-8 pt-6 sm:pt-8 px-4 sm:px-8">
             <div className="mb-4">
-              <div className="w-16 h-16 mx-auto bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center shadow-lg">
-                <span className="text-2xl font-bold text-white">HW</span>
+              <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center shadow-lg">
+                <span className="text-lg sm:text-2xl font-bold text-white">HW</span>
               </div>
             </div>
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 bg-clip-text text-transparent">
+            <CardTitle className={`${typography.h2} sm:text-3xl font-bold bg-gradient-to-r from-amber-600 to-amber-800 bg-clip-text text-transparent`}>
               Hoe Win Junket Management System
             </CardTitle>
-            <CardDescription className="text-slate-600 mt-3 font-medium">
+            <CardDescription className={`${typography.body} text-slate-600 mt-3 font-medium`}>
               Professional Gaming Management Platform
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-8 pb-8">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="username" className="text-slate-700 font-semibold">Username</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter username"
-                  required
-                  disabled={isLoading}
-                  className="h-12 border-2 border-slate-200 focus:border-amber-400 focus:ring-amber-400/20 bg-white/80 backdrop-blur-sm"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-slate-700 font-semibold">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password"
-                  required
-                  disabled={isLoading}
-                  className="h-12 border-2 border-slate-200 focus:border-amber-400 focus:ring-amber-400/20 bg-white/80 backdrop-blur-sm"
-                />
-              </div>
+          <CardContent className="px-4 sm:px-8 pb-6 sm:pb-8">
+            <form onSubmit={handleSubmit}>
+              <DSFormLayout columns={1}>
+                <div className="space-y-2">
+                  <Label htmlFor="username" className={`${typography.label} text-slate-700 font-semibold`}>
+                    Username
+                  </Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Enter username"
+                    required
+                    disabled={isLoading}
+                    className="h-10 sm:h-12 border-2 border-slate-200 focus:border-amber-400 focus:ring-amber-400/20 bg-white/80 backdrop-blur-sm"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="password" className={`${typography.label} text-slate-700 font-semibold`}>
+                    Password
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password"
+                    required
+                    disabled={isLoading}
+                    className="h-10 sm:h-12 border-2 border-slate-200 focus:border-amber-400 focus:ring-amber-400/20 bg-white/80 backdrop-blur-sm"
+                  />
+                </div>
 
-              {error && (
-                <Alert className="border-2 border-red-300 bg-red-50/80 backdrop-blur-sm">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                  <AlertDescription className="text-red-800 font-medium">
-                    <strong>Authentication Failed:</strong> {error}
-                    {error.includes('Invalid credentials') && (
-                      <div className="mt-3 p-3 bg-red-100/50 rounded-md text-sm">
-                        <div className="font-semibold mb-2">Valid Credentials:</div>
-                        <div className="space-y-1">
-                          <div>• Admin: <code className="bg-red-200 px-2 py-1 rounded font-mono">admin / admin123</code></div>
-                          <div>• Agent: <code className="bg-red-200 px-2 py-1 rounded font-mono">agent1 / agent123</code></div>
-                          <div>• Staff: <code className="bg-red-200 px-2 py-1 rounded font-mono">staff1 / staff123</code></div>
-                        </div>
-                      </div>
-                    )}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <Button 
-                type="submit" 
-                className="w-full h-12 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-semibold shadow-lg shadow-amber-500/25 border-0 transition-all duration-200" 
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <div className="flex items-center space-x-2">
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span>Authenticating...</span>
+                {/* Credentials Help - Only show when there's an invalid credentials error */}
+                {error.includes('Invalid credentials') && (
+                  <div className="mt-3 p-3 bg-amber-50/80 border border-amber-200 rounded-md">
+                    <div className={`${typography.small} font-semibold mb-2 text-amber-800`}>
+                      Valid Credentials:
+                    </div>
+                    <div className={`${typography.small} space-y-1 text-amber-700`}>
+                      <div>• Admin: <code className="bg-amber-200 px-2 py-1 rounded font-mono text-xs">admin / admin123</code></div>
+                      <div>• Agent: <code className="bg-amber-200 px-2 py-1 rounded font-mono text-xs">agent1 / agent123</code></div>
+                      <div>• Staff: <code className="bg-amber-200 px-2 py-1 rounded font-mono text-xs">staff1 / staff123</code></div>
+                    </div>
                   </div>
-                ) : (
-                  'Access Dashboard'
                 )}
-              </Button>
+
+                <DSButton
+                  type="submit"
+                  variant="primary"
+                  size="mobile"
+                  disabled={isLoading}
+                  className="h-10 sm:h-12 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-semibold shadow-lg shadow-amber-500/25 border-0 transition-all duration-200"
+                  icon={isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+                >
+                  {isLoading ? 'Authenticating...' : 'Access Dashboard'}
+                </DSButton>
+              </DSFormLayout>
             </form>
 
           </CardContent>

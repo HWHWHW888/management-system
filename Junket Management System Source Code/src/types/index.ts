@@ -29,6 +29,13 @@ export interface Agent {
   customerId?: string; // If agent is also a customer
   commissionRate?: number;
   attachments?: FileAttachment[]; // Passport, photo, and other documents
+  parent_agent_id?: string; // Parent agent ID for hierarchical structure
+  parentAgent?: {
+    id: string;
+    name: string;
+    email: string;
+  }; // Parent agent details
+  children?: Agent[]; // Child agents
 }
 
 export interface Staff {
@@ -179,7 +186,7 @@ export interface TripAgent {
   agentId: string;
   agent_id?: string; // Alternative field name from backend
   agentName: string;
-  agent?: {
+  agent: {
     id: string;
     name: string;
     email: string;
@@ -260,7 +267,7 @@ export interface Trip {
   recentActivityCount?: number;
   totalExpenses?: number;
   // Backend API fields (snake_case from trips.js)
-  // Note: total_win, total_loss, net_profit removed from trips table - now in trip_sharing
+  // Note: total_win, total_loss fields consolidated into total_win_loss in trip_customer_stats
   total_budget?: number; // From backend API
   activecustomerscount?: number; // Updated field name from schema
   // Legacy fields for backward compatibility

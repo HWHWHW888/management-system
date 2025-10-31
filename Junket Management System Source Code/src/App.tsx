@@ -7,14 +7,16 @@ import { StaffManagement } from './components/StaffManagement';
 import { StaffSelfService } from './components/StaffSelfService';
 import ProjectManagement from './components/ProjectManagement';
 import { DataManagement } from './components/DataManagement';
+import { Reports } from './components/Reports';
 import { Button } from './components/ui/button';
-import { Alert, AlertDescription } from './components/ui/alert';
 import { LogOut, Users, UserCheck, BarChart3, MapPin, ShieldCheck, Clock, Database, Settings, AlertTriangle, CheckCircle, Wifi, RefreshCw, Bug, Shield } from 'lucide-react';
 import { User } from './types';
 import { db } from './utils/api/databaseWrapper';
 import { Badge } from './components/ui/badge';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { LanguageToggle } from './components/LanguageToggle';
+import { CurrencyProvider } from './contexts/CurrencyContext';
+import { CurrencyToggle } from './components/CurrencyToggle';
 
 function AppContent() {
   const { t } = useLanguage();
@@ -25,96 +27,122 @@ function AppContent() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [connectionDetails, setConnectionDetails] = useState<any>(null);
   const [debugMode, setDebugMode] = useState(false);
-  const [dataPreservationMessage, setDataPreservationMessage] = useState('');
 
   useEffect(() => {
-    initializeApplication();
+    // Check if this is production domain but don't clear session immediately
+    const hostname = window.location.hostname;
+    const isProductionDomain = hostname === 'www.hoewingroup.com' || hostname === 'hoewingroup.com';
     
-    // Test API connection for Cloudflare Pages deployment
-    fetch(`${process.env.REACT_APP_API_URL?.replace('/api', '')}/health`)
-      .then(res => res.json())
-      .then(data => {
-        console.log('✅ Backend health check:', data);
-      })
-      .catch(error => {
-        console.error('❌ Backend health check failed:', error);
-      });
+    if (isProductionDomain) {
+      console.log('🔒 Production domain detected - enhanced security mode');
+    }
+    
+    // Parallel initialization
+    Promise.all([
+      initializeApplication(),
+      // Preload API health check in parallel
+      fetch(`${process.env.REACT_APP_API_URL?.replace('/api', '')}/health`)
+        .then(res => res.json())
+        .then(data => {
+          console.log('✅ Backend health check:', data);
+        })
+        .catch(error => {
+          console.error('❌ Backend health check failed:', error);
+        })
+    ]).catch(error => {
+      console.error('❌ Parallel initialization error:', error);
+    });
   }, []);
 
   const initializeApplication = async () => {
     setIsInitializing(true);
     setErrorMessage('');
-    setDataPreservationMessage('');
 
     try {
-      console.log('🚀 Initializing Casino Management System with data preservation...');
+      console.log('🚀 Initializing Casino Management System...');
       
-      // Test connection with detailed feedback
+      // Single connection test (combines health check)
       const connectionTest = await db.testConnection();
       setConnectionDetails(connectionTest);
+      setIsDatabaseHealthy(connectionTest.success);
       
       if (!connectionTest.success) {
-        setIsDatabaseHealthy(false);
         throw new Error(`Database connection failed: ${connectionTest.message}. ${connectionTest.details || ''}`);
       }
 
-      // Check Supabase health
-      const isHealthy = await db.isHealthy();
-      setIsDatabaseHealthy(isHealthy);
-
-      if (!isHealthy) {
-        throw new Error('Supabase database health check failed. The server may be temporarily unavailable.');
+      // Skip data initialization for faster startup
+      // Only initialize if explicitly needed (first time setup)
+      const skipDataInit = localStorage.getItem('app_initialized');
+      if (!skipDataInit) {
+        console.log('🛡️ First-time setup - initializing data...');
+        await db.initializeSampleDataIfNeeded();
+        localStorage.setItem('app_initialized', 'true');
+      } else {
+        console.log('⚡ Skipping data initialization - already configured');
       }
 
-      // UPDATED: Safe initialization that preserves existing data
-      console.log('🛡️ Performing safe database initialization (preserving existing data)...');
-      await db.initializeSampleDataIfNeeded();
+      // Smart session management for production domains
+      const hostname = window.location.hostname;
+      const isProductionDomain = hostname === 'www.hoewingroup.com' || hostname === 'hoewingroup.com';
       
-      // Get data count after initialization to show preservation message
-      try {
-        const usersCount = (await db.get('users', [])).length;
-        const customersCount = (await db.get('customers', [])).length;
-        const agentsCount = (await db.get('agents', [])).length;
-        const tripsCount = (await db.get('trips', [])).length;
-        
-        const totalRecords = usersCount + customersCount + agentsCount + tripsCount;
-        if (totalRecords > 1) { // More than just the admin user
-          setDataPreservationMessage(
-            `✅ Data preserved: ${usersCount} users, ${customersCount} customers, ${agentsCount} agents, ${tripsCount} trips`
-          );
-        }
-      } catch (error) {
-        console.warn('Could not get data counts:', error);
-      }
-
-      // Check for saved user session
       const savedUser = localStorage.getItem('casinoUser');
       if (savedUser) {
         try {
           const user = JSON.parse(savedUser);
-          setCurrentUser(user);
-          console.log('👤 Restored user session:', user.username);
           
-          // Restore token to API client if available
-          if (user.token) {
-            const { apiClient } = await import('./utils/api/apiClient');
-            apiClient.setToken(user.token);
-            console.log('🔑 Token restored to API client');
-          }
-          
-          // Set default tab based on user role
-          if (user.role === 'staff') {
-            setActiveTab('checkinout');
+          if (isProductionDomain) {
+            // For production domain, validate token freshness
+            const loginTime = user.loginTime || 0;
+            const currentTime = Date.now();
+            const sessionTimeout = 8 * 60 * 60 * 1000; // 8 hours
+            
+            if (currentTime - loginTime > sessionTimeout) {
+              // Session expired, clear only this user's session
+              console.log('🔒 Session expired for production domain - requiring fresh login');
+              localStorage.removeItem('casinoUser');
+            } else {
+              // Valid session, restore user
+              setCurrentUser(user);
+              console.log('👤 Restored valid session for production:', user.username);
+              
+              if (user.token) {
+                const { apiClient } = await import('./utils/api/apiClient');
+                apiClient.setToken(user.token);
+                console.log('🔑 Token restored to API client');
+              }
+              
+              if (user.role === 'staff') {
+                setActiveTab('checkinout');
+              } else {
+                setActiveTab('dashboard');
+              }
+            }
           } else {
-            setActiveTab('dashboard');
+            // Development environment - restore session normally
+            setCurrentUser(user);
+            console.log('👤 Restored user session:', user.username);
+            
+            if (user.token) {
+              const { apiClient } = await import('./utils/api/apiClient');
+              apiClient.setToken(user.token);
+              console.log('🔑 Token restored to API client');
+            }
+            
+            if (user.role === 'staff') {
+              setActiveTab('checkinout');
+            } else {
+              setActiveTab('dashboard');
+            }
           }
         } catch (error) {
           console.error('Error parsing saved user session:', error);
           localStorage.removeItem('casinoUser');
         }
+      } else if (isProductionDomain) {
+        console.log('🔒 Production domain - no saved session, showing login');
       }
 
-      console.log('✅ Application initialization completed with data preservation');
+      console.log('✅ Application initialization completed');
 
     } catch (error) {
       console.error('❌ Application initialization failed:', error);
@@ -137,13 +165,18 @@ function AppContent() {
       console.log('🔍 App.handleLogin user role:', user?.role);
       console.log('🔍 App.handleLogin user token:', user?.token ? 'Present' : 'Missing');
       
-      // Use the user object directly from databaseWrapper.login (already has token and role)
-      setCurrentUser(user);
+      // Add login timestamp for session management
+      const userWithTimestamp = {
+        ...user,
+        loginTime: Date.now()
+      };
       
-      // The user object is already saved to localStorage by databaseWrapper.login
-      // Just verify it's there
-      const savedUser = localStorage.getItem('casinoUser');
-      console.log('🔍 App.handleLogin localStorage user:', savedUser);
+      // Use the user object directly from databaseWrapper.login (already has token and role)
+      setCurrentUser(userWithTimestamp);
+      
+      // Update localStorage with timestamp
+      localStorage.setItem('casinoUser', JSON.stringify(userWithTimestamp));
+      console.log('🔍 App.handleLogin updated localStorage with timestamp');
       
       // Set default tab based on user role
       if (user.role === 'staff') {
@@ -306,81 +339,109 @@ function AppContent() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-semibold text-gray-900">Casino Management System</h1>
-              <Badge variant="secondary" className="text-xs">
-                {getDisplayRole()}
-              </Badge>
-              <Badge variant="default" className="text-xs flex items-center gap-1">
-                <Database className="w-3 h-3" />
-                Supabase
-              </Badge>
-              {/* Health indicator */}
-              <Badge 
-                variant="outline"
-                className={`text-xs flex items-center gap-1 ${
-                  isDatabaseHealthy ? 'border-green-200 text-green-700' : 'border-red-200 text-red-700'
-                }`}
-              >
-                {isDatabaseHealthy ? (
-                  <>
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
+          <div className="flex justify-between items-center h-14 sm:h-16">
+            {/* Left side - Title and badges */}
+            <div className="flex items-center space-x-2 sm:space-x-4 min-w-0 flex-1">
+              <h1 className="text-sm sm:text-xl font-semibold text-gray-900 truncate">
+                <span className="hidden sm:inline">Casino Management System</span>
+                <span className="sm:hidden">Casino Management</span>
+              </h1>
+              <div className="hidden sm:flex items-center space-x-2">
+                <Badge variant="secondary" className="text-xs">
+                  {getDisplayRole()}
+                </Badge>
+                <Badge variant="default" className="text-xs flex items-center gap-1">
+                  <Database className="w-3 h-3" />
+                  Supabase
+                </Badge>
+                {/* Health indicator */}
+                <Badge 
+                  variant="outline"
+                  className={`text-xs flex items-center gap-1 ${
+                    isDatabaseHealthy ? 'border-green-200 text-green-700' : 'border-red-200 text-red-700'
+                  }`}
+                >
+                  {isDatabaseHealthy ? (
+                    <>
+                      <CheckCircle className="w-3 h-3" />
+                      Connected
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="w-3 h-3" />
+                      Issues
+                    </>
+                  )}
+                </Badge>
+                {/* Data Protection Badge */}
+                <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-200 text-blue-700">
+                  <Shield className="w-3 h-3" />
+                  Data Protected
+                </Badge>
+              </div>
+              {/* Mobile badges - only show essential ones */}
+              <div className="sm:hidden flex items-center space-x-1">
+                <Badge variant="secondary" className="text-xs">
+                  {getDisplayRole()}
+                </Badge>
+                <Badge 
+                  variant="outline"
+                  className={`text-xs flex items-center gap-1 ${
+                    isDatabaseHealthy ? 'border-green-200 text-green-700' : 'border-red-200 text-red-700'
+                  }`}
+                >
+                  {isDatabaseHealthy ? (
                     <CheckCircle className="w-3 h-3" />
-                    Connected
-                  </>
-                ) : (
-                  <>
+                  ) : (
                     <AlertTriangle className="w-3 h-3" />
-                    Issues
-                  </>
-                )}
-              </Badge>
-              {/* Data Protection Badge */}
-              <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-200 text-blue-700">
-                <Shield className="w-3 h-3" />
-                Data Protected
-              </Badge>
+                  )}
+                </Badge>
+              </div>
             </div>
-            <div className="flex items-center space-x-4">
+            
+            {/* Right side - Controls */}
+            <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
               <LanguageToggle />
+              <CurrencyToggle />
               {!isDatabaseHealthy && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={refreshDatabaseHealth}
-                  className="text-xs"
+                  className="text-xs hidden sm:flex"
                 >
                   <Wifi className="w-4 h-4 mr-2" />
                   Reconnect
                 </Button>
               )}
-              <span className="text-sm text-gray-600">Welcome, {currentUser.username}</span>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
+              <span className="text-xs sm:text-sm text-gray-600 hidden sm:inline">Welcome, {currentUser.username}</span>
+              <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs">
+                <LogOut className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Logout</span>
               </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
 
         {/* Navigation Tabs */}
-        <div className="flex flex-wrap space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
+        <div className="flex flex-wrap gap-1 sm:space-x-1 mb-6 sm:mb-8 bg-gray-100 p-1 rounded-lg overflow-x-auto">
           {/* Dashboard - For admin, agent, and boss */}
           {(isAdmin || isAgent || isBoss) && (
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'dashboard'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <BarChart3 className="w-4 h-4 mr-2" />
-              {t('dashboard')}
+              <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{t('dashboard')}</span>
+              <span className="sm:hidden">Dashboard</span>
             </button>
           )}
 
@@ -388,14 +449,15 @@ function AppContent() {
           {isStaff && (
             <button
               onClick={() => setActiveTab('checkinout')}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'checkinout'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <Clock className="w-4 h-4 mr-2" />
-              {t('checkinout')}
+              <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{t('checkinout')}</span>
+              <span className="sm:hidden">Check</span>
             </button>
           )}
 
@@ -403,14 +465,15 @@ function AppContent() {
           {(isAdmin || isAgent || isStaff || isBoss) && (
             <button
               onClick={() => setActiveTab('customers')}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'customers'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <Users className="w-4 h-4 mr-2" />
-              {t('customers')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}
+              <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{t('customers')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}</span>
+              <span className="sm:hidden">Customers</span>
             </button>
           )}
 
@@ -418,14 +481,15 @@ function AppContent() {
           {(isAdmin || isStaff || isBoss) && (
             <button
               onClick={() => setActiveTab('agents')}
-              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'agents'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <UserCheck className="w-4 h-4 mr-2" />
-              {t('agents')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}
+              <UserCheck className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">{t('agents')} {(isStaff || isBoss) && <span className="ml-1 text-xs text-gray-500">(View)</span>}</span>
+              <span className="sm:hidden">Agents</span>
             </button>
           )}
 
@@ -439,7 +503,7 @@ function AppContent() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <ShieldCheck className="w-4 h-4 mr-2" />
+              <ShieldCheck className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               {t('staff')}
             </button>
           )}
@@ -454,38 +518,41 @@ function AppContent() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <MapPin className="w-4 h-4 mr-2" />
+              <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               {t('projects')}
             </button>
           )}
 
-          {/* Data Management - Admin and boss */}
+          {/* Reports - Admin and boss */}
           {(isAdmin || isBoss) && (
             <button
-              onClick={() => setActiveTab('data')}
+              onClick={() => setActiveTab('reports')}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === 'data'
+                activeTab === 'reports'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <Settings className="w-4 h-4 mr-2" />
-              {t('data')}
+              <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              {t('reports')}
             </button>
           )}
 
-          {/* Reports - For all users - TEMPORARILY HIDDEN */}
-          {/* <button
-            onClick={() => setActiveTab('reports')}
-            className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'reports'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Reports
-          </button> */}
+          {/* Settings - Admin only */}
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'settings'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              {t('settings')}
+            </button>
+          )}
+
         </div>
 
         {/* Content */}
@@ -495,8 +562,8 @@ function AppContent() {
         {activeTab === 'staff' && (isAdmin || isBoss) && <StaffManagement user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'checkinout' && isStaff && <StaffSelfService user={currentUser} showError={() => {}} clearError={() => {}} />}
         {activeTab === 'projects' && (isAdmin || isAgent || isBoss) && <ProjectManagement user={currentUser} />}
-        {activeTab === 'data' && (isAdmin || isBoss) && <DataManagement user={currentUser} />}
-        {/* {activeTab === 'reports' && <Reports user={currentUser} />} */}
+        {activeTab === 'reports' && (isAdmin || isBoss) && <Reports user={currentUser} />}
+        {activeTab === 'settings' && isAdmin && <DataManagement user={currentUser} />}
       </div>
     </div>
   );
@@ -505,7 +572,9 @@ function AppContent() {
 function App() {
   return (
     <LanguageProvider>
-      <AppContent />
+      <CurrencyProvider>
+        <AppContent />
+      </CurrencyProvider>
     </LanguageProvider>
   );
 }

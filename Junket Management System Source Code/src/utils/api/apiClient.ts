@@ -1,9 +1,9 @@
 // API Client for connecting frontend to backend server
 import { tokenManager } from '../auth/tokenManager';
 
-// Use relative URL in development to leverage proxy, absolute URL in production
+// Use direct backend URL in development, environment variable in production
 const API_BASE_URL = process.env.NODE_ENV === 'development' 
-  ? '/api'  // Relative URL for development (uses proxy)
+  ? 'http://localhost:3001/api'  // Direct URL for development
   : (process.env.REACT_APP_API_URL || 'http://localhost:3001/api');
 
 interface ApiResponse<T = any> {
@@ -113,6 +113,14 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
       console.log(`🔑 ApiClient Interceptor: Added auth header for ${endpoint}`);
     }
+
+    // Debug log for API requests
+    console.log("📤 API Request:", {
+      url,
+      method: options.method || 'GET',
+      headers,
+      body: options.body,
+    });
 
     try {
       const response = await fetch(url, {
@@ -305,6 +313,21 @@ class ApiClient {
     }, customToken);
   }
 
+  async getAgentChildren(id: string, customToken?: string) {
+    return this.request(`/agents/${id}/children`, {}, customToken);
+  }
+
+  async getAgentHierarchy(customToken?: string) {
+    return this.request('/agents/hierarchy', {}, customToken);
+  }
+
+  async updateAgentParent(id: string, parentAgentId: string | null, customToken?: string) {
+    return this.request(`/agents/${id}/parent`, {
+      method: 'PUT',
+      body: JSON.stringify({ parent_agent_id: parentAgentId }),
+    }, customToken);
+  }
+
   // Trips endpoints
   async getTrips() {
     return this.request('/trips');
@@ -337,6 +360,12 @@ class ApiClient {
     });
   }
 
+  // Trip agent summary endpoint
+  async getTripAgentSummary(tripId: string) {
+    console.log('📊 ApiClient: Fetching agent summary for trip:', tripId);
+    return this.request(`/trips/${tripId}/agent-summary`);
+  }
+
   // Transactions endpoints
   async getTransactions() {
     return this.request('/transactions');
@@ -360,6 +389,44 @@ class ApiClient {
     return this.request(`/transactions/${id}`, {
       method: 'DELETE',
     });
+  }
+
+  // Customer transaction history - use existing transactions endpoint
+  async getCustomerTransactions(customerId: string, tripId?: string) {
+    const params = tripId ? `?trip_id=${tripId}` : '';
+    return this.request(`/transactions/customer/${customerId}${params}`);
+  }
+
+  // Rolling records endpoints
+  async getRollingRecords() {
+    return this.request('/rolling-records');
+  }
+
+  async createRolling(rollingData: any) {
+    return this.request('/rolling-records', {
+      method: 'POST',
+      body: JSON.stringify(rollingData),
+    });
+  }
+
+  async updateRolling(id: string, rollingData: any) {
+    return this.request(`/rolling-records/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(rollingData),
+    });
+  }
+
+  async deleteRolling(id: string) {
+    return this.request(`/rolling-records/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Customer rolling history - use existing rolling-records endpoint with customer_id filter
+  async getCustomerRollings(customerId: string, tripId?: string) {
+    const params = new URLSearchParams({ customer_id: customerId });
+    if (tripId) params.append('trip_id', tripId);
+    return this.request(`/rolling-records?${params.toString()}`);
   }
 
   // Reports endpoints
@@ -425,6 +492,22 @@ class ApiClient {
   async deleteCustomerAttachment(customerId: string, attachmentId: string): Promise<ApiResponse<any>> {
     return this.request(`/customers/${customerId}/attachments/${attachmentId}`, {
       method: 'DELETE'
+    });
+  }
+
+  // Customer passport file upload
+  async uploadCustomerPassport(customerId: string, passportData: any): Promise<ApiResponse<any>> {
+    return this.request(`/customers/${customerId}/passport`, {
+      method: 'POST',
+      body: JSON.stringify(passportData)
+    });
+  }
+
+  // Customer to Agent promotion
+  async promoteCustomerToAgent(customerId: string, parentAgentId?: string): Promise<ApiResponse<any>> {
+    return this.request(`/customers/${customerId}/promote-to-agent`, {
+      method: 'POST',
+      body: JSON.stringify({ parent_agent_id: parentAgentId })
     });
   }
 

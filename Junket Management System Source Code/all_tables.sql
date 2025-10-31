@@ -12,8 +12,12 @@ create table public.agents (
   updated_at timestamp with time zone null default now(),
   total_commission numeric(15, 2) null default 0.00,
   total_trips integer null default 0,
-  constraint agents_pkey primary key (id)
+  parent_agent_id uuid null,
+  constraint agents_pkey primary key (id),
+  constraint agents_parent_fkey foreign KEY (parent_agent_id) references agents (id) on delete set null
 ) TABLESPACE pg_default;
+
+create index IF not exists idx_agents_parent_agent_id on public.agents using btree (parent_agent_id) TABLESPACE pg_default;
 
 create index IF not exists idx_agents_customer_id on public.agents using btree (customer_id) TABLESPACE pg_default;
 
@@ -24,68 +28,6 @@ create index IF not exists idx_agents_status on public.agents using btree (statu
 create index IF not exists idx_agents_total_commission on public.agents using btree (total_commission) TABLESPACE pg_default;
 
 create index IF not exists idx_agents_total_trips on public.agents using btree (total_trips) TABLESPACE pg_default;
-
-
-create table public.buy_in_out_records (
-  id uuid not null default gen_random_uuid (),
-  customer_id uuid null,
-  customer_name text null,
-  staff_id uuid null,
-  staff_name text null,
-  transaction_type text null,
-  amount numeric null,
-  timestamp timestamp without time zone null,
-  venue text null,
-  table_number text null,
-  notes text null,
-  proof_photo uuid null,
-  shift_id uuid null,
-  trip_id uuid null,
-  constraint buy_in_out_records_pkey primary key (id),
-  constraint buy_in_out_records_proof_photo_fkey foreign KEY (proof_photo) references file_attachments (id),
-  constraint buy_in_out_records_staff_id_fkey foreign KEY (staff_id) references staff (id),
-  constraint buy_in_out_records_transaction_type_check check (
-    (
-      transaction_type = any (array['buy-in'::text, 'buy-out'::text])
-    )
-  )
-) TABLESPACE pg_default;
-
-create index IF not exists idx_buy_in_out_records_customer_id on public.buy_in_out_records using btree (customer_id) TABLESPACE pg_default;
-
-create index IF not exists idx_buy_in_out_records_staff_id on public.buy_in_out_records using btree (staff_id) TABLESPACE pg_default;
-
-create index IF not exists idx_buy_in_out_records_shift_id on public.buy_in_out_records using btree (shift_id) TABLESPACE pg_default;
-
-create index IF not exists idx_buy_in_out_records_trip_id on public.buy_in_out_records using btree (trip_id) TABLESPACE pg_default;
-
-create table public.chip_exchanges (
-  id uuid not null default gen_random_uuid (),
-  customer_id uuid null,
-  customer_name text null,
-  staff_id uuid null,
-  staff_name text null,
-  amount numeric null,
-  exchange_type text null,
-  timestamp timestamp without time zone null,
-  proof_photo uuid null,
-  constraint chip_exchanges_pkey primary key (id),
-  constraint chip_exchanges_proof_photo_fkey foreign KEY (proof_photo) references file_attachments (id),
-  constraint chip_exchanges_staff_id_fkey foreign KEY (staff_id) references staff (id),
-  constraint chip_exchanges_exchange_type_check check (
-    (
-      exchange_type = any (
-        array['cash-to-chips'::text, 'chips-to-cash'::text]
-      )
-    )
-  )
-) TABLESPACE pg_default;
-
-create index IF not exists idx_chip_exchanges_customer_id on public.chip_exchanges using btree (customer_id) TABLESPACE pg_default;
-
-create index IF not exists idx_chip_exchanges_staff_id on public.chip_exchanges using btree (staff_id) TABLESPACE pg_default;
-
-create index IF not exists idx_chip_exchanges_proof_photo on public.chip_exchanges using btree (proof_photo) TABLESPACE pg_default;
 
 create table public.customer_details (
   id uuid not null default gen_random_uuid (),
@@ -112,9 +54,16 @@ create table public.customer_details (
   created_by uuid null,
   updated_by uuid null,
   attachments jsonb null default '[]'::jsonb,
+  passport_photo jsonb null default '{}'::jsonb,
+  passport_file_name character varying(255) null,
+  passport_file_type character varying(100) null,
+  passport_file_size integer null,
+  passport_uploaded_at timestamp with time zone null,
   constraint customer_details_pkey primary key (id),
   constraint customer_details_customer_id_key unique (customer_id)
 ) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_details_passport_photo on public.customer_details using gin (passport_photo) TABLESPACE pg_default;
 
 create index IF not exists idx_customer_details_customer_id on public.customer_details using btree (customer_id) TABLESPACE pg_default;
 
@@ -131,6 +80,60 @@ create index IF not exists idx_customer_details_attachments on public.customer_d
 create trigger trigger_update_customer_details_updated_at BEFORE
 update on customer_details for EACH row
 execute FUNCTION update_customer_details_updated_at ();
+
+create table public.customer_photos (
+  id uuid not null default gen_random_uuid (),
+  customer_id uuid not null,
+  trip_id uuid not null,
+  photo_type text not null,
+  photo jsonb not null,
+  uploaded_by uuid not null,
+  upload_date timestamp with time zone null default now(),
+  transaction_date date null,
+  status text not null default 'pending'::text,
+  constraint customer_photos_pkey primary key (id),
+  constraint customer_photos_customer_id_fkey foreign KEY (customer_id) references customers (id),
+  constraint customer_photos_trip_id_fkey foreign KEY (trip_id) references trips (id),
+  constraint customer_photos_uploaded_by_fkey foreign KEY (uploaded_by) references staff (id),
+  constraint customer_photos_photo_type_check check (
+    (
+      photo_type = any (array['transaction'::text, 'rolling'::text])
+    )
+  ),
+  constraint customer_photos_status_check check (
+    (
+      status = any (
+        array[
+          'pending'::text,
+          'approved'::text,
+          'rejected'::text
+        ]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_customer_id on public.customer_photos using btree (customer_id) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_trip_id on public.customer_photos using btree (trip_id) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_photo_type on public.customer_photos using btree (photo_type) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_uploaded_by on public.customer_photos using btree (uploaded_by) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_status on public.customer_photos using btree (status) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_trip_customer on public.customer_photos using btree (trip_id, customer_id) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_trip_customer_type on public.customer_photos using btree (trip_id, customer_id, photo_type) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_photo_filename on public.customer_photos using gin (((photo -> 'filename'::text))) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_photo_type_json on public.customer_photos using gin (((photo -> 'type'::text))) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_photo_uploaded_at on public.customer_photos using gin (((photo -> 'uploaded_at'::text))) TABLESPACE pg_default;
+
+create index IF not exists idx_customer_photos_transaction_date on public.customer_photos using btree (transaction_date) TABLESPACE pg_default;
 
 create table public.customers (
   id uuid not null default gen_random_uuid (),
@@ -190,54 +193,6 @@ create index IF not exists idx_customers_source_agent_id on public.customers usi
 create index IF not exists idx_customers_email on public.customers using btree (email) TABLESPACE pg_default;
 
 create index IF not exists idx_customers_status on public.customers using btree (status) TABLESPACE pg_default;
-
-create table public.file_attachments (
-  id uuid not null default gen_random_uuid (),
-  name text null,
-  size bigint null,
-  type text null,
-  data text null,
-  uploaded_at timestamp with time zone null default now(),
-  uploaded_by uuid null,
-  constraint file_attachments_pkey primary key (id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_file_attachments_uploaded_by on public.file_attachments using btree (uploaded_by) TABLESPACE pg_default;
-
-create table public.game_types (
-  id uuid not null default gen_random_uuid (),
-  name text null,
-  category text null,
-  is_active boolean null default true,
-  constraint game_types_pkey primary key (id),
-  constraint game_types_category_check check (
-    (
-      category = any (
-        array[
-          'table-games'::text,
-          'slots'::text,
-          'poker'::text,
-          'sports-betting'::text,
-          'other'::text
-        ]
-      )
-    )
-  )
-) TABLESPACE pg_default;
-
-create table public.ocr_data (
-  id uuid not null default gen_random_uuid (),
-  original_image_id uuid null,
-  extracted_text text null,
-  confidence numeric null,
-  extracted_fields jsonb null,
-  processed_at timestamp without time zone null,
-  ocr_engine text null,
-  constraint ocr_data_pkey primary key (id),
-  constraint ocr_data_original_image_id_fkey foreign KEY (original_image_id) references file_attachments (id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_ocr_data_original_image_id on public.ocr_data using btree (original_image_id) TABLESPACE pg_default;
 
 create table public.staff (
   id uuid not null default gen_random_uuid (),
@@ -311,10 +266,10 @@ create table public.transactions (
   amount numeric(15, 2) not null,
   transaction_type character varying(50) not null,
   status character varying(20) null default 'completed'::character varying,
-  notes text null,
+  venue text null,
   recorded_by_staff_id uuid null,
   created_at timestamp with time zone null default now(),
-  updated_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null,
   constraint transactions_pkey primary key (id),
   constraint transactions_agent_id_fkey foreign KEY (agent_id) references agents (id),
   constraint fk_transactions_customer foreign KEY (customer_id) references customers (id),
@@ -358,9 +313,10 @@ create table public.trip_agent_customers (
   trip_id uuid not null,
   agent_id uuid not null,
   customer_id uuid not null,
-  commission_rate numeric(5, 2) null default 0.00,
+  profit_sharing_rate numeric(5, 2) null default 0.00,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
+  rolling_sharing_rate numeric(10, 4) null default 0.0000,
   constraint trip_agent_customers_pkey primary key (id),
   constraint trip_agent_customers_unique unique (trip_id, agent_id, customer_id),
   constraint fk_trip_agent_customers_agent foreign KEY (agent_id) references agents (id) on delete CASCADE,
@@ -368,13 +324,31 @@ create table public.trip_agent_customers (
   constraint fk_trip_agent_customers_trip foreign KEY (trip_id) references trips (id) on delete CASCADE
 ) TABLESPACE pg_default;
 
-create index IF not exists idx_trip_agent_customers_trip_id on public.trip_agent_customers using btree (trip_id) TABLESPACE pg_default;
-
 create index IF not exists idx_trip_agent_customers_agent_id on public.trip_agent_customers using btree (agent_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_agent_customers_customer_id on public.trip_agent_customers using btree (customer_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_agent_customers_trip_agent on public.trip_agent_customers using btree (trip_id, agent_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_agent_customers_trip_id on public.trip_agent_customers using btree (trip_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_agent_customers_rolling_sharing_rate on public.trip_agent_customers using btree (rolling_sharing_rate) TABLESPACE pg_default;
+
+create table public.trip_agent_summary (
+  id uuid not null default gen_random_uuid (),
+  trip_id uuid not null,
+  agent_id uuid not null,
+  total_win_loss numeric(15, 2) not null default 0,
+  total_commission numeric(15, 2) not null default 0,
+  total_profit numeric(15, 2) not null default 0,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  agent_profit_share numeric(15, 2) not null default 0,
+  constraint trip_agent_summary_pkey primary key (id),
+  constraint trip_agent_summary_unique unique (trip_id, agent_id),
+  constraint fk_trip_agent_summary_agent foreign KEY (agent_id) references agents (id) on delete CASCADE,
+  constraint fk_trip_agent_summary_trip foreign KEY (trip_id) references trips (id) on delete CASCADE
+) TABLESPACE pg_default;
 
 create table public.trip_agents (
   id uuid not null default gen_random_uuid (),
@@ -397,14 +371,12 @@ create table public.trip_customer_stats (
   customer_id uuid null,
   total_buy_in numeric(15, 2) null default 0,
   total_cash_out numeric(15, 2) null default 0,
-  total_win numeric(15, 2) null default 0,
-  total_loss numeric(15, 2) null default 0,
   net_result numeric(15, 2) null default 0,
   rolling_amount numeric(15, 2) null default 0,
-  commission_earned numeric(15, 2) null default 0,
-  notes text null,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
+  total_win_loss numeric(15, 2) null default 0,
+  total_commission_earned numeric(15, 2) not null default 0,
   constraint trip_customer_stats_pkey primary key (id),
   constraint trip_customer_stats_trip_id_customer_id_key unique (trip_id, customer_id),
   constraint fk_trip_customer_stats_customer foreign KEY (customer_id) references customers (id),
@@ -450,6 +422,7 @@ create table public.trip_expenses (
 
 create index IF not exists idx_trip_expenses_trip_id on public.trip_expenses using btree (trip_id) TABLESPACE pg_default;
 
+
 create table public.trip_rolling (
   id uuid not null default gen_random_uuid (),
   trip_id uuid not null,
@@ -457,10 +430,12 @@ create table public.trip_rolling (
   staff_id uuid not null,
   game_type text not null,
   rolling_amount numeric not null default 0,
-  notes text null,
+  venue text null,
   attachment_id uuid null,
   created_at timestamp with time zone not null default now(),
-  updated_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null,
+  commission_rate numeric(5, 4) null default 0,
+  commission_earned numeric GENERATED ALWAYS as ((rolling_amount * commission_rate)) STORED null,
   constraint trip_rolling_pkey primary key (id),
   constraint trip_rolling_attachment_id_fkey foreign KEY (attachment_id) references file_attachments (id),
   constraint trip_rolling_customer_id_fkey foreign KEY (customer_id) references customers (id) on delete CASCADE,
@@ -468,21 +443,21 @@ create table public.trip_rolling (
   constraint trip_rolling_trip_id_fkey foreign KEY (trip_id) references trips (id) on delete CASCADE
 ) TABLESPACE pg_default;
 
-create index IF not exists idx_trip_rolling_trip_id on public.trip_rolling using btree (trip_id) TABLESPACE pg_default;
-
-create index IF not exists idx_trip_rolling_customer_id on public.trip_rolling using btree (customer_id) TABLESPACE pg_default;
-
-create index IF not exists idx_trip_rolling_staff_id on public.trip_rolling using btree (staff_id) TABLESPACE pg_default;
-
 create index IF not exists idx_trip_rolling_attachment_id on public.trip_rolling using btree (attachment_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_rolling_created_at on public.trip_rolling using btree (created_at desc) TABLESPACE pg_default;
 
-create index IF not exists idx_trip_rolling_trip_customer on public.trip_rolling using btree (trip_id, customer_id) TABLESPACE pg_default;
-
-create index IF not exists idx_trip_rolling_trip_staff on public.trip_rolling using btree (trip_id, staff_id) TABLESPACE pg_default;
+create index IF not exists idx_trip_rolling_customer_id on public.trip_rolling using btree (customer_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_rolling_game_type on public.trip_rolling using btree (game_type) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_rolling_staff_id on public.trip_rolling using btree (staff_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_rolling_trip_customer on public.trip_rolling using btree (trip_id, customer_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_rolling_trip_id on public.trip_rolling using btree (trip_id) TABLESPACE pg_default;
+
+create index IF not exists idx_trip_rolling_trip_staff on public.trip_rolling using btree (trip_id, staff_id) TABLESPACE pg_default;
 
 create table public.trip_sharing (
   trip_id uuid not null,
@@ -504,6 +479,7 @@ create table public.trip_sharing (
 
 create index IF not exists idx_trip_sharing_trip_id on public.trip_sharing using btree (trip_id) TABLESPACE pg_default;
 
+
 create table public.trip_staff (
   id uuid not null default gen_random_uuid (),
   trip_id uuid not null,
@@ -521,6 +497,7 @@ create index IF not exists idx_trip_staff_trip_id on public.trip_staff using btr
 create index IF not exists idx_trip_staff_staff_id on public.trip_staff using btree (staff_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_staff_created_at on public.trip_staff using btree (created_at desc) TABLESPACE pg_default;
+
 
 create table public.trips (
   id uuid not null default gen_random_uuid (),
@@ -598,3 +575,4 @@ create table public.users (
     )
   )
 ) TABLESPACE pg_default;
+

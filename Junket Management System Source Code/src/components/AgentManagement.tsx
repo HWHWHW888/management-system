@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog';
@@ -13,7 +14,17 @@ import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
 import { isReadOnlyRole } from '../utils/permissions';
 import { apiClient } from '../utils/api/apiClient';
-import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Database, Save, Eye } from 'lucide-react';
+import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, UserCheck, Save, Eye, Loader2 } from 'lucide-react';
+import { 
+  DSContainer, 
+  DSHeader, 
+  DSButton, 
+  DSBadge, 
+  DSNotification,
+  spacing,
+  typography,
+  iconSizes
+} from './common/DesignSystem';
 
 interface AgentManagementProps extends WithErrorHandlerProps {
   user: User;
@@ -31,7 +42,8 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phone: ''
+    phone: '',
+    parent_agent_id: 'none'
   });
 
   const loadAllData = useCallback(async () => {
@@ -53,12 +65,21 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
         ...agent,
         isCustomer: true, // All agents are customers by default
         attachments: agent.attachments || [],
-        createdAt: new Date(agent.created_at).toLocaleDateString()
+        createdAt: new Date(agent.created_at).toLocaleDateString(),
+        // Map parent agent data from API response
+        parentAgent: agent.parent_agent && agent.parent_agent.length > 0 ? {
+          id: agent.parent_agent[0].id,
+          name: agent.parent_agent[0].name,
+          email: agent.parent_agent[0].email
+        } : null,
+        // Map child agents data from API response
+        children: agent.child_agents || []
       }));
 
       setAgents(processedAgents);
       
       console.log(`✅ Loaded ${processedAgents.length} agents from backend API`);
+      console.log('🔍 Agents with children:', processedAgents.filter(a => a.children && a.children.length > 0));
       
     } catch (error) {
       console.error('❌ Error loading agent data:', error);
@@ -83,14 +104,15 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
       setSaving(true);
       if (editingAgent) {
         // Update existing agent - only send required fields to backend
-        const updateData = {
+        const agentData = {
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
+          parent_agent_id: formData.parent_agent_id === 'none' ? null : formData.parent_agent_id,
           status: 'active'
         };
         
-        const response = await apiClient.updateAgent(editingAgent.id, updateData);
+        const response = await apiClient.updateAgent(editingAgent.id, agentData);
         if (!response.success) {
           throw new Error(response.error || 'Failed to update agent');
         }
@@ -103,6 +125,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
           name: formData.name,
           email: formData.email,
           phone: formData.phone || null,
+          parent_agent_id: formData.parent_agent_id === 'none' ? null : formData.parent_agent_id,
           commission_rate: 0,
           status: 'active'
         };
@@ -118,7 +141,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
       }
 
       // Reset form and close dialog
-      setFormData({ name: '', email: '', phone: '' });
+      setFormData({ name: '', email: '', phone: '', parent_agent_id: 'none' });
       setEditingAgent(null);
       setIsDialogOpen(false);
       
@@ -134,7 +157,8 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
     setFormData({
       name: agent.name,
       email: agent.email,
-      phone: agent.phone
+      phone: agent.phone,
+      parent_agent_id: agent.parent_agent_id || 'none'
     });
     setIsDialogOpen(true);
   };
@@ -177,7 +201,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
 
   const openNewAgentDialog = () => {
     setEditingAgent(null);
-    setFormData({ name: '', email: '', phone: '' });
+    setFormData({ name: '', email: '', phone: '', parent_agent_id: 'none' });
     setIsDialogOpen(true);
   };
 
@@ -196,52 +220,52 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
   // Show loading state
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-sm text-gray-600">Loading agent data from Supabase...</p>
+      <DSContainer>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className={`${typography.small} text-gray-600`}>Loading agent data from Supabase...</p>
+          </div>
         </div>
-      </div>
+      </DSContainer>
     );
   }
 
   return (
-    <div className="space-y-6">
-
+    <DSContainer>
       {/* Staff View Banner */}
       {isStaff && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center">
-            <Eye className="w-5 h-5 text-blue-600 mr-2" />
-            <div>
-              <p className="text-sm font-medium text-blue-800">
-                Agent Information - View Only
-              </p>
-              <p className="text-xs text-blue-600">
-                You have read-only access to agent information and contact details.
-              </p>
-            </div>
-          </div>
-        </div>
+        <DSNotification
+          type="info"
+          title="Agent Information - View Only"
+          message="You have read-only access to agent information and contact details."
+          autoClose={false}
+        />
       )}
 
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold">Agent Management</h2>
-          <p className="text-gray-600">
-            {isStaff 
-              ? 'View agent information and contact details.' 
-              : 'Manage agents who bring customers to the casino. All agents are automatically customers.'
-            }
-          </p>
-        </div>
-        {!isReadOnly && (
+      <DSHeader
+        title="Agent Management"
+        subtitle={
+          isStaff 
+            ? 'View agent information and contact details.' 
+            : 'Manage agents who bring customers to the casino. All agents are automatically customers.'
+        }
+        badges={[
+          { text: `${agents.length} Agents`, variant: 'primary' }
+        ]}
+        actions={
+          !isReadOnly ? (
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={openNewAgentDialog} disabled={saving}>
-                <Plus className="w-4 h-4 mr-2" />
+              <DSButton 
+                variant="primary" 
+                size="md"
+                onClick={openNewAgentDialog} 
+                disabled={saving}
+                icon={<Plus className={iconSizes.sm} />}
+              >
                 Add Agent
-              </Button>
+              </DSButton>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -290,6 +314,32 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                   />
                 </div>
 
+                <div>
+                  <Label htmlFor="parent_agent">Parent Agent (Optional)</Label>
+                  <Select
+                    value={formData.parent_agent_id}
+                    onValueChange={(value) => setFormData({...formData, parent_agent_id: value})}
+                    disabled={saving}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select parent agent (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No parent agent</SelectItem>
+                      {agents
+                        .filter(agent => agent.id !== editingAgent?.id) // Don't allow self as parent
+                        .map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            {agent.name} ({agent.email})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Select a parent agent to create a hierarchical structure. Leave empty for top-level agents.
+                  </p>
+                </div>
+
                 <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                   <p className="text-xs text-green-700">
                     <strong>Note:</strong> All agents are automatically registered as customers and can participate in trips and gambling activities.
@@ -305,28 +355,32 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                   </p>
                 </div>
 
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={saving}>
+                <div className={spacing.buttonGroup}>
+                  <DSButton 
+                    type="button" 
+                    variant="outline" 
+                    size="md"
+                    onClick={() => setIsDialogOpen(false)} 
+                    disabled={saving}
+                  >
                     Cancel
-                  </Button>
-                  <Button type="submit" disabled={saving}>
-                    {saving ? (
-                      <>
-                        <Save className="w-4 h-4 mr-2 animate-spin" />
-                        Saving to Supabase...
-                      </>
-                    ) : (
-                      <>
-                        {editingAgent ? 'Update' : 'Add'} Agent
-                      </>
-                    )}
-                  </Button>
+                  </DSButton>
+                  <DSButton 
+                    type="submit" 
+                    variant="primary"
+                    size="md"
+                    disabled={saving}
+                    icon={saving ? <Save className="w-4 h-4 animate-spin" /> : undefined}
+                  >
+                    {saving ? 'Saving to Supabase...' : `${editingAgent ? 'Update' : 'Add'} Agent`}
+                  </DSButton>
                 </div>
               </form>
             </DialogContent>
           </Dialog>
-        )}
-      </div>
+          ) : null
+        }
+      />
 
       <div className="grid gap-6">
         {agents.length === 0 ? (
@@ -346,28 +400,47 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                     <CardHeader className="cursor-pointer hover:bg-gray-50 transition-colors">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <CardTitle className="flex items-center space-x-2">
+                          <CardTitle className={`${typography.h4} flex items-center space-x-2`}>
                             <span>{agent.name}</span>
-                            <Badge variant={agent.status ? "default" : "default"}>
+                            <DSBadge variant={agent.status ? "success" : "gray"}>
                               {agent.status ? 'Active' : 'Inactive'}
-                            </Badge>
+                            </DSBadge>
+
+                            {agent.parentAgent && (
+                              <DSBadge variant="primary">
+                                <UserCheck className="w-3 h-3 mr-1" />
+                                Sub-Agent
+                              </DSBadge>
+                            )}
+
+                            {agent.children && agent.children.length > 0 && (
+                              <DSBadge variant="success">
+                                <UserCheck className="w-3 h-3 mr-1" />
+                                {agent.children.length} Sub
+                              </DSBadge>
+                            )}
 
                             {agent.attachments && agent.attachments.length > 0 && (
-                              <Badge variant="outline" className="flex items-center space-x-1">
-                                <Paperclip className="w-3 h-3" />
-                                <span>{agent.attachments.length}</span>
-                              </Badge>
+                              <DSBadge variant="gray">
+                                <Paperclip className="w-3 h-3 mr-1" />
+                                {agent.attachments.length}
+                              </DSBadge>
                             )}
 
                             {isStaff && (
-                              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                              <DSBadge variant="warning">
                                 <Eye className="w-3 h-3 mr-1" />
                                 View Only
-                              </Badge>
+                              </DSBadge>
                             )}
                           </CardTitle>
                           <CardDescription>
                             Agent since {agent.createdAt}
+                            {agent.parentAgent && (
+                              <span className="block text-blue-600 font-medium mt-1">
+                                Under: {agent.parentAgent.name}
+                              </span>
+                            )}
                           </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -391,6 +464,22 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
                         <Phone className="w-4 h-4 text-gray-400" />
                         <span className="text-sm">{agent.phone}</span>
                       </div>
+                      {agent.parentAgent && (
+                        <div className="flex items-center space-x-2 md:col-span-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                          <UserCheck className="w-4 h-4 text-blue-600" />
+                          <span className="text-sm text-blue-800">
+                            <span className="font-medium">Under:</span> <strong>{agent.parentAgent.name}</strong> ({agent.parentAgent.email})
+                          </span>
+                        </div>
+                      )}
+                      {agent.children && agent.children.length > 0 && (
+                        <div className="flex items-center space-x-2 md:col-span-2">
+                          <UserCheck className="w-4 h-4 text-gray-400" />
+                          <span className="text-sm">
+                            Child Agents: <strong>{agent.children.length}</strong> agent{agent.children.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {!isReadOnly && (
@@ -547,7 +636,7 @@ function AgentManagementComponent({ user, showError, clearError }: AgentManageme
           })
         )}
       </div>
-    </div>
+    </DSContainer>
   );
 }
 

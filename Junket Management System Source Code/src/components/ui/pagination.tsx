@@ -61,7 +61,9 @@ function PaginationLink({
         className,
       )}
       {...props}
-    />
+    >
+      {props.children || (isActive ? "Current page" : "Go to page")}
+    </a>
   );
 }
 

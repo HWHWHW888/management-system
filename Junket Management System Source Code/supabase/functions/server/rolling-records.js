@@ -1,12 +1,24 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateToken, requireAdmin, canAccessTrip } from './auth.js';
+import * as Trips from './trips.js';
 import { 
   updateCustomerTripStats, 
   updateTripStats, 
   updateTripSharing,
   updateCustomerTotalRolling
 } from './trips.js';
+
+// A. 看看这个 binding 来自哪里
+console.log('🧭 ROLLING-RECORDS binding keys:', Object.keys(Trips));
+console.log('🧭 ROLLING-RECORDS typeof updateTripSharing:', typeof Trips.updateTripSharing);
+if (Trips.updateTripSharing) {
+  try {
+    console.log('🧭 ROLLING-RECORDS source head:', Trips.updateTripSharing.toString().slice(0, 160));
+  } catch (e) {
+    console.log('🧭 ROLLING-RECORDS source error:', e.message);
+  }
+}
 
 const router = Router();
 
@@ -35,10 +47,12 @@ router.get('/', authenticateToken, async (req, res) => {
                 staff_id,
                 game_type,
                 rolling_amount,
-                notes,
+                venue,
                 attachment_id,
                 created_at,
-                updated_at
+                updated_at,
+                commission_rate,
+                commission_earned
             `)
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1);
@@ -199,10 +213,12 @@ router.get('/:id', authenticateToken, async (req, res) => {
                 staff_id,
                 game_type,
                 rolling_amount,
-                notes,
+                venue,
                 attachment_id,
                 created_at,
-                updated_at
+                updated_at,
+                commission_rate,
+                commission_earned
             `)
             .eq('id', recordId)
             .single();
@@ -255,7 +271,7 @@ router.post('/', authenticateToken, async (req, res) => {
             staff_id,
             game_type,
             rolling_amount,
-            notes,
+            venue,
             attachment_id
         } = req.body;
 
@@ -296,7 +312,7 @@ router.post('/', authenticateToken, async (req, res) => {
             staff_id,
             game_type,
             rolling_amount,
-            notes,
+            venue,
             attachment_id
         };
 
@@ -352,10 +368,17 @@ router.put('/:id', authenticateToken, async (req, res) => {
         const userRole = req.user.role;
         const userId = req.user.id;
 
+        console.log('🎲 Rolling record UPDATE request:', {
+            recordId,
+            updateData,
+            userRole,
+            userId
+        });
+
         // Check if record exists
         const { data: existingRecord, error: checkError } = await supabase
             .from('trip_rolling')
-            .select('id, trip_id, customer_id')
+            .select('id, trip_id, customer_id, commission_rate')
             .eq('id', recordId)
             .single();
 
@@ -383,6 +406,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
             });
         }
 
+        console.log('🎲 Existing record before update:', existingRecord);
+        console.log('🎲 Update data being applied:', updateData);
+
         const { data: record, error } = await supabase
             .from('trip_rolling')
             .update(updateData)
@@ -391,11 +417,14 @@ router.put('/:id', authenticateToken, async (req, res) => {
             .single();
 
         if (error) {
+            console.error('🎲 Rolling record update error:', error);
             return res.status(500).json({
                 error: 'Failed to update rolling record',
                 details: error.message
             });
         }
+
+        console.log('🎲 Updated record result:', record);
 
         // Update customer trip stats after rolling record update
         await updateCustomerTripStats(existingRecord.trip_id, existingRecord.customer_id);

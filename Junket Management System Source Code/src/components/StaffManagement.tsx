@@ -12,7 +12,7 @@ import { Textarea } from './ui/textarea';
 import { User, StaffShift, FileAttachment } from '../types';
 import { FileUpload } from './FileUpload';
 import { withErrorHandler, WithErrorHandlerProps } from './withErrorHandler';
-import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Database, Save, Eye, UserPlus, Shield, Key, EyeOff, LogIn, LogOut, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { Plus, Edit, Mail, Phone, Paperclip, ChevronDown, ChevronUp, Save, Eye, UserPlus, Key, EyeOff, LogIn, LogOut, Clock, RefreshCw, CheckCircle, Shield } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { apiClient } from '../utils/api/apiClient';
 import { isReadOnlyRole } from '../utils/permissions';
@@ -325,32 +325,32 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
     setExpandedStaff(expandedStaff === staffId ? null : staffId);
   };
 
-  const toggleStaffStatus = async (staffId: string) => {
-    try {
-      setSaving(true);
-      clearError();
-      
-      const staffMember = staff.find(s => s.id === staffId);
-      if (!staffMember) return;
-      
-      const newStatus = staffMember.status === 'active' ? 'inactive' : 'active';
-      const response = await apiClient.updateStaff(staffId, { status: newStatus });
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to update staff status');
-      }
-      
-      // Reload data to get updated information
-      await loadAllData();
-      
-    } catch (error) {
-      console.error('❌ Error updating staff status:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      showError(`Failed to update staff status: ${errorMessage}`);
-    } finally {
-      setSaving(false);
-    }
-  };
+  // const toggleStaffStatus = async (staffId: string) => {
+  //   try {
+  //     setSaving(true);
+  //     clearError();
+  //     
+  //     const staffMember = staff.find(s => s.id === staffId);
+  //     if (!staffMember) return;
+  //     
+  //     const newStatus = staffMember.status === 'active' ? 'inactive' : 'active';
+  //     const response = await apiClient.updateStaff(staffId, { status: newStatus });
+  //     
+  //     if (!response.success) {
+  //       throw new Error(response.error || 'Failed to update staff status');
+  //     }
+  //     
+  //     // Reload data to get updated information
+  //     await loadAllData();
+  //     
+  //   } catch (error) {
+  //     console.error('❌ Error updating staff status:', error);
+  //     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+  //     showError(`Failed to update staff status: ${errorMessage}`);
+  //   } finally {
+  //     setSaving(false);
+  //   }
+  // };
 
   const openCheckInDialog = (staffMember: StaffWithUser) => {
     setCheckingInStaff(staffMember);
@@ -983,7 +983,7 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                             )}
                           </CardTitle>
                           <CardDescription>
-                            {staffMember.position} • Member since {staffMember.created_at}
+                            {staffMember.position} • Member since {new Date(staffMember.created_at).toLocaleDateString('en-CA')}
                           </CardDescription>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -1038,41 +1038,32 @@ function StaffManagementComponent({ user, showError, clearError }: StaffManageme
                         )
                       )}
 
-                      {!isReadOnly && staffMember.status === 'active' ? (
+                      {!isReadOnly && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="destructive" size="sm" disabled={saving}>
-                              Deactivate
+                            <Button variant="destructive" size="sm" disabled={saving} className="bg-red-600 text-white hover:bg-red-700">
+                              Delete
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Deactivate Staff Member</AlertDialogTitle>
+                              <AlertDialogTitle>Delete Staff Member</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to deactivate "{staffMember.name}"? They will no longer be able to login to the system, but their data and shift history will be preserved.
+                                Are you sure you want to permanently delete "{staffMember.name}"? This action cannot be undone and will remove all their data, shift history, and login credentials from the system.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancel</AlertDialogCancel>
                               <AlertDialogAction
-                                onClick={() => toggleStaffStatus(staffMember.id)}
+                                onClick={() => deleteStaff(staffMember.id)}
                                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                 disabled={saving}
                               >
-                                {saving ? 'Saving...' : 'Deactivate'}
+                                {saving ? 'Deleting...' : 'Delete Permanently'}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
-                      ) : (
-                        <Button 
-                          variant="default"
-                          size="sm"
-                          onClick={() => toggleStaffStatus(staffMember.id)}
-                          disabled={saving}
-                        >
-                          {saving ? 'Saving...' : 'Activate'}
-                        </Button>
                       )}
                     </div>
 

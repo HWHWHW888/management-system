@@ -5,32 +5,63 @@ import { supabase } from '../supabase/supabaseClients';
 export class DatabaseWrapper {
   // Expose API client for direct access to customer methods
   public apiClient = apiClient;
+  private connectionCache: { result: any; timestamp: number } | null = null;
+  private readonly CACHE_DURATION = 30000; // 30 seconds cache
+
   async testConnection() {
     try {
-      // Test backend API health
+      // Check cache first
+      if (this.connectionCache) {
+        const now = Date.now();
+        if (now - this.connectionCache.timestamp < this.CACHE_DURATION) {
+          console.log('⚡ Using cached connection result');
+          return this.connectionCache.result;
+        }
+      }
+
+      // Test backend API health with timeout
       const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-      const response = await fetch(`${apiUrl?.replace('/api', '')}/health`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const response = await fetch(`${apiUrl?.replace('/api', '')}/health`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
       const data = await response.json();
       
-      if (response.ok && data.status === 'OK') {
-        return {
-          success: true,
-          message: 'Connected successfully',
-          details: 'Backend API connection is healthy'
-        };
-      } else {
-        return {
-          success: false,
-          message: 'Connection failed',
-          details: 'Backend API is not responding'
-        };
-      }
+      const result = response.ok && data.status === 'OK' ? {
+        success: true,
+        message: 'Connected successfully',
+        details: 'Backend API connection is healthy'
+      } : {
+        success: false,
+        message: 'Connection failed',
+        details: 'Backend API is not responding'
+      };
+
+      // Cache the result
+      this.connectionCache = {
+        result,
+        timestamp: Date.now()
+      };
+
+      return result;
     } catch (error: any) {
-      return {
+      const result = {
         success: false,
         message: 'Connection error',
-        details: error.message
+        details: error.name === 'AbortError' ? 'Connection timeout' : error.message
       };
+
+      // Cache failed result for shorter time
+      this.connectionCache = {
+        result,
+        timestamp: Date.now() - (this.CACHE_DURATION - 5000) // Cache for only 5 seconds
+      };
+
+      return result;
     }
   }
 
@@ -153,53 +184,79 @@ export class DatabaseWrapper {
 
   async initializeSampleDataIfNeeded() {
     try {
-      // Create admin user directly via Supabase client (bypasses API token requirements)
-      const { data: existingUser } = await supabase
+      // Quick check if admin user exists with timeout
+      const checkUserPromise = supabase
         .from('users')
-        .select('*')
+        .select('username')
         .eq('username', 'admin')
         .single();
       
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Check timeout')), 3000)
+      );
+      
+      const { data: existingUser } = await Promise.race([
+        checkUserPromise,
+        timeoutPromise
+      ]) as any;
+      
       if (!existingUser) {
-        // First create auth user
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        console.log('🔧 Creating admin user...');
+        
+        // Parallel user creation with error handling
+        const authPromise = supabase.auth.signUp({
           email: 'admin@casino.com',
           password: 'admin123',
           options: {
-            data: {
-              username: 'admin',
-              role: 'admin'
-            }
+            data: { username: 'admin', role: 'admin' }
           }
+        }).catch((err: any) => {
+          console.warn('Auth creation skipped:', err.message);
+          return { data: { user: { id: 'admin-1' } } };
         });
 
-        if (authError && !authError.message.includes('already registered')) {
-          throw authError;
-        }
+        const profilePromise = (async () => {
+          try {
+            await supabase
+              .from('users')
+              .insert([{
+                id: 'admin-1',
+                username: 'admin',
+                password: 'admin123',
+                role: 'admin'
+              }]);
+            console.log('Profile created');
+            return true;
+          } catch (err: any) {
+            if (!err.message.includes('duplicate')) {
+              console.warn('Profile creation failed:', err);
+            }
+            return false;
+          }
+        })();
 
-        // Then create user profile
-        const userId = authData?.user?.id || 'admin-1';
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert([{
-            id: userId,
-            username: 'admin',
-            password: 'admin123',
-            role: 'admin'
-          }]);
-
-        if (profileError && !profileError.message.includes('duplicate')) {
-          console.warn('Profile creation failed:', profileError);
-        }
+        // Execute in parallel with timeout
+        await Promise.race([
+          Promise.all([authPromise, profilePromise]),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Initialization timeout')), 5000)
+          )
+        ]);
         
         console.log('✅ Admin user initialized');
+      } else {
+        console.log('⚡ Admin user already exists - skipping');
       }
-    } catch (error) {
-      console.error('Error initializing sample data:', error);
+    } catch (error: any) {
+      if (error.message === 'Check timeout' || error.message === 'Initialization timeout') {
+        console.warn('⚠️ User initialization timed out - continuing anyway');
+      } else {
+        console.error('Error initializing sample data:', error);
+      }
+      // Don't throw - continue with app initialization
     }
   }
 
-  // Login method for authentication
   async login(username: string, password: string) {
     try {
       console.log('🔐 DatabaseWrapper: Starting login process...');

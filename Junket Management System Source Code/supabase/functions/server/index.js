@@ -17,14 +17,18 @@ import reportsRouter from './reports.js';
 import rollingRecordsRouter from './rolling-records.js';
 import buyInOutRecordsRouter from './buy-in-out-records.js';
 import chipExchangesRouter from './chip-exchanges.js';
+import customerPhotosRouter from './customer-photos.js';
 // import gameTypesRouter from './game-types.js'; // Commented out - file doesn't exist
+
+// Debug log to check if customerPhotosRouter is imported correctly
+console.log('Customer Photos Router:', typeof customerPhotosRouter);
 
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors({
+// Enhanced CORS configuration
+const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
@@ -38,26 +42,64 @@ app.use(cors({
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3001',
       'http://127.0.0.1:3002',
-      'https://management-system-production-9c14.up.railway.app',
+      'https://management-system-production-5864.up.railway.app',
       'https://hoewingroup.com',
       'https://www.hoewingroup.com'
     ];
     
-    // Check if origin is in allowed list or is any Cloudflare Pages subdomain
+    // Check if origin is in allowed list or is any Netlify/Cloudflare subdomain
     if (allowedOrigins.includes(origin) || 
+        origin.endsWith('.netlify.app') ||
         origin.endsWith('.pages.dev')) {
       return callback(null, true);
     }
     
     return callback(new Error('Not allowed by CORS'));
   },
-  credentials: true
-}));
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Origin',
+    'X-Requested-With',
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'Cache-Control',
+    'Pragma'
+  ],
+  exposedHeaders: ['Authorization'],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 200
+};
 
-// Handle OPTIONS preflight requests for all routes
-app.options("*", cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Explicit OPTIONS handler for all routes
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
+  res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,Pragma');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  res.status(200).end();
+});
+
+// Additional middleware to ensure CORS headers on all responses
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Expose-Headers', 'Authorization');
+  next();
+});
+
+// Increase payload size limits for file uploads (e.g., passport photos)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -80,6 +122,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/rolling-records', rollingRecordsRouter);
 app.use('/api/buy-in-out-records', buyInOutRecordsRouter);
 app.use('/api/chip-exchanges', chipExchangesRouter);
+app.use('/api/customer-photos', customerPhotosRouter);
 
 
 // Error handling middleware

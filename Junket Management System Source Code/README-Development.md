@@ -23,7 +23,7 @@ npm run dev:backend   # 后端: http://localhost:3001
 #### 生产环境
 - **前端**: Cloudflare Pages (自动部署)
 - **后端**: Railway (自动部署)
-- **API**: `https://management-system-production-9c14.up.railway.app/api`
+- **API**: `https://management-system-production-5864.up.railway.app/api`
 
 ## 📁 环境变量文件
 
@@ -40,7 +40,7 @@ REACT_APP_API_URL=http://localhost:3001/api
 ```env
 GENERATE_SOURCEMAP=false
 CI=false
-REACT_APP_API_URL=https://management-system-production-9c14.up.railway.app/api
+REACT_APP_API_URL=https://management-system-production-5864.up.railway.app/api
 ```
 
 ### 后端环境变量

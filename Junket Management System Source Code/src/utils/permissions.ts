@@ -1,9 +1,26 @@
 // Permission utility functions for role-based access control
 
+// Boss role: Can view all data but cannot edit anything
+export const isBossRole = (role: string): boolean => {
+  return role === 'boss';
+};
+
+// Staff role: Cannot view sensitive financial data, limited editing
+export const isStaffRole = (role: string): boolean => {
+  return role === 'staff';
+};
+
+// Read-only for editing purposes (boss cannot edit, staff has limited access)
 export const isReadOnlyRole = (role: string): boolean => {
   return role === 'boss' || role === 'staff';
 };
 
+// Can view sensitive financial data (admin, agent, boss can see; staff cannot)
+export const canViewFinancialData = (role: string): boolean => {
+  return role === 'admin' || role === 'agent' || role === 'boss';
+};
+
+// Can edit data (only admin and agent can edit; boss and staff cannot)
 export const canEdit = (role: string): boolean => {
   return role === 'admin' || role === 'agent';
 };
