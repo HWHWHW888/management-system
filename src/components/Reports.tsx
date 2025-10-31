@@ -4,12 +4,13 @@ import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChar
 import { tokenManager } from '../utils/auth/tokenManager';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useCurrency } from '../contexts/CurrencyContext';
-import { 
-  SUPPORTED_CURRENCIES, 
-  formatCurrency, 
-  convertAmount,
-  getCurrencySymbol 
-} from '../utils/currency';
+// Currency utilities imported but not used in current implementation
+// import { 
+//   SUPPORTED_CURRENCIES, 
+//   formatCurrency, 
+//   convertAmount,
+//   getCurrencySymbol 
+// } from '../utils/currency';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -24,7 +25,7 @@ const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 export const Reports: React.FC<{ user: User }> = ({ user }) => {
   const { t } = useLanguage();
-  const { globalCurrency, formatGlobalCurrency, convertToGlobalCurrency, currencySymbol } = useCurrency();
+  const { globalCurrency, convertToGlobalCurrency, currencySymbol } = useCurrency();
   
   // State management
   const [customers, setCustomers] = useState<Customer[]>([]);

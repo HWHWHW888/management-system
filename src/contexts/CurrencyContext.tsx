@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { SUPPORTED_CURRENCIES, convertAmount, getCurrencySymbol } from '../utils/currency';
+import { convertAmount, getCurrencySymbol } from '../utils/currency';
 
 export interface CurrencyContextType {
   globalCurrency: string;

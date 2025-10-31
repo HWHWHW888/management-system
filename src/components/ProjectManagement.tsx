@@ -42,7 +42,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
   const clearError = useCallback(() => {}, []);
   const showError = useCallback((message: string) => console.error(message), []);
   const { t } = useLanguage();
-  const { globalCurrency, formatGlobalCurrency, currencySymbol } = useCurrency();
+  const { globalCurrency } = useCurrency();
   
   // Memoize permission checks to prevent recalculation
   const isReadOnly = useMemo(() => isReadOnlyRole(currentUser.role), [currentUser.role]);

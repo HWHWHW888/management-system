@@ -5,7 +5,7 @@ import { SUPPORTED_CURRENCIES } from '../utils/currency';
 import { DollarSign } from 'lucide-react';
 
 export const CurrencyToggle: React.FC = () => {
-  const { globalCurrency, setGlobalCurrency, currencySymbol } = useCurrency();
+  const { globalCurrency, setGlobalCurrency } = useCurrency();
 
   const currentCurrency = SUPPORTED_CURRENCIES.find(curr => curr.value === globalCurrency);
 

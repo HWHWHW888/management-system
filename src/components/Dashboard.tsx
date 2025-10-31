@@ -50,7 +50,7 @@ interface DashboardProps {
 
 export function Dashboard({ user }: DashboardProps) {
   const { t } = useLanguage();
-  const { formatGlobalCurrency, currencySymbol, convertToGlobalCurrency, globalCurrency } = useCurrency();
+  const { currencySymbol, convertToGlobalCurrency, globalCurrency } = useCurrency();
   
   // Data states with real-time updates
   const [agents, setAgents] = useState<Agent[]>([]);
