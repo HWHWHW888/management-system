@@ -1655,11 +1655,15 @@ router.put('/:id/agents/:agentId/commission', authenticateToken, canAccessTrip, 
       });
     }
 
+    // Convert percentage to decimal format for consistent storage
+    // Frontend sends percentage (50), backend stores as decimal (0.5)
+    const profitRateDecimal = profit_sharing_rate > 1 ? profit_sharing_rate / 100 : profit_sharing_rate;
+    
     // Update the profit sharing rate for this agent-customer relationship
     const { data, error } = await supabase
       .from('trip_agent_customers')
       .update({
-        profit_sharing_rate: profit_sharing_rate,
+        profit_sharing_rate: profitRateDecimal,
         updated_at: new Date().toISOString()
       })
       .eq('trip_id', tripId)
