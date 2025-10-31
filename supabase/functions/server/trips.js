@@ -519,11 +519,24 @@ async function updateTripSharing(tripId, tripStats) {
     const totalExpenses = expenses?.reduce((sum, expense) => sum + (parseFloat(expense.amount) || 0), 0) || 0;
     console.log(`💰 Total expenses calculated: ${totalExpenses}`);
 
+<<<<<<< HEAD
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+>>>>>>> origin/main
     // Get customer stats data - NO EARLY RETURN, THROW ON ERROR
     console.log('🔍 Step 2: Fetching customer stats...');
     const { data: customerStats, error: statsError } = await supabase
       .from('trip_customer_stats')
       .select('customer_id, rolling_amount, total_commission_earned, net_result, total_win_loss')
+<<<<<<< HEAD
+=======
+========
+    // Get customer stats data (commission data now comes from trip_rolling)
+    const { data: customerStats, error: statsError } = await supabase
+      .from('trip_customer_stats')
+      .select('customer_id, rolling_amount, total_commission_earned, net_result')
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
       .eq('trip_id', tripId);
 
     if (statsError) {
@@ -537,6 +550,10 @@ async function updateTripSharing(tripId, tripStats) {
     const hasCustomers = customerStats && customerStats.length > 0;
     console.log('👥 Has customers:', hasCustomers);
     
+<<<<<<< HEAD
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+>>>>>>> origin/main
     // Get trip_agent_customers data - NO EARLY RETURN, THROW ON ERROR
     console.log('🔍 Step 3: Fetching trip_agent_customers...');
     const { data: agentCustomers, error: agentError } = await supabase
@@ -554,6 +571,13 @@ async function updateTripSharing(tripId, tripStats) {
     // Get rolling data with commission information from trip_rolling table - FALLBACK ALLOWED
     console.log('🔍 Step 4: Fetching trip rolling records...');
     let { data: tripRollingRecords, error: rollingError } = await supabase
+<<<<<<< HEAD
+=======
+========
+    // Get rolling data with commission information from trip_rolling table
+    const { data: tripRollingRecords, error: rollingError } = await supabase
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
       .from('trip_rolling')
       .select('rolling_amount, commission_rate, commission_earned')
       .eq('trip_id', tripId);
@@ -624,7 +648,25 @@ async function updateTripSharing(tripId, tripStats) {
       netResult = -totalExpenses; // Only expenses affect the result
     }
 
+<<<<<<< HEAD
     console.log('🔍 Step 5: Starting agent breakdown calculation...');
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+    console.log('🔍 Step 5: Starting agent breakdown calculation...');
+========
+    // Get actual agent profit sharing rates from trip_agent_customers table
+    const { data: agentCustomers, error: agentError } = await supabase
+      .from('trip_agent_customers')
+      .select('agent_id, customer_id, profit_sharing_rate')
+      .eq('trip_id', tripId);
+
+    if (agentError) {
+      console.error('Error fetching agent customers for sharing:', agentError);
+    }
+
+    console.log('🤝 Agent-Customer relationships:', agentCustomers);
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
 
     // Calculate agent breakdown based on actual commission rates and customer performance
     const agentBreakdownMap = {};
@@ -700,6 +742,10 @@ async function updateTripSharing(tripId, tripStats) {
         if (customerStat) {
           console.log(`🚀 *** ENTERING NEW CALCULATION LOGIC *** for customer ${ac.customer_id}`);
           
+<<<<<<< HEAD
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+>>>>>>> origin/main
           // 佣金口径：优先 trip_customer_stats.total_commission_earned，否则回退 trip_rolling 汇总
           let customerCommissionEarned = parseFloat(customerStat.total_commission_earned) || 0;
           console.log(`💰 Commission source: trip_customer_stats.total_commission_earned = ${customerCommissionEarned}`);
@@ -713,6 +759,23 @@ async function updateTripSharing(tripId, tripStats) {
               customerCommissionEarned = customerRollingCommission;
               console.log(`💰 Fallback: Using trip_rolling commission = ${customerCommissionEarned}`);
             }
+<<<<<<< HEAD
+=======
+========
+          console.log(`💰 Customer ${ac.customer_id}: net=${customerNet}, winLoss=${winLossAmount}, rate=${ac.profit_sharing_rate}%`);
+          
+          if (customerNet > 0) {
+            // Customer won, agent gets profit share (positive)
+            agentCommission = (customerNet * parseFloat(ac.profit_sharing_rate) / 100);
+            console.log(`📈 Customer won, agent gets profit share: ${agentCommission}`);
+          } else if (customerNet < 0) {
+            // Customer lost, agent shares the loss (negative)
+            agentCommission = (customerNet * parseFloat(ac.profit_sharing_rate) / 100);
+            console.log(`📉 Customer lost, agent shares loss: ${agentCommission}`);
+          } else {
+            console.log(`⚖️ Customer broke even, no commission`);
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
           }
           
           const customerTotalWinLoss = parseFloat(customerStat.total_win_loss) || 0;
@@ -757,8 +820,17 @@ async function updateTripSharing(tripId, tripStats) {
           if (!agentBreakdownMap[ac.agent_id]) {
             agentBreakdownMap[ac.agent_id] = {
               agent_id: ac.agent_id,
+<<<<<<< HEAD
               profit_sharing_rate: parseFloat(ac.profit_sharing_rate || 0),
               rolling_sharing_rate: parseFloat(ac.rolling_sharing_rate || 0),
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+              profit_sharing_rate: parseFloat(ac.profit_sharing_rate || 0),
+              rolling_sharing_rate: parseFloat(ac.rolling_sharing_rate || 0),
+========
+              profit_sharing_rate: parseFloat(ac.profit_sharing_rate),
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
               share_amount: 0
             };
           }
@@ -773,6 +845,10 @@ async function updateTripSharing(tripId, tripStats) {
     const agentBreakdown = Object.values(agentBreakdownMap);
     const totalAgentCommission = agentBreakdown.reduce((sum, agent) => sum + agent.share_amount, 0);
     
+<<<<<<< HEAD
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+>>>>>>> origin/main
     // Calculate total_agent_share from current agentBreakdown calculation
     // This represents the actual agent profit sharing amounts
     const totalAgentShare = agentBreakdown.reduce((sum, agent) => sum + agent.share_amount, 0);
@@ -780,6 +856,30 @@ async function updateTripSharing(tripId, tripStats) {
     console.log('📊 Agent share calculation:');
     console.log('- Total agent share (from current calculation):', totalAgentShare);
     console.log('- Total agent commission (same as above):', totalAgentCommission);
+<<<<<<< HEAD
+=======
+========
+    // Get total_agent_share from trip_agent_summary table (sum of all agents' total_commission)
+    const { data: agentSummaries, error: summaryError } = await supabase
+      .from('trip_agent_summary')
+      .select('total_commission')
+      .eq('trip_id', tripId);
+    
+    if (summaryError) {
+      console.error('Error fetching agent summaries for trip sharing:', summaryError);
+    }
+    
+    // Calculate total_agent_share from trip_agent_summary table
+    const totalAgentShare = agentSummaries?.reduce((sum, summary) => 
+      sum + (parseFloat(summary.total_commission) || 0), 0
+    ) || 0;
+    
+    console.log('📊 Agent share calculation:');
+    console.log('- Agent summaries from trip_agent_summary:', agentSummaries);
+    console.log('- Total agent share (from trip_agent_summary):', totalAgentShare);
+    console.log('- Total agent commission (from current calculation):', totalAgentCommission);
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
     
     // Calculate company_share = net_result - total_agent_share
     const companyShare = netResult - totalAgentShare;
@@ -798,7 +898,15 @@ async function updateTripSharing(tripId, tripStats) {
     
     console.log('💰 Trip Sharing Calculation (Updated Logic):');
     console.log('- Net result:', netResult);
+<<<<<<< HEAD
     console.log('- Total agent share (from current calculation):', totalAgentShare);
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+    console.log('- Total agent share (from current calculation):', totalAgentShare);
+========
+    console.log('- Total agent share (from trip_agent_summary):', totalAgentShare);
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
     console.log('- Company share = net_result - total_agent_share');
     console.log(`- Company share = ${netResult} - ${totalAgentShare} = ${companyShare}`);
     console.log('- Total amount for percentage:', totalAmount);
@@ -840,7 +948,14 @@ async function updateTripSharing(tripId, tripStats) {
       await updateAgentStatistics(tripId, agentBreakdown);
       
       // Update trip_agent_summary table with detailed agent profit sharing
+<<<<<<< HEAD
       console.log('🔄 About to update trip_agent_summary with agentBreakdown:', agentBreakdown.map(a => ({agent_id: a.agent_id, share_amount: a.share_amount})));
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+      console.log('🔄 About to update trip_agent_summary with agentBreakdown:', agentBreakdown.map(a => ({agent_id: a.agent_id, share_amount: a.share_amount})));
+========
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
       await updateTripAgentSummary(tripId, agentBreakdown, tripStats);
     }
     
@@ -937,8 +1052,17 @@ async function updateAgentStatistics(tripId, agentBreakdown) {
 // Helper function to update trip_agent_summary table
 async function updateTripAgentSummary(tripId, agentBreakdown, tripStats) {
   try {
+<<<<<<< HEAD
     console.log('📊 *** UPDATED VERSION *** Updating trip_agent_summary for trip:', tripId);
     console.log('🔧 Code version: FIXED_AGENT_PROFIT_SHARE_CALCULATION_V2');
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+    console.log('📊 *** UPDATED VERSION *** Updating trip_agent_summary for trip:', tripId);
+    console.log('🔧 Code version: FIXED_AGENT_PROFIT_SHARE_CALCULATION_V2');
+========
+    console.log('📊 Updating trip_agent_summary for trip:', tripId);
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
     
     // Get all customer stats for this trip to calculate agent-specific totals
     const { data: customerStats, error: customerError } = await supabase
@@ -954,7 +1078,15 @@ async function updateTripAgentSummary(tripId, agentBreakdown, tripStats) {
     // Get agent-customer relationships with profit sharing rates
     const { data: agentCustomers, error: agentError } = await supabase
       .from('trip_agent_customers')
+<<<<<<< HEAD
       .select('agent_id, customer_id, profit_sharing_rate, rolling_sharing_rate')
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+      .select('agent_id, customer_id, profit_sharing_rate, rolling_sharing_rate')
+========
+      .select('agent_id, customer_id, profit_sharing_rate')
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
       .eq('trip_id', tripId);
     
     if (agentError) {
@@ -984,6 +1116,10 @@ async function updateTripAgentSummary(tripId, agentBreakdown, tripStats) {
         sum + (cs.net_result || 0), 0
       );
       
+<<<<<<< HEAD
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+>>>>>>> origin/main
       // Total commission = sum of all customers' total_commission_earned (as negative for agent cost)
       const totalCommission = agentCustomerStats.reduce((sum, cs) => {
         const commission = parseFloat(cs.total_commission_earned) || 0;
@@ -1024,6 +1160,25 @@ async function updateTripAgentSummary(tripId, agentBreakdown, tripStats) {
         console.log('- Actual difference:', totalCommission - (-3598));
       }
       
+<<<<<<< HEAD
+=======
+========
+      // Agent's commission from this trip (from agentBreakdown)
+      const totalCommission = agentData.share_amount || 0;
+      
+      // Agent's profit share = their actual profit sharing amount (positive = profit, negative = loss)
+      const agentProfitShare = totalCommission;
+      
+      console.log(`💰 Agent ${agentId} summary:`, {
+        totalWinLoss,
+        totalCommission,
+        totalProfit,
+        agentProfitShare,
+        customerCount: agentCustomerStats.length
+      });
+      
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
       // Upsert to trip_agent_summary table
       const summaryData = {
         trip_id: tripId,
@@ -1762,7 +1917,15 @@ router.post('/:id/customers', authenticateToken, canAccessTrip, async (req, res)
 router.put('/:id/agents/:agentId/commission', authenticateToken, canAccessTrip, async (req, res) => {
   try {
     const { id: tripId, agentId } = req.params;
+<<<<<<< HEAD
     const { customer_id, profit_sharing_rate, rolling_sharing_rate } = req.body;
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+    const { customer_id, profit_sharing_rate, rolling_sharing_rate } = req.body;
+========
+    const { customer_id, profit_sharing_rate } = req.body;
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
 
     if (!customer_id || profit_sharing_rate === undefined) {
       return res.status(400).json({
@@ -1770,6 +1933,7 @@ router.put('/:id/agents/:agentId/commission', authenticateToken, canAccessTrip, 
       });
     }
 
+<<<<<<< HEAD
     // Convert percentage to decimal format for consistent storage
     // Frontend sends percentage (50), backend stores as decimal (0.5)
     const profitRateDecimal = profit_sharing_rate > 1 ? profit_sharing_rate / 100 : profit_sharing_rate;
@@ -1778,17 +1942,43 @@ router.put('/:id/agents/:agentId/commission', authenticateToken, canAccessTrip, 
     // Update the profit sharing rate for this agent-customer relationship
     const updateData = {
       profit_sharing_rate: profitRateDecimal,
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+    // Update the profit sharing rate for this agent-customer relationship
+    const updateData = {
+      profit_sharing_rate: profit_sharing_rate,
+>>>>>>> origin/main
       updated_at: new Date().toISOString()
     };
     
     // Add rolling_sharing_rate if provided
     if (rolling_sharing_rate !== undefined) {
+<<<<<<< HEAD
       updateData.rolling_sharing_rate = rollingRateDecimal;
+=======
+      updateData.rolling_sharing_rate = rolling_sharing_rate;
+>>>>>>> origin/main
     }
     
     const { data, error } = await supabase
       .from('trip_agent_customers')
       .update(updateData)
+<<<<<<< HEAD
+=======
+========
+    // Convert percentage to decimal format for consistent storage
+    // Frontend sends percentage (50), backend stores as decimal (0.5)
+    const profitRateDecimal = profit_sharing_rate > 1 ? profit_sharing_rate / 100 : profit_sharing_rate;
+    
+    // Update the profit sharing rate for this agent-customer relationship
+    const { data, error } = await supabase
+      .from('trip_agent_customers')
+      .update({
+        profit_sharing_rate: profitRateDecimal,
+        updated_at: new Date().toISOString()
+      })
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
       .eq('trip_id', tripId)
       .eq('agent_id', agentId)
       .eq('customer_id', customer_id)
@@ -1917,8 +2107,17 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
       .select(`
         agent_id,
         customer_id,
+<<<<<<< HEAD
         profit_sharing_rate,
         rolling_sharing_rate
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+        profit_sharing_rate,
+        rolling_sharing_rate
+========
+        profit_sharing_rate
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
       `)
       .eq('trip_id', tripId);
 
@@ -2005,7 +2204,14 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
       const agentId = item.agent_id;
       const customerId = item.customer_id;
       const commissionRate = item.profit_sharing_rate || 0;
+<<<<<<< HEAD
       const rollingSharingRate = item.rolling_sharing_rate || 0;
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+      const rollingSharingRate = item.rolling_sharing_rate || 0;
+========
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
       
       const agent = agentMap[agentId];
       const customer = customerMap[customerId];
@@ -2070,7 +2276,14 @@ router.get('/:id/agents/profits', authenticateToken, canAccessTrip, async (req, 
         customer_id: customerId,
         customer_name: customer ? customer.name : 'Unknown Customer',
         profit_sharing_rate: commissionRate,
+<<<<<<< HEAD
         rolling_sharing_rate: rollingSharingRate,
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+        rolling_sharing_rate: rollingSharingRate,
+========
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
         net_result: customerNet,
         rolling_amount: rollingAmount,
         agent_commission: agentCommission,
@@ -4080,7 +4293,14 @@ router.get('/:id/agent-summary', authenticateToken, canAccessTrip, async (req, r
             customer_id: ac.customer_id,
             customer_name: ac.customers?.name || 'Unknown Customer',
             profit_sharing_rate: ac.profit_sharing_rate,
+<<<<<<< HEAD
             rolling_sharing_rate: ac.rolling_sharing_rate || 0, // Add rolling sharing rate
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+            rolling_sharing_rate: ac.rolling_sharing_rate || 0, // Add rolling sharing rate
+========
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
             net_result: customerStat?.net_result || 0
           };
         }),
@@ -4107,6 +4327,10 @@ router.get('/:id/agent-summary', authenticateToken, canAccessTrip, async (req, r
   }
 });
 
+<<<<<<< HEAD
+=======
+<<<<<<<< HEAD:Junket Management System Source Code/supabase/functions/server/trips.js
+>>>>>>> origin/main
 // Export helper functions for use in other modules
 export { 
   updateCustomerTripStats, 
@@ -4118,5 +4342,10 @@ export {
   calculateCustomerTripStats
 };
 
+<<<<<<< HEAD
+=======
+========
+>>>>>>>> origin/main:supabase/functions/server/trips.js
+>>>>>>> origin/main
 export default router;
 //# sourceMappingURL=trips.js.map

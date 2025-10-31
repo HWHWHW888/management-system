@@ -316,7 +316,10 @@ create table public.trip_agent_customers (
   profit_sharing_rate numeric(5, 2) null default 0.00,
   created_at timestamp with time zone null default now(),
   updated_at timestamp with time zone null default now(),
+<<<<<<< HEAD
   rolling_sharing_rate numeric(10, 4) null default 0.0000,
+=======
+>>>>>>> origin/main
   constraint trip_agent_customers_pkey primary key (id),
   constraint trip_agent_customers_unique unique (trip_id, agent_id, customer_id),
   constraint fk_trip_agent_customers_agent foreign KEY (agent_id) references agents (id) on delete CASCADE,
@@ -324,16 +327,24 @@ create table public.trip_agent_customers (
   constraint fk_trip_agent_customers_trip foreign KEY (trip_id) references trips (id) on delete CASCADE
 ) TABLESPACE pg_default;
 
+<<<<<<< HEAD
+=======
+create index IF not exists idx_trip_agent_customers_trip_id on public.trip_agent_customers using btree (trip_id) TABLESPACE pg_default;
+
+>>>>>>> origin/main
 create index IF not exists idx_trip_agent_customers_agent_id on public.trip_agent_customers using btree (agent_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_agent_customers_customer_id on public.trip_agent_customers using btree (customer_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_agent_customers_trip_agent on public.trip_agent_customers using btree (trip_id, agent_id) TABLESPACE pg_default;
 
+<<<<<<< HEAD
 create index IF not exists idx_trip_agent_customers_trip_id on public.trip_agent_customers using btree (trip_id) TABLESPACE pg_default;
 
 create index IF not exists idx_trip_agent_customers_rolling_sharing_rate on public.trip_agent_customers using btree (rolling_sharing_rate) TABLESPACE pg_default;
 
+=======
+>>>>>>> origin/main
 create table public.trip_agent_summary (
   id uuid not null default gen_random_uuid (),
   trip_id uuid not null,

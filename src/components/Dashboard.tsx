@@ -8,7 +8,10 @@ import { User, Trip, Customer, Agent } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { useLanguage } from '../contexts/LanguageContext';
+<<<<<<< HEAD
 import { useCurrency } from '../contexts/CurrencyContext';
+=======
+>>>>>>> origin/main
 import { 
   DSContainer, 
   DSBadge, 
@@ -50,7 +53,10 @@ interface DashboardProps {
 
 export function Dashboard({ user }: DashboardProps) {
   const { t } = useLanguage();
+<<<<<<< HEAD
   const { currencySymbol, convertToGlobalCurrency, globalCurrency } = useCurrency();
+=======
+>>>>>>> origin/main
   
   // Data states with real-time updates
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -207,6 +213,7 @@ export function Dashboard({ user }: DashboardProps) {
     const customerTotalBuyIn = filteredCustomers.reduce((sum, c) => sum + safeNumber(c.totalBuyIn), 0);
     const customerTotalBuyOut = filteredCustomers.reduce((sum, c) => sum + safeNumber(c.totalBuyOut), 0);
     
+<<<<<<< HEAD
     // Total Rolling from trip_sharing table with currency conversion
     const tripSharingTotalRolling = trips.reduce((sum, trip) => {
       const originalValue = safeNumber(trip.sharing?.total_rolling || trip.sharing?.totalRolling);
@@ -219,6 +226,19 @@ export function Dashboard({ user }: DashboardProps) {
         sharingObject: trip.sharing
       });
       return sum + convertedValue;
+=======
+    // Total Rolling from trip_sharing table (should be positive by nature)
+    const tripSharingTotalRolling = trips.reduce((sum, trip) => {
+      const value = safeNumber(trip.sharing?.total_rolling || trip.sharing?.totalRolling);
+      console.log(`🔍 Trip ${trip.name}:`, {
+        hasSharing: !!trip.sharing,
+        total_rolling: trip.sharing?.total_rolling,
+        totalRolling: trip.sharing?.totalRolling,
+        sharingObject: trip.sharing,
+        contributingValue: value
+      });
+      return sum + value;
+>>>>>>> origin/main
     }, 0);
     
     console.log('📊 Dashboard Total Rolling Summary:', {
@@ -248,6 +268,7 @@ export function Dashboard({ user }: DashboardProps) {
     });
     
     const tripSharingGrossProfit = trips.reduce((sum, trip) => {
+<<<<<<< HEAD
       const originalValue = safeNumber(trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss);
       const convertedValue = convertToGlobalCurrency(originalValue, trip.currency || 'HKD', trip);
       console.log(`Trip ${trip.name}: total_win_loss = ${originalValue} -> ${convertedValue} (${trip.currency} -> ${globalCurrency})`);
@@ -266,6 +287,23 @@ export function Dashboard({ user }: DashboardProps) {
       const convertedValue = convertToGlobalCurrency(originalValue, trip.currency || 'HKD', trip);
       console.log(`Trip ${trip.name}: company_share = ${originalValue} -> ${convertedValue} (${trip.currency} -> ${globalCurrency})`);
       return sum + convertedValue;
+=======
+      const value = safeNumber(trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss);
+      console.log(`Trip ${trip.name}: total_win_loss = ${trip.sharing?.total_win_loss}, contributing ${value} to gross profit`);
+      return sum + value;
+    }, 0);
+    
+    const tripSharingExpenses = trips.reduce((sum, trip) => {
+      const value = safeNumber(trip.sharing?.total_expenses || trip.sharing?.totalExpenses);
+      console.log(`Trip ${trip.name}: total_expenses = ${trip.sharing?.total_expenses}, contributing ${value} to expenses`);
+      return sum + value;
+    }, 0);
+    
+    const tripSharingNetProfit = trips.reduce((sum, trip) => {
+      const value = safeNumber(trip.sharing?.company_share || trip.sharing?.companyShare);
+      console.log(`Trip ${trip.name}: company_share = ${trip.sharing?.company_share}, contributing ${value} to net profit`);
+      return sum + value;
+>>>>>>> origin/main
     }, 0);
     
     console.log('📊 Final calculations:', {
@@ -391,7 +429,11 @@ export function Dashboard({ user }: DashboardProps) {
               <DollarSign className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
+<<<<<<< HEAD
               <div className="text-xl sm:text-2xl font-bold text-blue-700 break-words">{currencySymbol}{safeFormatNumber(Math.abs(metrics.customerTotalRolling))}</div>
+=======
+              <div className="text-xl sm:text-2xl font-bold text-blue-700 break-words">HK${safeFormatNumber(Math.abs(metrics.customerTotalRolling))}</div>
+>>>>>>> origin/main
               <p className="text-xs text-blue-600 mt-1">
                 From {metrics.totalRollingRecords} rolling records across {metrics.totalCustomers} customers
               </p>
@@ -411,7 +453,11 @@ export function Dashboard({ user }: DashboardProps) {
             </CardHeader>
             <CardContent>
               <div className={`text-xl sm:text-2xl font-bold break-words ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+<<<<<<< HEAD
                 {currencySymbol}{safeFormatNumber(Math.abs(metrics.houseGrossWin))}
+=======
+                HK${safeFormatNumber(Math.abs(metrics.houseGrossWin))}
+>>>>>>> origin/main
               </div>
               <p className={`text-xs mt-1 ${metrics.houseGrossWin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 From trip sharing win/loss data
@@ -425,7 +471,11 @@ export function Dashboard({ user }: DashboardProps) {
               <Receipt className="h-4 w-4 text-red-600" />
             </CardHeader>
             <CardContent>
+<<<<<<< HEAD
               <div className="text-2xl font-bold text-red-700">{currencySymbol}{safeFormatNumber(Math.abs(metrics.totalExpenses))}</div>
+=======
+              <div className="text-2xl font-bold text-red-700">HK${safeFormatNumber(Math.abs(metrics.totalExpenses))}</div>
+>>>>>>> origin/main
               <p className="text-xs text-red-600">
                 Total operational expenses from trip sharing
               </p>
@@ -445,7 +495,11 @@ export function Dashboard({ user }: DashboardProps) {
             </CardHeader>
             <CardContent>
               <div className={`text-2xl font-bold ${metrics.houseFinalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+<<<<<<< HEAD
                 {currencySymbol}{safeFormatNumber(Math.abs(metrics.houseFinalProfit))}
+=======
+                HK${safeFormatNumber(Math.abs(metrics.houseFinalProfit))}
+>>>>>>> origin/main
               </div>
               <p className={`text-xs ${metrics.houseFinalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 Company share from trip sharing
@@ -533,11 +587,17 @@ export function Dashboard({ user }: DashboardProps) {
               {activeTrips
                 .slice(0, 5) // Show up to 5 trips to match customer performance section
                 .map((trip) => {
+<<<<<<< HEAD
                   // Use trip_sharing data with currency conversion
                   const originalRolling = trip.sharing?.total_rolling || trip.sharing?.totalRolling || 0;
                   const originalWinLoss = trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss || 0;
                   const totalRolling = convertToGlobalCurrency(originalRolling, trip.currency || 'HKD', trip);
                   const winLoss = convertToGlobalCurrency(originalWinLoss, trip.currency || 'HKD', trip);
+=======
+                  // Use trip_sharing data directly
+                  const totalRolling = trip.sharing?.total_rolling || trip.sharing?.totalRolling || 0;
+                  const winLoss = trip.sharing?.total_win_loss || trip.sharing?.totalWinLoss || 0;
+>>>>>>> origin/main
                   
                   // Calculate progress based on dates
                   const startDate = trip.date ? new Date(trip.date) : null;
@@ -573,14 +633,22 @@ export function Dashboard({ user }: DashboardProps) {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6 text-right text-xs">
                         <div>
                           <div className="text-gray-500">{t('rolling')}</div>
+<<<<<<< HEAD
                           <div className="font-medium text-blue-600">{currencySymbol}{safeFormatNumber(Math.abs(totalRolling))}</div>
+=======
+                          <div className="font-medium text-blue-600">HK${safeFormatNumber(Math.abs(totalRolling))}</div>
+>>>>>>> origin/main
                         </div>
                         <div>
                           <div className="text-gray-500">{t('win_loss')}</div>
                           <div className={`font-medium ${
                             winLoss < 0 ? 'text-red-600' : winLoss >= 0 ? 'text-green-600' : 'text-gray-600'
                           }`}>
+<<<<<<< HEAD
                             {currencySymbol}{safeFormatNumber(Math.abs(winLoss))}
+=======
+                            HK${safeFormatNumber(Math.abs(winLoss))}
+>>>>>>> origin/main
                           </div>
                         </div>
                       </div>
