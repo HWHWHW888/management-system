@@ -3,6 +3,14 @@ import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Compose
 import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, AlertTriangle, Percent, Trophy, ArrowUpDown, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { tokenManager } from '../utils/auth/tokenManager';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useCurrency } from '../contexts/CurrencyContext';
+// Currency utilities imported but not used in current implementation
+// import { 
+//   SUPPORTED_CURRENCIES, 
+//   formatCurrency, 
+//   convertAmount,
+//   getCurrencySymbol 
+// } from '../utils/currency';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -17,6 +25,7 @@ const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 export const Reports: React.FC<{ user: User }> = ({ user }) => {
   const { t } = useLanguage();
+  const { globalCurrency, convertToGlobalCurrency, currencySymbol } = useCurrency();
   
   // State management
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -225,6 +234,7 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
 
         return {
           ...customer,
+          agentId: customer.agentId || (customer as any).agent_id || null,
           totalRolling: customer.totalRolling || (customer as any).total_rolling || 0,
           totalWinLoss: customer.totalWinLoss || (customer as any).total_win_loss || 0,
           totalBuyIn: customer.totalBuyIn || (customer as any).total_buy_in || 0,
@@ -482,7 +492,9 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
     dateRange,
     cutoffDate: cutoffDate.toISOString(),
     customersBeforeFilter: filteredCustomers.length,
-    tripsBeforeFilter: filteredTrips.length
+    tripsBeforeFilter: filteredTrips.length,
+    rollingRecordsBeforeFilter: filteredRollingRecords.length,
+    transactionRecordsBeforeFilter: filteredTransactionRecords.length
   });
   
   // Filter trips by date range
@@ -536,31 +548,109 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
     });
 
     // Calculate aggregated metrics from filtered trips - try multiple field name formats
-    const totalWinLoss = filteredTrips.reduce((sum: number, trip: any) => {
-      const winLoss = trip.totalWinLoss || trip.total_win_loss || trip.sharing?.total_win_loss || 0;
-      return sum + winLoss;
+    // Calculate totals from filtered records for the selected time period
+    // This ensures metrics reflect the selected date range, not all-time totals
+    
+    // Calculate total rolling from trip_sharing data (aggregated and accurate)
+    // This matches the data shown in trip management and ensures consistency
+    console.log('🔍 DEBUG: Checking filteredTrips for sharing data:', {
+      filteredTripsCount: filteredTrips.length,
+      firstTripSharing: filteredTrips[0]?.sharing,
+      firstTripSharingKeys: filteredTrips[0]?.sharing ? Object.keys(filteredTrips[0].sharing) : 'No sharing data',
+      allSharingFields: filteredTrips[0]?.sharing
+    });
+    
+    // Helper function to convert amount from trip currency to global display currency
+    const convertTripAmountToGlobal = (amount: number, trip: any): number => {
+      if (!amount || amount === 0) return 0;
+      
+      const tripCurrency = trip.currency || 'HKD';
+      return convertToGlobalCurrency(amount, tripCurrency, trip);
+    };
+
+    const totalRolling = filteredTrips.reduce((sum: number, trip: any) => {
+      // Try direct field access first
+      let rolling = trip.sharing?.totalRolling || trip.sharing?.total_rolling || 0;
+      
+      // If still 0, try to calculate from commission (assuming 1.4% rate)
+      if (rolling === 0 && trip.sharing?.totalRollingCommission) {
+        rolling = trip.sharing.totalRollingCommission / 0.014; // Reverse calculate from commission
+      }
+      
+      // Last resort: search for any rolling-related field
+      if (rolling === 0 && trip.sharing) {
+        const rollingField = Object.keys(trip.sharing).find(key => 
+          key.toLowerCase().includes('rolling') && 
+          typeof trip.sharing[key] === 'number' &&
+          trip.sharing[key] > 0
+        );
+        if (rollingField) {
+          rolling = trip.sharing[rollingField];
+        }
+      }
+      
+      // Convert to global display currency
+      const convertedRolling = convertTripAmountToGlobal(rolling, trip);
+      console.log('🔍 Trip rolling calculation:', {
+        tripName: trip.trip_name || trip.name,
+        tripCurrency: trip.currency,
+        globalCurrency: globalCurrency,
+        originalRolling: rolling,
+        convertedRolling: convertedRolling,
+        hasSharing: !!trip.sharing,
+        sharingKeys: trip.sharing ? Object.keys(trip.sharing) : []
+      });
+      return sum + convertedRolling;
     }, 0);
     
-    const totalRolling = filteredTrips.reduce((sum: number, trip: any) => {
-      const rolling = trip.totalRolling || trip.total_rolling || trip.sharing?.total_rolling || 0;
+    // Alternative: from individual rolling records (may be incomplete)
+    const totalRollingFromRecords = filteredRollingRecords.reduce((sum: number, record: any) => {
+      const rolling = record.rolling_amount || record.rollingAmount || 0;
       return sum + rolling;
     }, 0);
     
-    const totalBuyIn = filteredTrips.reduce((sum: number, trip: any) => {
-      const buyIn = trip.totalBuyIn || trip.total_buy_in || trip.sharing?.total_buy_in || 0;
-      return sum + buyIn;
-    }, 0);
+    const totalBuyIn = filteredTransactionRecords
+      .filter(t => (t as any).transaction_type === 'buy-in' || (t as any).transactionType === 'buy-in')
+      .reduce((sum: number, record: any) => {
+        const amount = record.amount || 0;
+        return sum + amount;
+      }, 0);
     
-    const totalBuyOut = filteredTrips.reduce((sum: number, trip: any) => {
-      const buyOut = trip.totalBuyOut || trip.total_buy_out || trip.sharing?.total_buy_out || 0;
-      return sum + buyOut;
-    }, 0);
+    const totalBuyOut = filteredTransactionRecords
+      .filter(t => (t as any).transaction_type === 'buy-out' || (t as any).transactionType === 'buy-out')
+      .reduce((sum: number, record: any) => {
+        const amount = record.amount || 0;
+        return sum + amount;
+      }, 0);
+    
+    // Calculate win/loss from buy-in minus buy-out for the time period
+    const totalWinLoss = totalBuyIn - totalBuyOut;
 
-    console.log('💰 Calculated Totals:', {
+    console.log('💰 Total Rolling Data Source Comparison:', {
+      totalRollingFromTripSharing: totalRolling,
+      totalRollingFromRecords: totalRollingFromRecords,
+      difference: totalRolling - totalRollingFromRecords,
+      filteredTripsCount: filteredTrips.length,
+      filteredRollingRecordsCount: filteredRollingRecords.length,
+      dateRange: `${dateRange} days`,
+      tripSharingData: filteredTrips.map((t: any) => ({
+        trip_name: t.trip_name || t.name,
+        total_rolling: t.sharing?.totalRolling || t.sharing?.total_rolling,
+        start_date: t.start_date || t.startDate,
+        sharing_exists: !!t.sharing,
+        totalRolling_value: t.sharing?.totalRolling,
+        total_rolling_value: t.sharing?.total_rolling
+      }))
+    });
+    
+    console.log('💰 Calculated Totals from Filtered Data (Time Period):', {
       totalWinLoss,
       totalRolling,
       totalBuyIn,
-      totalBuyOut
+      totalBuyOut,
+      dateRange: `${dateRange} days`,
+      filteredTransactionRecordsCount: filteredTransactionRecords.length,
+      filteredCustomersCount: filteredCustomers.length
     });
     
     // Calculate company profit/loss from trip_sharing data
@@ -701,8 +791,8 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
       ongoingTrips,
       profitMargin,
       averageRollingPercentage,
-      totalRollingRecords: filteredTrips.length, // Number of trips with sharing data
-      totalBuyInOutRecords: filteredTrips.filter(t => ((t.totalBuyIn || 0) > 0) || ((t.totalBuyOut || 0) > 0)).length,
+      totalRollingRecords: filteredRollingRecords.length, // Number of rolling records in time period
+      totalBuyInOutRecords: filteredTransactionRecords.length, // Number of transaction records in time period
       // Company performance indicators
       companyNetResult,
       companyShare: companyProfitLoss, // Use companyProfitLoss which has actual data (305,951.23)
@@ -782,28 +872,37 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
         console.log(`📋 Available trips count: ${filteredTrips.length}`);
       }
       
-      // Use customer's aggregated data from customers table (which should have totals)
+      // Calculate customer metrics from filtered records for the selected time period
+      // This ensures agent performance reflects the selected date range
+      
+      // Get customer's rolling records for the time period (already filtered by date)
+      const customerRollingRecords = filteredRollingRecords.filter(r => (r as any).customer_id === customer.id);
+      customerRolling = customerRollingRecords.reduce((sum, r) => sum + ((r as any).rolling_amount || 0), 0);
+      
+      // Get customer's transaction records for the time period (already filtered by date)
+      const customerTransactionRecords = filteredTransactionRecords.filter(t => (t as any).customer_id === customer.id);
+      customerBuyIn = customerTransactionRecords
+        .filter(t => (t as any).transaction_type === 'buy-in' || (t as any).transactionType === 'buy-in')
+        .reduce((sum, t) => sum + ((t as any).amount || 0), 0);
+      customerBuyOut = customerTransactionRecords
+        .filter(t => (t as any).transaction_type === 'buy-out' || (t as any).transactionType === 'buy-out')
+        .reduce((sum, t) => sum + ((t as any).amount || 0), 0);
+      
+      // Calculate win/loss for the time period
+      customerWinLoss = customerBuyIn - customerBuyOut;
+      
       if (index < 3) {
-        console.log(`🔄 Using customer aggregated data from customers table`);
-        console.log(`👤 Customer data:`, {
+        console.log(`🔄 Calculated customer data for time period:`, {
           id: customer.id,
           name: customer.name,
-          total_rolling: (customer as any).total_rolling,
-          total_win_loss: (customer as any).total_win_loss,
-          total_buy_in: (customer as any).total_buy_in,
-          total_buy_out: (customer as any).total_buy_out,
-          totalRolling: customer.totalRolling,
-          totalWinLoss: customer.totalWinLoss,
-          totalBuyIn: customer.totalBuyIn,
-          totalBuyOut: customer.totalBuyOut
+          customerRolling,
+          customerWinLoss,
+          customerBuyIn,
+          customerBuyOut,
+          rollingRecordsCount: customerRollingRecords.length,
+          transactionRecordsCount: customerTransactionRecords.length
         });
       }
-      
-      // Use customer's aggregated data (try both field name formats)
-      customerRolling = customer.totalRolling || (customer as any).total_rolling || 0;
-      customerWinLoss = customer.totalWinLoss || (customer as any).total_win_loss || 0;
-      customerBuyIn = customer.totalBuyIn || (customer as any).total_buy_in || 0;
-      customerBuyOut = customer.totalBuyOut || (customer as any).total_buy_out || 0;
       
       // Count trips this customer participated in by checking trip_customers relationship
       // For now, estimate based on whether customer has any activity
@@ -1308,6 +1407,7 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
               <SelectValue placeholder="Date range" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="1">Last 1 day</SelectItem>
               <SelectItem value="7">Last 7 days</SelectItem>
               <SelectItem value="30">Last 30 days</SelectItem>
               <SelectItem value="90">Last 90 days</SelectItem>
@@ -1377,7 +1477,7 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
               <DollarSign className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-700">HK${safeFormatNumber(metrics.customerTotalRolling)}</div>
+              <div className="text-2xl font-bold text-blue-700">{currencySymbol}{safeFormatNumber(metrics.customerTotalRolling)}</div>
               <p className="text-xs text-blue-600">
                 {metrics.totalRollingRecords} rolling records • Last {dateRange} days
               </p>

@@ -1,12 +1,24 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateToken, requireAdmin, canAccessTrip } from './auth.js';
+import * as Trips from './trips.js';
 import { 
   updateCustomerTripStats, 
   updateTripStats, 
   updateTripSharing,
   updateCustomerTotalRolling
 } from './trips.js';
+
+// A. 看看这个 binding 来自哪里
+console.log('🧭 ROLLING-RECORDS binding keys:', Object.keys(Trips));
+console.log('🧭 ROLLING-RECORDS typeof updateTripSharing:', typeof Trips.updateTripSharing);
+if (Trips.updateTripSharing) {
+  try {
+    console.log('🧭 ROLLING-RECORDS source head:', Trips.updateTripSharing.toString().slice(0, 160));
+  } catch (e) {
+    console.log('🧭 ROLLING-RECORDS source error:', e.message);
+  }
+}
 
 const router = Router();
 

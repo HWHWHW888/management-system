@@ -15,6 +15,8 @@ import { db } from './utils/api/databaseWrapper';
 import { Badge } from './components/ui/badge';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { LanguageToggle } from './components/LanguageToggle';
+import { CurrencyProvider } from './contexts/CurrencyContext';
+import { CurrencyToggle } from './components/CurrencyToggle';
 
 function AppContent() {
   const { t } = useLanguage();
@@ -401,6 +403,7 @@ function AppContent() {
             {/* Right side - Controls */}
             <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
               <LanguageToggle />
+              <CurrencyToggle />
               {!isDatabaseHealthy && (
                 <Button
                   variant="outline"
@@ -569,7 +572,9 @@ function AppContent() {
 function App() {
   return (
     <LanguageProvider>
-      <AppContent />
+      <CurrencyProvider>
+        <AppContent />
+      </CurrencyProvider>
     </LanguageProvider>
   );
 }

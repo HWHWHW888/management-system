@@ -16,6 +16,7 @@ import { Trip, Customer, Agent } from '../types';
 import { db } from '../utils/supabase/supabaseClients';
 import { apiClient } from '../utils/api/apiClient';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import { isReadOnlyRole, canViewFinancialData } from '../utils/permissions';
 import { PhotoDisplay } from './common/PhotoDisplay';
 import { 
@@ -41,6 +42,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
   const clearError = useCallback(() => {}, []);
   const showError = useCallback((message: string) => console.error(message), []);
   const { t } = useLanguage();
+  const { globalCurrency } = useCurrency();
   
   // Memoize permission checks to prevent recalculation
   const isReadOnly = useMemo(() => isReadOnlyRole(currentUser.role), [currentUser.role]);
@@ -93,6 +95,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
   const [showEditProfitSharing, setShowEditProfitSharing] = useState(false);
   const [editingProfitSharing, setEditingProfitSharing] = useState<any>(null);
   const [newProfitSharingRate, setNewProfitSharingRate] = useState(0);
+  const [newRollingSharingRate, setNewRollingSharingRate] = useState(0);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showEditExpense, setShowEditExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -142,8 +145,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
     exchange_rate_myr: 1.0000
   });
 
-  // Dynamic currency viewing state - initialize with trip's default currency
-  const [viewingCurrency, setViewingCurrency] = useState<string>('HKD');
+  // Use global currency instead of local viewing currency
 
   // Performance monitoring - disabled in production
   // const [renderCount, setRenderCount] = useState(0);
@@ -169,21 +171,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
   
   // Note: Customer filtering is handled locally in the Add Customer dialog
 
-  // Update viewing currency when selected trip changes
-  useEffect(() => {
-    if (selectedTrip?.currency) {
-      setViewingCurrency(selectedTrip.currency);
-      console.log('🔄 Trip changed, updating viewing currency:', {
-        tripId: selectedTrip.id,
-        tripCurrency: selectedTrip.currency,
-        exchangeRates: {
-          peso: selectedTrip.exchange_rate_peso,
-          hkd: selectedTrip.exchange_rate_hkd,
-          myr: selectedTrip.exchange_rate_myr
-        }
-      });
-    }
-  }, [selectedTrip]);
+  // Global currency is now managed by CurrencyContext
   
   const [newExpense, setNewExpense] = useState({
     description: '',
@@ -299,15 +287,23 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
     await loadCustomerPhotos(customerId, selectedTrip.id);
   };
 
-  const updateCommissionRate = async (agentId: string, customerId: string, commissionRate: number) => {
+  // Update commission rate for specific agent-customer relationship
+  const updateCommissionRate = async (agentId: string, customerId: string, profitSharingRate: number, rollingSharingRate?: number) => {
     try {
       if (!selectedTrip) return;
       
       setSaving(true);
-      const response = await apiClient.put(`/trips/${selectedTrip.id}/agents/${agentId}/commission`, {
+      const requestBody: any = {
         customer_id: customerId,
-        profit_sharing_rate: commissionRate
-      });
+        profit_sharing_rate: profitSharingRate
+      };
+      
+      // Add rolling sharing rate if provided
+      if (rollingSharingRate !== undefined) {
+        requestBody.rolling_sharing_rate = rollingSharingRate;
+      }
+      
+      const response = await apiClient.put(`/trips/${selectedTrip.id}/agents/${agentId}/commission`, requestBody);
       
       if (response.success) {
         // Reload agent summary to reflect the change
@@ -326,15 +322,24 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
 
   // Handle opening profit sharing rate edit dialog
   const handleEditProfitSharing = (agentId: string, customer: any, agentName: string) => {
+    console.log('🔍 Opening profit sharing dialog with customer data:', {
+      customer_id: customer.customer_id,
+      customer_name: customer.customer_name,
+      profit_sharing_rate: customer.profit_sharing_rate,
+      rolling_sharing_rate: customer.rolling_sharing_rate,
+      profit_sharing_rate_as_percentage: (customer.profit_sharing_rate || 0) * 100
+    });
+    
     setEditingProfitSharing({
       agentId,
       customerId: customer.customer_id,
       customerName: customer.customer_name,
       agentName,
-      currentRate: customer.profit_sharing_rate || 0,
+      currentRate: customer.profit_sharing_rate || 0, // This is already in decimal format from DB
       customerNetResult: 0 // Will be calculated from customer stats
     });
-    setNewProfitSharingRate(customer.profit_sharing_rate || 0);
+    setNewProfitSharingRate(customer.profit_sharing_rate || 0); // Store as decimal internally
+    setNewRollingSharingRate(customer.rolling_sharing_rate || 0); // Store as decimal internally
     setShowEditProfitSharing(true);
   };
 
@@ -342,21 +347,29 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
   const handleUpdateProfitSharing = async () => {
     if (!editingProfitSharing) return;
     
-    await updateCommissionRate(
-      editingProfitSharing.agentId,
-      editingProfitSharing.customerId,
-      newProfitSharingRate
-    );
-    
-    setShowEditProfitSharing(false);
-    setEditingProfitSharing(null);
-    setNewProfitSharingRate(0);
+    try {
+      await updateCommissionRate(
+        editingProfitSharing.agentId,
+        editingProfitSharing.customerId,
+        newProfitSharingRate,
+        newRollingSharingRate
+      );
+      
+      // Only close dialog after successful update
+      setShowEditProfitSharing(false);
+      setEditingProfitSharing(null);
+      setNewProfitSharingRate(0);
+      setNewRollingSharingRate(0);
+    } catch (error) {
+      console.error('Error updating profit sharing rates:', error);
+      showError('Failed to update profit sharing rates');
+    }
   };
 
   // Calculate projected profit share based on customer net result and sharing rate
   const calculateProjectedProfitShare = (customerNetResult: number, sharingRate: number) => {
     if (customerNetResult <= 0) return 0; // Only positive net results generate profit share
-    return (customerNetResult * sharingRate) / 100;
+    return (customerNetResult * sharingRate); // sharingRate is already in decimal format (0.5 = 50%)
   };
 
   const addTripExpense = async (tripId: string, expenseData: any) => {
@@ -1833,37 +1846,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                   <p className="text-gray-600">{selectedTrip.description}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                  {/* Currency Selector */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">{t('view_in')}</span>
-                    <Select value={viewingCurrency} onValueChange={(newCurrency) => {
-                      console.log('🔄 Currency selector changed:', {
-                        from: viewingCurrency,
-                        to: newCurrency,
-                        tripData: selectedTrip ? {
-                          id: selectedTrip.id,
-                          currency: selectedTrip.currency,
-                          rates: {
-                            peso: selectedTrip.exchange_rate_peso,
-                            hkd: selectedTrip.exchange_rate_hkd,
-                            myr: selectedTrip.exchange_rate_myr
-                          }
-                        } : null
-                      });
-                      setViewingCurrency(newCurrency);
-                    }}>
-                      <SelectTrigger className="w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SUPPORTED_CURRENCIES.map((currency) => (
-                          <SelectItem key={currency.value} value={currency.value}>
-                            {currency.symbol}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Currency is now managed globally */}
                   <Button variant="outline" onClick={() => setActiveTab('trips')}>
                     <MapPin className="w-4 h-4 mr-2" />
                     {t('back_to_trips')}
@@ -1922,7 +1905,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                               </CardHeader>
                               <CardContent>
                                 <div className="text-2xl font-bold text-green-600">
-                                  {formatCurrency((selectedTrip as any)?.backendData?.totalBuyIn || 0, viewingCurrency, selectedTrip)}
+                                  {formatCurrency((selectedTrip as any)?.backendData?.totalBuyIn || 0, globalCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">{selectedTrip?.activeCustomersCount || selectedTrip?.customers?.length || 0} customers</p>
                                 <p className="text-xs text-green-500">From transactions</p>
@@ -1934,7 +1917,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                               </CardHeader>
                               <CardContent>
                                 <div className="text-2xl font-bold text-red-600">
-                                  {formatCurrency(Math.abs((selectedTrip as any)?.backendData?.totalCashOut || 0), viewingCurrency, selectedTrip)}
+                                  {formatCurrency(Math.abs((selectedTrip as any)?.backendData?.totalCashOut || 0), globalCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">Customer withdrawals</p>
                                 <p className="text-xs text-red-500">From transactions</p>
@@ -1946,7 +1929,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                               </CardHeader>
                               <CardContent>
                                 <div className="text-2xl font-bold text-red-600">
-                                  {formatCurrency(Math.abs(totalExpenses), viewingCurrency, selectedTrip)}
+                                  {formatCurrency(Math.abs(totalExpenses), globalCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">After all expenses</p>
                                 <p className="text-xs text-red-500">House perspective</p>
@@ -1960,7 +1943,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                 <div className={`text-2xl font-bold ${
                                   ((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) > 0 ? 'text-green-600' : 'text-red-600'
                                 }`}>
-                                  {formatCurrency(Math.abs((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0), viewingCurrency, selectedTrip)}
+                                  {formatCurrency(Math.abs((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0), globalCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-xs text-gray-500">House perspective</p>
                                 <p className={`text-xs ${((selectedTrip as any)?.sharing?.net_result || (selectedTrip as any)?.backendData?.netProfit || 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>After all expenses</p>
@@ -2159,19 +2142,19 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                 <div className="flex justify-between sm:block">
                                   <span className="text-sm text-gray-500">Buy-in:</span>
                                   <div className="font-medium text-blue-600 text-right sm:text-left">
-                                    {formatCurrency(tripCustomer.total_buy_in || tripCustomer.buyInAmount || 0, viewingCurrency, selectedTrip)}
+                                    {formatCurrency(tripCustomer.total_buy_in || tripCustomer.buyInAmount || 0, globalCurrency, selectedTrip)}
                                   </div>
                                 </div>
                                 <div className="flex justify-between sm:block">
                                   <span className="text-sm text-gray-500">Cash-out:</span>
                                   <div className="font-medium text-purple-600 text-right sm:text-left">
-                                    {formatCurrency(tripCustomer.total_cash_out || tripCustomer.buyOutAmount || 0, viewingCurrency, selectedTrip)}
+                                    {formatCurrency(tripCustomer.total_cash_out || tripCustomer.buyOutAmount || 0, globalCurrency, selectedTrip)}
                                   </div>
                                 </div>
                                 <div className="flex justify-between sm:block">
                                   <span className="text-sm text-gray-500">Rolling:</span>
                                   <div className="font-medium text-orange-600 text-right sm:text-left">
-                                    {formatCurrency(tripCustomer.rolling_amount || tripCustomer.rollingAmount || 0, viewingCurrency, selectedTrip)}
+                                    {formatCurrency(tripCustomer.rolling_amount || tripCustomer.rollingAmount || 0, globalCurrency, selectedTrip)}
                                   </div>
                                 </div>
                                 <div className="flex justify-between sm:block">
@@ -2179,7 +2162,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                   <div className={`font-medium text-right sm:text-left ${
                                     (tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0) > 0 ? 'text-green-600' : 'text-red-600'
                                   }`}>
-                                    {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0)), viewingCurrency, selectedTrip)}
+                                    {formatCurrency(Math.abs((tripCustomer.total_buy_in || 0) - (tripCustomer.total_cash_out || 0)), globalCurrency, selectedTrip)}
                                   </div>
                                 </div>
                                 <div className="flex justify-between sm:block">
@@ -2187,7 +2170,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                   <div className={`font-medium text-right sm:text-left ${
                                     (tripCustomer.net_result || 0) > 0 ? 'text-green-600' : 'text-red-600'
                                   }`}>
-                                    {formatCurrency(Math.abs(tripCustomer.net_result || 0), viewingCurrency, selectedTrip)}
+                                    {formatCurrency(Math.abs(tripCustomer.net_result || 0), globalCurrency, selectedTrip)}
                                   </div>
                                 </div>
                               </div>
@@ -2272,7 +2255,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                             {transaction.transaction_type === 'buy-in' ? 'Buy-in' : 'Cash-out'}
                                           </Badge>
                                           <span className="font-medium">
-                                            {formatCurrency(transaction.amount, viewingCurrency, selectedTrip)}
+                                            {formatCurrency(transaction.amount, globalCurrency, selectedTrip)}
                                           </span>
                                           <span className="text-sm text-gray-500">{transaction.venue}</span>
                                         </div>
@@ -2303,7 +2286,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                         <div className="flex items-center space-x-2">
                                           <Badge variant="outline" className="bg-orange-100 text-orange-700">Rolling</Badge>
                                           <span className="font-medium">
-                                            {formatCurrency(rolling.rolling_amount || rolling.amount, viewingCurrency, selectedTrip)}
+                                            {formatCurrency(rolling.rolling_amount || rolling.amount, globalCurrency, selectedTrip)}
                                           </span>
                                           <span className="text-sm text-gray-500">{rolling.venue}</span>
                                           <span className="text-xs text-gray-400">({rolling.game_type})</span>
@@ -2315,7 +2298,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                           <span>{new Date(rolling.created_at).toLocaleString()}</span>
                                           <span>•</span>
                                           <span className="text-green-600">
-                                            Commission: {formatCurrency((rolling.rolling_amount || rolling.amount) * getCommissionRate(rolling.commission_rate), viewingCurrency, selectedTrip)}
+                                            Commission: {formatCurrency((rolling.rolling_amount || rolling.amount) * getCommissionRate(rolling.commission_rate), globalCurrency, selectedTrip)}
                                           </span>
                                         </div>
                                       </div>
@@ -2442,7 +2425,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                               </div>
                               <div className="text-right">
                                 <div className="text-2xl font-bold text-blue-600">
-                                  {formatCurrency(summary.agent_profit_share || 0, viewingCurrency, selectedTrip)}
+                                  {formatCurrency(summary.agent_profit_share || 0, globalCurrency, selectedTrip)}
                                 </div>
                                 <p className="text-sm text-gray-500">Agent Profit Share</p>
                               </div>
@@ -2457,13 +2440,13 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                   <div className={`text-lg font-bold ${
                                     summary.total_win_loss >= 0 ? 'text-green-600' : 'text-red-600'
                                   }`}>
-                                    {formatCurrencyWithSign(summary.total_win_loss || 0, viewingCurrency, selectedTrip)}
+                                    {formatCurrencyWithSign(summary.total_win_loss || 0, globalCurrency, selectedTrip)}
                                   </div>
                                 </div>
                                 <div className="p-3 bg-green-50 rounded">
                                   <div className="text-sm text-gray-600">Total Commission</div>
                                   <div className="text-lg font-bold text-gray-800">
-                                    {formatCurrency(summary.total_commission || 0, viewingCurrency, selectedTrip)}
+                                    {formatCurrency(summary.total_commission || 0, globalCurrency, selectedTrip)}
                                   </div>
                                 </div>
                                 <div className="p-3 bg-purple-50 rounded">
@@ -2471,7 +2454,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                   <div className={`text-lg font-bold ${
                                     summary.total_profit >= 0 ? 'text-green-600' : 'text-red-600'
                                   }`}>
-                                    {formatCurrencyWithSign(summary.total_profit || 0, viewingCurrency, selectedTrip)}
+                                    {formatCurrencyWithSign(summary.total_profit || 0, globalCurrency, selectedTrip)}
                                   </div>
                                 </div>
                               </div>
@@ -2491,13 +2474,13 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                             Net Result: <span className={`font-medium ${
                                               (customer.net_result || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                                             }`}>
-                                              {formatCurrency(Math.abs(customer.net_result || 0), viewingCurrency, selectedTrip)}
+                                              {formatCurrency(Math.abs(customer.net_result || 0), globalCurrency, selectedTrip)}
                                             </span>
                                           </div>
                                         </div>
                                         <div className="text-right">
                                           <div className="font-bold text-blue-600">
-                                            {customer.profit_sharing_rate}%
+                                            {(customer.profit_sharing_rate * 100).toFixed(2)}%
                                           </div>
                                           <div className="text-sm text-gray-500">Profit Sharing Rate</div>
                                         </div>
@@ -3008,7 +2991,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                             <br /><br />
                             <strong>Expense:</strong> {deletingExpense?.description}
                             <br />
-                            <strong>Amount:</strong> {deletingExpense && formatCurrency(deletingExpense.amount, viewingCurrency, selectedTrip)}
+                            <strong>Amount:</strong> {deletingExpense && formatCurrency(deletingExpense.amount, globalCurrency, selectedTrip)}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -3059,7 +3042,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                         </CardHeader>
                         <CardContent>
                           <div className="text-2xl font-bold text-red-600">
-                            {formatCurrency((tripExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0), viewingCurrency, selectedTrip)}
+                            {formatCurrency((tripExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0), globalCurrency, selectedTrip)}
                           </div>
                           <p className="text-sm text-gray-500">{tripExpenses?.length || 0} expense items</p>
                         </CardContent>
@@ -3085,7 +3068,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                   <TableCell className="capitalize">{expense.expense_type?.replace('_', ' ')}</TableCell>
                                   <TableCell>{expense.expense_date}</TableCell>
                                   <TableCell className="text-right font-medium text-red-600">
-                                    {formatCurrency(expense.amount, viewingCurrency, selectedTrip)}
+                                    {formatCurrency(expense.amount, globalCurrency, selectedTrip)}
                                   </TableCell>
                                   {!isReadOnly && (
                                     <TableCell className="text-center">
@@ -3164,7 +3147,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                             <div className={`text-2xl font-bold ${
                               tripSharing.net_result >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}>
-                              {formatCurrency(Math.abs(tripSharing.net_result), viewingCurrency, selectedTrip)}
+                              {formatCurrency(Math.abs(tripSharing.net_result), globalCurrency, selectedTrip)}
                             </div>
                             <p className="text-xs text-gray-500">After all expenses and commissions</p>
                           </CardContent>
@@ -3178,7 +3161,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                             <div className={`text-2xl font-bold ${
                               tripSharing.total_agent_share >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}>
-                              {formatCurrency(Math.abs(tripSharing.total_agent_share), viewingCurrency, selectedTrip)}
+                              {formatCurrency(Math.abs(tripSharing.total_agent_share), globalCurrency, selectedTrip)}
                             </div>
                             <p className="text-xs text-gray-500">{tripSharing.agent_share_percentage}% of net result</p>
                           </CardContent>
@@ -3192,7 +3175,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                             <div className={`text-2xl font-bold ${
                               tripSharing.company_share >= 0 ? 'text-green-600' : 'text-red-600'
                             }`}>
-                              {formatCurrency(Math.abs(tripSharing.company_share), viewingCurrency, selectedTrip)}
+                              {formatCurrency(Math.abs(tripSharing.company_share), globalCurrency, selectedTrip)}
                             </div>
                             <p className="text-xs text-gray-500">{tripSharing.company_share_percentage}% of net result</p>
                           </CardContent>
@@ -3208,34 +3191,34 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                           <div className="space-y-3">
                             <div className="flex justify-between items-center p-3 bg-green-50 rounded">
                               <span className="font-medium">Total Buy-in</span>
-                              <span className="text-green-600 font-bold">{formatCurrency(tripSharing.total_buy_in, viewingCurrency, selectedTrip)}</span>
+                              <span className="text-green-600 font-bold">{formatCurrency(tripSharing.total_buy_in, globalCurrency, selectedTrip)}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-red-50 rounded">
                               <span className="font-medium">Total Cash-out</span>
-                              <span className="text-red-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_buy_out), viewingCurrency, selectedTrip)}</span>
+                              <span className="text-red-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_buy_out), globalCurrency, selectedTrip)}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-gray-100 rounded">
                               <span className="font-medium">Gross Profit</span>
                               <span className={`font-bold ${
                                 tripSharing.total_win_loss > 0 ? 'text-green-600' : 'text-red-600'
                               }`}>
-                                {formatCurrency(Math.abs(tripSharing.total_win_loss), viewingCurrency, selectedTrip)}
+                                {formatCurrency(Math.abs(tripSharing.total_win_loss), globalCurrency, selectedTrip)}
                               </span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-purple-50 rounded">
                               <span className="font-medium">Rolling Commission</span>
-                              <span className="text-purple-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_rolling_commission), viewingCurrency, selectedTrip)}</span>
+                              <span className="text-purple-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_rolling_commission), globalCurrency, selectedTrip)}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-red-50 rounded">
                               <span className="font-medium">Total Expenses</span>
-                              <span className="text-red-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_expenses), viewingCurrency, selectedTrip)}</span>
+                              <span className="text-red-600 font-bold">{formatCurrency(Math.abs(tripSharing.total_expenses), globalCurrency, selectedTrip)}</span>
                             </div>
                             <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
                               <span className="font-medium">Net Result</span>
                               <span className={`font-bold ${
                                 tripSharing.net_result >= 0 ? 'text-green-600' : 'text-red-600'
                               }`}>
-                                {formatCurrency(Math.abs(tripSharing.net_result), viewingCurrency, selectedTrip)}
+                                {formatCurrency(Math.abs(tripSharing.net_result), globalCurrency, selectedTrip)}
                               </span>
                             </div>
                           </div>
@@ -3254,7 +3237,7 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                                 <div key={agentId} className="flex justify-between items-center p-3 border rounded">
                                   <div>
                                     <div className="font-medium">{agentData.agent_name}</div>
-                                    <div className="text-sm text-gray-500">Profit Sharing Rate: {agentData.profit_sharing_rate}%</div>
+                                    <div className="text-sm text-gray-500">Profit Sharing Rate: {(agentData.profit_sharing_rate * 100).toFixed(2)}%</div>
                                   </div>
                                   <div className={`font-bold ${
                                     agentData.share_amount >= 0 ? 'text-green-600' : 'text-red-600'
@@ -3888,23 +3871,43 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
 
               {/* Current Rate */}
               <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
-                <span className="font-medium text-blue-800">Current Rate:</span>
-                <span className="text-xl font-bold text-blue-600">{editingProfitSharing.currentRate}%</span>
+                <span className="font-medium text-blue-800">Current Transaction Rate:</span>
+                <span className="text-xl font-bold text-blue-600">{(editingProfitSharing.currentRate * 100).toFixed(2)}%</span>
               </div>
 
-              {/* New Rate Input */}
-              <div className="space-y-2">
-                <Label htmlFor="newRate">New Profit Sharing Rate (%)</Label>
-                <Input
-                  id="newRate"
-                  type="number"
-                  value={newProfitSharingRate}
-                  onChange={(e) => setNewProfitSharingRate(parseFloat(e.target.value) || 0)}
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  className="text-lg"
-                />
+              {/* New Rate Inputs */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="newRate">Transaction Profit Sharing Rate (%)</Label>
+                  <Input
+                    id="newRate"
+                    type="number"
+                    value={newProfitSharingRate * 100}
+                    onChange={(e) => setNewProfitSharingRate((parseFloat(e.target.value) || 0) / 100)}
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    className="text-lg"
+                    placeholder="50.00"
+                  />
+                  <p className="text-xs text-gray-500">Percentage of customer transaction profit/loss shared with agent. Example: 50% means agent gets 50% of the profit/loss</p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="newRollingRate">Rolling Commission Sharing Rate (%)</Label>
+                  <Input
+                    id="newRollingRate"
+                    type="number"
+                    value={newRollingSharingRate * 100}
+                    onChange={(e) => setNewRollingSharingRate((parseFloat(e.target.value) || 0) / 100)}
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    className="text-lg"
+                    placeholder="50.00"
+                  />
+                  <p className="text-xs text-gray-500">Percentage of customer rolling commission earned shared with agent. Example: 50% means agent gets 50% of the commission</p>
+                </div>
               </div>
 
               {/* Customer Net Result and Projected Share */}
@@ -3924,13 +3927,13 @@ const ProjectManagementComponent = memo(({ user }: ProjectManagementProps) => {
                         <div className={`text-lg font-bold ${
                           netResult >= 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {formatCurrencyWithSign(netResult, viewingCurrency, selectedTrip)}
+                          {formatCurrencyWithSign(netResult, globalCurrency, selectedTrip)}
                         </div>
                       </div>
                       <div className="p-3 bg-green-50 rounded">
                         <div className="text-sm text-gray-600">Projected Profit Share</div>
                         <div className="text-lg font-bold text-green-600">
-                          {formatCurrency(projectedShare, viewingCurrency, selectedTrip)}
+                          {formatCurrency(projectedShare, globalCurrency, selectedTrip)}
                         </div>
                       </div>
                     </div>
