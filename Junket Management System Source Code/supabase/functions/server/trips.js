@@ -1770,20 +1770,15 @@ router.put('/:id/agents/:agentId/commission', authenticateToken, canAccessTrip, 
       });
     }
 
-    // Convert percentage to decimal format for consistent storage
-    // Frontend sends percentage (50), backend stores as decimal (0.5)
-    const profitRateDecimal = profit_sharing_rate > 1 ? profit_sharing_rate / 100 : profit_sharing_rate;
-    const rollingRateDecimal = rolling_sharing_rate > 1 ? rolling_sharing_rate / 100 : rolling_sharing_rate;
-    
     // Update the profit sharing rate for this agent-customer relationship
     const updateData = {
-      profit_sharing_rate: profitRateDecimal,
+      profit_sharing_rate: profit_sharing_rate,
       updated_at: new Date().toISOString()
     };
     
     // Add rolling_sharing_rate if provided
     if (rolling_sharing_rate !== undefined) {
-      updateData.rolling_sharing_rate = rollingRateDecimal;
+      updateData.rolling_sharing_rate = rolling_sharing_rate;
     }
     
     const { data, error } = await supabase
