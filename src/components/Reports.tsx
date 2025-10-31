@@ -3,7 +3,6 @@ import { Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Compose
 import { TrendingDown, Users, DollarSign, Activity, RefreshCw, Download, BarChart3, AlertTriangle, Percent, Trophy, ArrowUpDown, ChevronDown, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { tokenManager } from '../utils/auth/tokenManager';
 import { useLanguage } from '../contexts/LanguageContext';
-<<<<<<< HEAD
 import { useCurrency } from '../contexts/CurrencyContext';
 // Currency utilities imported but not used in current implementation
 // import { 
@@ -12,8 +11,6 @@ import { useCurrency } from '../contexts/CurrencyContext';
 //   convertAmount,
 //   getCurrencySymbol 
 // } from '../utils/currency';
-=======
->>>>>>> origin/main
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -28,10 +25,7 @@ const REAL_TIME_REFRESH_INTERVAL = 30000;
 
 export const Reports: React.FC<{ user: User }> = ({ user }) => {
   const { t } = useLanguage();
-<<<<<<< HEAD
   const { globalCurrency, convertToGlobalCurrency, currencySymbol } = useCurrency();
-=======
->>>>>>> origin/main
   
   // State management
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -240,10 +234,7 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
 
         return {
           ...customer,
-<<<<<<< HEAD
           agentId: customer.agentId || (customer as any).agent_id || null,
-=======
->>>>>>> origin/main
           totalRolling: customer.totalRolling || (customer as any).total_rolling || 0,
           totalWinLoss: customer.totalWinLoss || (customer as any).total_win_loss || 0,
           totalBuyIn: customer.totalBuyIn || (customer as any).total_buy_in || 0,
@@ -501,13 +492,9 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
     dateRange,
     cutoffDate: cutoffDate.toISOString(),
     customersBeforeFilter: filteredCustomers.length,
-<<<<<<< HEAD
     tripsBeforeFilter: filteredTrips.length,
     rollingRecordsBeforeFilter: filteredRollingRecords.length,
     transactionRecordsBeforeFilter: filteredTransactionRecords.length
-=======
-    tripsBeforeFilter: filteredTrips.length
->>>>>>> origin/main
   });
   
   // Filter trips by date range
@@ -561,7 +548,6 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
     });
 
     // Calculate aggregated metrics from filtered trips - try multiple field name formats
-<<<<<<< HEAD
     // Calculate totals from filtered records for the selected time period
     // This ensures metrics reflect the selected date range, not all-time totals
     
@@ -665,33 +651,6 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
       dateRange: `${dateRange} days`,
       filteredTransactionRecordsCount: filteredTransactionRecords.length,
       filteredCustomersCount: filteredCustomers.length
-=======
-    const totalWinLoss = filteredTrips.reduce((sum: number, trip: any) => {
-      const winLoss = trip.totalWinLoss || trip.total_win_loss || trip.sharing?.total_win_loss || 0;
-      return sum + winLoss;
-    }, 0);
-    
-    const totalRolling = filteredTrips.reduce((sum: number, trip: any) => {
-      const rolling = trip.totalRolling || trip.total_rolling || trip.sharing?.total_rolling || 0;
-      return sum + rolling;
-    }, 0);
-    
-    const totalBuyIn = filteredTrips.reduce((sum: number, trip: any) => {
-      const buyIn = trip.totalBuyIn || trip.total_buy_in || trip.sharing?.total_buy_in || 0;
-      return sum + buyIn;
-    }, 0);
-    
-    const totalBuyOut = filteredTrips.reduce((sum: number, trip: any) => {
-      const buyOut = trip.totalBuyOut || trip.total_buy_out || trip.sharing?.total_buy_out || 0;
-      return sum + buyOut;
-    }, 0);
-
-    console.log('💰 Calculated Totals:', {
-      totalWinLoss,
-      totalRolling,
-      totalBuyIn,
-      totalBuyOut
->>>>>>> origin/main
     });
     
     // Calculate company profit/loss from trip_sharing data
@@ -832,13 +791,8 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
       ongoingTrips,
       profitMargin,
       averageRollingPercentage,
-<<<<<<< HEAD
       totalRollingRecords: filteredRollingRecords.length, // Number of rolling records in time period
       totalBuyInOutRecords: filteredTransactionRecords.length, // Number of transaction records in time period
-=======
-      totalRollingRecords: filteredTrips.length, // Number of trips with sharing data
-      totalBuyInOutRecords: filteredTrips.filter(t => ((t.totalBuyIn || 0) > 0) || ((t.totalBuyOut || 0) > 0)).length,
->>>>>>> origin/main
       // Company performance indicators
       companyNetResult,
       companyShare: companyProfitLoss, // Use companyProfitLoss which has actual data (305,951.23)
@@ -918,7 +872,6 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
         console.log(`📋 Available trips count: ${filteredTrips.length}`);
       }
       
-<<<<<<< HEAD
       // Calculate customer metrics from filtered records for the selected time period
       // This ensures agent performance reflects the selected date range
       
@@ -951,31 +904,6 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
         });
       }
       
-=======
-      // Use customer's aggregated data from customers table (which should have totals)
-      if (index < 3) {
-        console.log(`🔄 Using customer aggregated data from customers table`);
-        console.log(`👤 Customer data:`, {
-          id: customer.id,
-          name: customer.name,
-          total_rolling: (customer as any).total_rolling,
-          total_win_loss: (customer as any).total_win_loss,
-          total_buy_in: (customer as any).total_buy_in,
-          total_buy_out: (customer as any).total_buy_out,
-          totalRolling: customer.totalRolling,
-          totalWinLoss: customer.totalWinLoss,
-          totalBuyIn: customer.totalBuyIn,
-          totalBuyOut: customer.totalBuyOut
-        });
-      }
-      
-      // Use customer's aggregated data (try both field name formats)
-      customerRolling = customer.totalRolling || (customer as any).total_rolling || 0;
-      customerWinLoss = customer.totalWinLoss || (customer as any).total_win_loss || 0;
-      customerBuyIn = customer.totalBuyIn || (customer as any).total_buy_in || 0;
-      customerBuyOut = customer.totalBuyOut || (customer as any).total_buy_out || 0;
-      
->>>>>>> origin/main
       // Count trips this customer participated in by checking trip_customers relationship
       // For now, estimate based on whether customer has any activity
       customerTrips = (customerRolling > 0 || Math.abs(customerWinLoss) > 0 || customerBuyIn > 0 || customerBuyOut > 0) ? 1 : 0;
@@ -1479,10 +1407,7 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
               <SelectValue placeholder="Date range" />
             </SelectTrigger>
             <SelectContent>
-<<<<<<< HEAD
               <SelectItem value="1">Last 1 day</SelectItem>
-=======
->>>>>>> origin/main
               <SelectItem value="7">Last 7 days</SelectItem>
               <SelectItem value="30">Last 30 days</SelectItem>
               <SelectItem value="90">Last 90 days</SelectItem>
@@ -1552,11 +1477,7 @@ export const Reports: React.FC<{ user: User }> = ({ user }) => {
               <DollarSign className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-<<<<<<< HEAD
               <div className="text-2xl font-bold text-blue-700">{currencySymbol}{safeFormatNumber(metrics.customerTotalRolling)}</div>
-=======
-              <div className="text-2xl font-bold text-blue-700">HK${safeFormatNumber(metrics.customerTotalRolling)}</div>
->>>>>>> origin/main
               <p className="text-xs text-blue-600">
                 {metrics.totalRollingRecords} rolling records • Last {dateRange} days
               </p>
